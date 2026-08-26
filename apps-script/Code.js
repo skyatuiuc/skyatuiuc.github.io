@@ -424,8 +424,24 @@ function doPost(e) {
       return handleRecordConversion(data);
     }
 
-    // 3. Handle Campaign Analytics Query (Volunteer / Admin)
+    // 3. Handle Campaign Analytics Query (Protected: Volunteer / Admin Only)
     if (action === "get_campaign_analytics" || action === "analytics") {
+      var queryToken = data.idToken || (e.parameter ? e.parameter.idToken : "") || "";
+      var isQueryAuthorized = false;
+      if (queryToken) {
+        var verifiedQueryCaller = verifyFirebaseIdToken(queryToken);
+        if (verifiedQueryCaller && isAuthorizedCaller(verifiedQueryCaller.email, queryToken)) {
+          isQueryAuthorized = true;
+        }
+      }
+
+      if (!isQueryAuthorized) {
+        return createJsonResponse({ 
+          status: "error", 
+          message: "Unauthorized: Valid Firebase ID token from an authorized volunteer or super admin is required." 
+        });
+      }
+
       return handleGetAnalytics(data.startDate || (e.parameter ? e.parameter.startDate : ""), data.endDate || (e.parameter ? e.parameter.endDate : ""));
     }
 
@@ -477,13 +493,29 @@ function doPost(e) {
 function doGet(e) {
   var action = e && e.parameter ? e.parameter.action : "";
   if (action === "get_campaign_analytics" || action === "analytics") {
+    var idToken = e && e.parameter ? (e.parameter.idToken || "") : "";
+    var isAuthorized = false;
+    if (idToken) {
+      var verifiedCaller = verifyFirebaseIdToken(idToken);
+      if (verifiedCaller && isAuthorizedCaller(verifiedCaller.email, idToken)) {
+        isAuthorized = true;
+      }
+    }
+
+    if (!isAuthorized) {
+      return createJsonResponse({ 
+        status: "error", 
+        message: "Unauthorized: Valid Firebase ID token from an authorized volunteer or super admin is required." 
+      });
+    }
+
     return handleGetAnalytics(e.parameter.startDate, e.parameter.endDate);
   }
 
   return createJsonResponse({ 
     status: "online", 
     service: "SKY UIUC Relay & Campaign Engine",
-    version: "4.1.0",
+    version: "4.2.0",
     time: new Date().toISOString()
   });
 }

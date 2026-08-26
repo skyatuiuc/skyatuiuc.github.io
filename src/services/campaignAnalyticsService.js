@@ -6,6 +6,8 @@
  * through Google Apps Script & Google Sheets with rate-limiting and local storage fallback.
  */
 
+import { auth } from '../firebase/config';
+
 // Helper to resolve the active Google Apps Script Webhook URL
 const DEFAULT_CAMPAIGN_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyHJFonGIbqaZfADEed5QgzodmE65hTDLYp_iY-Tn_Nemg9k-eAUQV4s5mYMMRV3zDT/exec';
 
@@ -228,7 +230,17 @@ export async function getCampaignAnalyticsForDateRange(startDateStr, endDateStr)
   // 1. Try querying Google Apps Script Engine
   if (webhookUrl) {
     try {
-      const fetchUrl = `${webhookUrl}?action=get_campaign_analytics&startDate=${encodeURIComponent(startDateStr)}&endDate=${encodeURIComponent(endDateStr)}`;
+      let idToken = '';
+      if (auth && auth.currentUser) {
+        try {
+          idToken = await auth.currentUser.getIdToken();
+        } catch (tokenErr) {
+          console.warn("Could not fetch ID token for campaign analytics:", tokenErr);
+        }
+      }
+
+      const tokenParam = idToken ? `&idToken=${encodeURIComponent(idToken)}` : '';
+      const fetchUrl = `${webhookUrl}?action=get_campaign_analytics&startDate=${encodeURIComponent(startDateStr)}&endDate=${encodeURIComponent(endDateStr)}${tokenParam}`;
       const resp = await fetch(fetchUrl, {
         method: 'GET',
         headers: { 'Accept': 'application/json' }
