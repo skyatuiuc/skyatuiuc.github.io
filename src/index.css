@@ -1,0 +1,430 @@
+/* ==========================================================================
+   SKY AT UIUC - Official SKY Campus Happiness Brand Design System (2025/2026)
+   Aligned with Official National Brand Style Guidelines & skycampushappiness.org
+   Light, Lively, Dynamic & Nature-Inspired Theme System
+   ========================================================================== */
+
+:root {
+  /* Official SKY Campus Primary Palette (From Brand Style Guide) */
+  --sky-blue: #1F74F1;           /* Signature SKY Blue */
+  --sky-blue-hover: #1662D0;
+  --sky-blue-light: #D7E5FF;
+  --sky-blue-subtle: rgba(31, 116, 241, 0.08);
+  
+  --sky-rest: #23275F;           /* Primary Deep REST Navy (Commanding & Legible) */
+  --sky-rest-deep: #161942;      /* Deep Base Navy for Footers & High-Contrast Accents */
+  --sky-rest-card: #FFFFFF;      /* Crisp Card Surface */
+  
+  --sky-cloud: #F7F5F2;          /* Soft Cloud Cream Canvas */
+  --sky-cloud-light: #FAFAF8;
+  --sky-pure-white: #FFFFFF;
+
+  /* Secondary Accent Colors (Nature-inspired palette) */
+  --sky-sun: #FABC1D;            /* Sun Warm Gold */
+  --sky-sun-hover: #E5A110;
+  --sky-sun-light: #FFF5DB;
+  --sky-earth: #7FA842;          /* Earth Sage Green (vibrant for light bg) */
+  --sky-earth-light: #EEF5E1;
+  --sky-flower: #FF7A5C;         /* Flower Soft Coral Pink */
+  --sky-flower-light: #FFEBE5;
+  --sky-fruit: #DB6937;          /* Fruit Terracotta Orange */
+  --sky-fruit-light: #FFEDE5;
+
+  /* UIUC Chapter Heritage Fusion */
+  --illini-orange: #E84A27;
+  --illini-blue: #13294B;
+
+  /* Luminous Light Theme System - Authentic, Uplifting & Joyful */
+  --bg-dark: #F7F5F2;            /* Canvas Background (Warm Cloud) */
+  --bg-canvas: #F7F5F2;
+  --bg-surface: #FFFFFF;         /* Crisp White Card Surface */
+  --bg-card: #FFFFFF;            /* Card Background */
+  --bg-glass: rgba(255, 255, 255, 0.88);
+  --bg-subtle: #F1F5F9;
+  
+  --text-main: #23275F;          /* Deep REST Navy for Headlines & Key Text */
+  --text-body: #334155;          /* Slate 700 for Body Copy */
+  --text-secondary: #475569;     /* Slate 600 */
+  --text-muted: #64748B;         /* Slate 500 */
+  --border-color: rgba(35, 39, 95, 0.1);
+  --border-light: rgba(35, 39, 95, 0.05);
+
+  /* Typography Families (Google Fonts) */
+  --font-headline: 'Merriweather', Georgia, serif;
+  --font-body: 'Source Sans 3', 'Inter', system-ui, sans-serif;
+  --font-subheading: 'Source Sans 3', system-ui, sans-serif;
+
+  /* Design Tokens */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-full: 9999px;
+  
+  --shadow-sm: 0 2px 6px rgba(35, 39, 95, 0.04), 0 1px 2px rgba(35, 39, 95, 0.02);
+  --shadow-md: 0 6px 20px -2px rgba(35, 39, 95, 0.07), 0 2px 6px -1px rgba(35, 39, 95, 0.04);
+  --shadow-lg: 0 14px 32px -4px rgba(35, 39, 95, 0.1), 0 4px 12px -2px rgba(35, 39, 95, 0.05);
+  --shadow-sky: 0 6px 20px rgba(31, 116, 241, 0.25);
+  
+  --transition-fast: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Reset & Base Styles */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  font-family: var(--font-body);
+  background-color: var(--bg-canvas);
+  color: var(--text-body);
+  overflow-x: clip;
+}
+
+body {
+  min-height: 100vh;
+  overflow-x: clip;
+  line-height: 1.6;
+  background-color: var(--bg-canvas);
+  color: var(--text-body);
+  background-image: 
+    radial-gradient(circle at 15% 5%, rgba(215, 229, 255, 0.45) 0%, transparent 35%),
+    radial-gradient(circle at 85% 15%, rgba(255, 245, 219, 0.45) 0%, transparent 40%),
+    radial-gradient(circle at 50% 60%, rgba(238, 245, 225, 0.35) 0%, transparent 50%);
+  background-attachment: fixed;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Brand Typography Rules */
+h1, h2, h3 {
+  font-family: var(--font-headline);
+  color: var(--text-main);
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+h4, h5, h6 {
+  font-family: var(--font-body);
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+p {
+  color: var(--text-secondary);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-canvas);
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sky-blue);
+}
+
+/* Form Controls & Global Inputs */
+input, select, textarea {
+  font-family: var(--font-body);
+  color: var(--text-main);
+  background-color: #FFFFFF;
+  border: 1px solid rgba(35, 39, 95, 0.15);
+  border-radius: var(--radius-sm);
+  transition: var(--transition-fast);
+}
+
+input::placeholder, textarea::placeholder {
+  color: #94A3B8;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--sky-blue);
+  box-shadow: 0 0 0 3px rgba(31, 116, 241, 0.15);
+}
+
+/* Container */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+/* Authentic Brand Color Utilities */
+.text-sky { color: var(--sky-blue); }
+.text-sun { color: #B45309; }
+.text-earth { color: #3F6212; }
+.text-flower { color: #C2410C; }
+.text-fruit { color: var(--sky-fruit); }
+.text-navy { color: var(--sky-rest); }
+
+/* Luminous Card Design */
+.glass-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  transition: var(--transition-smooth);
+}
+
+.glass-card:hover {
+  border-color: rgba(31, 116, 241, 0.3);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Light & Lively Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius-full);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  font-family: var(--font-subheading);
+}
+
+.badge-sky, .badge-blue {
+  background: #D7E5FF;
+  color: #1F74F1;
+  border: 1px solid rgba(31, 116, 241, 0.25);
+}
+
+.badge-sun {
+  background: #FFF5DB;
+  color: #B45309;
+  border: 1px solid rgba(250, 188, 29, 0.35);
+}
+
+.badge-earth {
+  background: #EEF5E1;
+  color: #3F6212;
+  border: 1px solid rgba(127, 168, 66, 0.3);
+}
+
+.badge-orange, .badge-fruit {
+  background: #FFEBE5;
+  color: #C2410C;
+  border: 1px solid rgba(232, 74, 39, 0.3);
+}
+
+/* Buttons - Conventional & Touch-Friendly */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.75rem 1.5rem;
+  min-height: 44px; /* Apple minimum touch target height */
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  border: none;
+  text-decoration: none;
+  font-family: var(--font-subheading);
+  letter-spacing: 0.01em;
+}
+
+.btn-primary {
+  background: var(--sky-blue);
+  color: #FFFFFF;
+  box-shadow: var(--shadow-sky);
+}
+
+.btn-primary:hover {
+  background: var(--sky-blue-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(31, 116, 241, 0.35);
+}
+
+.btn-sun {
+  background: var(--sky-sun);
+  color: #23275F;
+  box-shadow: 0 4px 14px rgba(250, 188, 29, 0.25);
+}
+
+.btn-sun:hover {
+  background: #E5A110;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(250, 188, 29, 0.35);
+}
+
+.btn-secondary {
+  background: #FFFFFF;
+  color: var(--text-main);
+  border: 1px solid rgba(35, 39, 95, 0.15);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-secondary:hover {
+  background: #F8FAFC;
+  border-color: rgba(31, 116, 241, 0.35);
+  color: var(--sky-blue);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-outline-sky {
+  background: transparent;
+  color: var(--sky-blue);
+  border: 1.5px solid var(--sky-blue);
+}
+
+.btn-outline-sky:hover {
+  background: var(--sky-blue-subtle);
+  border-color: var(--sky-blue-hover);
+}
+
+.btn-sm {
+  padding: 0.45rem 0.9rem;
+  min-height: 36px;
+  font-size: 0.85rem;
+  border-radius: var(--radius-sm);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+/* Roster Table Rows */
+.roster-row-hover:hover {
+  background: rgba(31, 116, 241, 0.04) !important;
+}
+
+/* Base Navigation Utilities */
+.mobile-menu-btn {
+  display: none;
+}
+
+/* ==========================================================================
+   MOBILE & TABLET RESPONSIVE ENGINE (iOS & Android Touch Viewports)
+   ========================================================================== */
+@media (max-width: 768px) {
+  /* Navigation */
+  .desktop-links {
+    display: none !important;
+  }
+
+  .mobile-menu-btn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: var(--radius-sm);
+    background: #FFFFFF;
+    border: 1px solid rgba(31, 116, 241, 0.3);
+    box-shadow: var(--shadow-sm);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: var(--transition-fast);
+  }
+
+  .mobile-menu-btn:hover, .mobile-menu-btn:active {
+    background: var(--sky-blue-light);
+    border-color: var(--sky-blue);
+  }
+
+  .navbar-logo-img {
+    height: 32px !important;
+  }
+
+  .account-chip-name {
+    display: none !important;
+  }
+
+  /* Typography Sizing for Mobile Viewports */
+  h1 {
+    font-size: 2rem !important;
+    line-height: 1.22 !important;
+  }
+
+  h2 {
+    font-size: 1.5rem !important;
+  }
+
+  .container {
+    padding: 0 1rem !important;
+  }
+
+  /* Buttons & Action Containers */
+  .mobile-stack-buttons {
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+
+  .mobile-stack-buttons .btn {
+    width: 100% !important;
+  }
+
+  /* Form Layouts & Inputs */
+  .responsive-form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+
+  .form-card-responsive {
+    padding: 1.5rem 1.25rem !important;
+  }
+
+  /* Modal Windows & Roster Tables */
+  .modal-responsive-card {
+    padding: 1.25rem 1rem !important;
+    width: 95vw !important;
+    max-height: 92vh !important;
+  }
+
+  table {
+    display: block !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+}
+
+/* Group Assignment & Attendance Drag-and-Drop Enhancements */
+.drop-zone-active {
+  border-color: var(--sky-sun) !important;
+  background-color: rgba(250, 188, 29, 0.12) !important;
+  box-shadow: 0 0 24px rgba(250, 188, 29, 0.25) !important;
+}
+
+[draggable="true"] {
+  cursor: grab;
+}
+
+[draggable="true"]:active {
+  cursor: grabbing;
+  opacity: 0.75;
+}
