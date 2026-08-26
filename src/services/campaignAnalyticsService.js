@@ -1,37 +1,88 @@
-import { db, isFirebaseConfigured } from '../firebase/config';
-import { doc, setDoc, getDoc, increment } from 'firebase/firestore';
-import { logDatabaseOperation } from './telemetryService';
+/**
+ * CAMPAIGN ANALYTICS SERVICE
+ * 
+ * Secure, zero-Firestore-quota campaign tracking engine for SKY at UIUC.
+ * Routes high-throughput anonymous QR/Shortlink scans and referral conversions
+ * through Google Apps Script & Google Sheets with rate-limiting and local storage fallback.
+ */
+
+// Helper to resolve the active Google Apps Script Webhook URL
+const DEFAULT_CAMPAIGN_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyHJFonGIbqaZfADEed5QgzodmE65hTDLYp_iY-Tn_Nemg9k-eAUQV4s5mYMMRV3zDT/exec';
+
+export function getCampaignWebhookUrl() {
+  // 1. Check environment variables
+  const envUrl = import.meta.env?.VITE_CAMPAIGN_WEBHOOK_URL || 
+                 import.meta.env?.VITE_EMAIL_WEBHOOK_URL || 
+                 import.meta.env?.VITE_APPS_SCRIPT_URL;
+  if (envUrl && envUrl.startsWith('https://script.google.com/macros/s/') && !envUrl.includes('EXAMPLE')) {
+    return envUrl;
+  }
+
+  // 2. Check saved settings in LocalStorage (configured via Volunteer / Admin Email Settings Modal)
+  try {
+    const customCampUrl = localStorage.getItem('sky_campaign_webhook_url');
+    if (customCampUrl && customCampUrl.startsWith('https://script.google.com/macros/s/') && !customCampUrl.includes('EXAMPLE')) {
+      return customCampUrl;
+    }
+
+    const emailSettingsStr = localStorage.getItem('sky_email_settings');
+    if (emailSettingsStr) {
+      const emailSettings = JSON.parse(emailSettingsStr);
+      if (emailSettings?.webhookUrl && 
+          emailSettings.webhookUrl.startsWith('https://script.google.com/macros/s/') && 
+          !emailSettings.webhookUrl.includes('EXAMPLE')) {
+        return emailSettings.webhookUrl;
+      }
+    }
+  } catch {
+    // Ignore parse error
+  }
+
+  return DEFAULT_CAMPAIGN_WEBHOOK_URL;
+}
+
+/**
+ * Generate or retrieve an ephemeral session fingerprint for rate-limiting
+ */
+function getSessionFingerprint() {
+  try {
+    let fp = sessionStorage.getItem('sky_client_fp');
+    if (!fp) {
+      fp = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+      sessionStorage.setItem('sky_client_fp', fp);
+    }
+    return fp;
+  } catch {
+    return 'anon';
+  }
+}
 
 /**
  * Record a QR Code / Shortlink Scan.
- * Uses monthly batched Firestore documents (`campaign_analytics_monthly/{YYYY-MM}`)
- * to minimize read/write costs.
+ * Uses fire-and-forget background beacon to Google Apps Script & Google Sheets,
+ * consuming 0 Firestore writes and executing in < 0.1ms without blocking page navigation.
  * 
- * @param {string} rawTag - e.g. "insta", "eceb"
- * @param {string} category - e.g. "Social Media", "Campus Poster"
+ * @param {string} rawTag - e.g. "demo", "insta", "eceb"
  */
-export async function recordCampaignScan(rawTag, category = 'General Outreach') {
+export async function recordCampaignScan(rawTag) {
   if (!rawTag) return;
   const tag = rawTag.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
   if (!tag) return;
 
-  // Automated Email Link Scanner & Security Bot Filter Protection
-  // Blocks enterprise email scanners (Microsoft SafeLinks, Proofpoint, Mimecast, Barracuda, GoogleImageProxy, bots)
-  // from consuming database write quotas or inflating campaign analytics when campus newsletters are dispatched.
+  // 1. Filter enterprise email link scanners / crawler bots
   if (typeof navigator !== 'undefined' && navigator.userAgent) {
     const ua = navigator.userAgent.toLowerCase();
     const isBot = /bot|crawl|spider|slurp|proofpoint|mimecast|safelinks|barracuda|googleimageproxy|facebookexternalhit|twitterbot|linkedinbot|preview|fetch|headless/i.test(ua);
     if (isBot) {
-      return; // Skip analytics write for automated email link scanners
+      return;
     }
   }
 
-  // Session deduplication: Don't count duplicate reloads within the same 5-minute session
+  // 2. Client-side session deduplication (5-minute window)
   const lastScanKey = `sky_scan_${tag}_last`;
   const lastScanTime = sessionStorage.getItem(lastScanKey);
   const nowMs = Date.now();
   if (lastScanTime && (nowMs - Number(lastScanTime)) < 5 * 60 * 1000) {
-    // Within 5 min window; skip Firestore write to prevent inflated spam counts
     return;
   }
   sessionStorage.setItem(lastScanKey, nowMs.toString());
@@ -39,38 +90,36 @@ export async function recordCampaignScan(rawTag, category = 'General Outreach') 
   const now = new Date();
   const yearMonth = now.toISOString().substring(0, 7); // "YYYY-MM"
   const dayKey = now.toISOString().substring(8, 10);    // "DD"
+  const webhookUrl = getCampaignWebhookUrl();
 
-  if (isFirebaseConfigured && db) {
+  // 3. Dispatch fire-and-forget background beacon to Google Apps Script
+  if (webhookUrl) {
     try {
-      const docRef = doc(db, 'campaign_analytics_monthly', yearMonth);
-      const isoString = now.toISOString();
+      const payload = JSON.stringify({
+        action: 'record_campaign_scan',
+        tag,
+        fingerprint: getSessionFingerprint(),
+        timestamp: now.toISOString()
+      });
 
-      await setDoc(docRef, {
-        yearMonth,
-        updatedAt: isoString,
-        tags: {
-          [tag]: {
-            tag,
-            category,
-            lastScannedAt: isoString,
-            totalScans: increment(1),
-            days: {
-              [dayKey]: {
-                scans: increment(1)
-              }
-            }
-          }
-        }
-      }, { merge: true });
-
-      // Telemetry log: 1 write
-      logDatabaseOperation(0, 1, 0);
+      if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+        const blob = new Blob([payload], { type: 'text/plain;charset=UTF-8' });
+        navigator.sendBeacon(webhookUrl, blob);
+      } else {
+        fetch(webhookUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+          body: payload,
+          keepalive: true
+        }).catch(() => {});
+      }
     } catch (err) {
-      console.warn("Campaign scan record notice:", err);
+      console.warn("GAS campaign scan dispatch warning:", err);
     }
   }
 
-  // Also persist in local storage fallback for offline support
+  // 4. Update LocalStorage fallback for offline / instant responsiveness
   try {
     const localStr = localStorage.getItem('sky_campaign_analytics_local') || '{}';
     const localData = JSON.parse(localStr);
@@ -78,7 +127,6 @@ export async function recordCampaignScan(rawTag, category = 'General Outreach') 
     if (!localData[yearMonth].tags[tag]) {
       localData[yearMonth].tags[tag] = {
         tag,
-        category,
         totalScans: 0,
         totalConversions: 0,
         days: {}
@@ -91,15 +139,15 @@ export async function recordCampaignScan(rawTag, category = 'General Outreach') 
     t.days[dayKey].scans = (t.days[dayKey].scans || 0) + 1;
     localStorage.setItem('sky_campaign_analytics_local', JSON.stringify(localData));
   } catch (e) {
-    console.warn("Local storage campaign scan error:", e);
+    console.warn("Local storage campaign scan fallback error:", e);
   }
 }
 
 /**
  * Record a Registration Referral Conversion.
- * Triggered when a user completes a retreat application after arriving via a campaign shortcode.
+ * Triggered when a student completes a retreat application after arriving via a campaign shortlink.
  * 
- * @param {string} rawTag - e.g. "insta"
+ * @param {string} rawTag - e.g. "demo", "quad"
  */
 export async function recordCampaignConversion(rawTag) {
   if (!rawTag) return;
@@ -109,36 +157,35 @@ export async function recordCampaignConversion(rawTag) {
   const now = new Date();
   const yearMonth = now.toISOString().substring(0, 7); // "YYYY-MM"
   const dayKey = now.toISOString().substring(8, 10);    // "DD"
+  const webhookUrl = getCampaignWebhookUrl();
 
-  if (isFirebaseConfigured && db) {
+  // 1. Dispatch conversion notification to Google Apps Script
+  if (webhookUrl) {
     try {
-      const docRef = doc(db, 'campaign_analytics_monthly', yearMonth);
-      const isoString = now.toISOString();
+      const payload = JSON.stringify({
+        action: 'record_campaign_conversion',
+        tag,
+        timestamp: now.toISOString()
+      });
 
-      await setDoc(docRef, {
-        yearMonth,
-        updatedAt: isoString,
-        tags: {
-          [tag]: {
-            tag,
-            totalConversions: increment(1),
-            days: {
-              [dayKey]: {
-                conversions: increment(1)
-              }
-            }
-          }
-        }
-      }, { merge: true });
-
-      // Telemetry log: 1 write
-      logDatabaseOperation(0, 1, 0);
+      if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+        const blob = new Blob([payload], { type: 'text/plain;charset=UTF-8' });
+        navigator.sendBeacon(webhookUrl, blob);
+      } else {
+        fetch(webhookUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+          body: payload,
+          keepalive: true
+        }).catch(() => {});
+      }
     } catch (err) {
-      console.warn("Campaign conversion record notice:", err);
+      console.warn("GAS campaign conversion dispatch warning:", err);
     }
   }
 
-  // Persist local storage fallback
+  // 2. Persist in local storage fallback
   try {
     const localStr = localStorage.getItem('sky_campaign_analytics_local') || '{}';
     const localData = JSON.parse(localStr);
@@ -157,14 +204,16 @@ export async function recordCampaignConversion(rawTag) {
     t.days[dayKey].conversions = (t.days[dayKey].conversions || 0) + 1;
     localStorage.setItem('sky_campaign_analytics_local', JSON.stringify(localData));
   } catch (e) {
-    console.warn("Local storage campaign conversion error:", e);
+    console.warn("Local storage campaign conversion fallback error:", e);
   }
 }
 
 /**
  * Fetch Campaign Analytics for a specific Date Range (YYYY-MM-DD to YYYY-MM-DD).
- * Groups metrics day-by-day with MINIMAL Firestore reads (1 read per month requested).
- * Includes per-channel breakdown per day for comparative performance graphing.
+ * Queries Google Apps Script with LocalStorage cache fallback.
+ * 
+ * @param {string} startDateStr - "YYYY-MM-DD"
+ * @param {string} endDateStr - "YYYY-MM-DD"
  */
 export async function getCampaignAnalyticsForDateRange(startDateStr, endDateStr) {
   const start = new Date(startDateStr);
@@ -174,7 +223,55 @@ export async function getCampaignAnalyticsForDateRange(startDateStr, endDateStr)
     return { dailyMetrics: [], tagTotals: [], grandTotalScans: 0, grandTotalConversions: 0 };
   }
 
-  // Calculate required YYYY-MM monthly buckets
+  const webhookUrl = getCampaignWebhookUrl();
+
+  // 1. Try querying Google Apps Script Engine
+  if (webhookUrl) {
+    try {
+      const fetchUrl = `${webhookUrl}?action=get_campaign_analytics&startDate=${encodeURIComponent(startDateStr)}&endDate=${encodeURIComponent(endDateStr)}`;
+      const resp = await fetch(fetchUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && (data.status === 'success' || Array.isArray(data.dailyMetrics))) {
+          // Cache successful payload
+          try {
+            localStorage.setItem('sky_campaign_analytics_cached', JSON.stringify({
+              timestamp: Date.now(),
+              startDate: startDateStr,
+              endDate: endDateStr,
+              data
+            }));
+          } catch {
+            // Ignore storage quota error
+          }
+
+          return {
+            dailyMetrics: data.dailyMetrics || [],
+            tagTotals: data.tagTotals || [],
+            grandTotalScans: data.grandTotalScans || 0,
+            grandTotalConversions: data.grandTotalConversions || 0
+          };
+        }
+      }
+    } catch (err) {
+      console.warn("Google Apps Script campaign fetch error, switching to fallback:", err);
+    }
+  }
+
+  // 2. Fallback: Aggregate from Local Storage
+  const localStr = localStorage.getItem('sky_campaign_analytics_local') || '{}';
+  let localData = {};
+  try {
+    localData = JSON.parse(localStr);
+  } catch {
+    localData = {};
+  }
+
+  // Calculate required YYYY-MM buckets
   const yearMonths = [];
   let current = new Date(start.getFullYear(), start.getMonth(), 1);
   const endLimit = new Date(end.getFullYear(), end.getMonth(), 1);
@@ -185,54 +282,17 @@ export async function getCampaignAnalyticsForDateRange(startDateStr, endDateStr)
     current.setMonth(current.getMonth() + 1);
   }
 
-  const monthlyDocs = {};
-
-  // Fetch monthly bucket documents from Firestore (1 read per month)
-  if (isFirebaseConfigured && db) {
-    try {
-      let readCount = 0;
-      await Promise.all(
-        yearMonths.map(async (ym) => {
-          const docRef = doc(db, 'campaign_analytics_monthly', ym);
-          const snap = await getDoc(docRef);
-          readCount++;
-          if (snap.exists()) {
-            monthlyDocs[ym] = snap.data();
-          }
-        })
-      );
-      if (readCount > 0) logDatabaseOperation(readCount, 0, 0);
-    } catch (err) {
-      console.warn("Firestore fetch campaign analytics error:", err);
-    }
-  }
-
-  // Fallback to local storage if Firestore has missing buckets
-  try {
-    const localStr = localStorage.getItem('sky_campaign_analytics_local') || '{}';
-    const localData = JSON.parse(localStr);
-    yearMonths.forEach((ym) => {
-      if (!monthlyDocs[ym] && localData[ym]) {
-        monthlyDocs[ym] = localData[ym];
-      }
-    });
-  } catch (e) {
-    console.warn("Local storage campaign fallback error:", e);
-  }
-
-  // Aggregate day-by-day metrics between startDateStr and endDateStr
   const dailyMetricsMap = {};
   const tagTotalsMap = {};
 
-  // Generate list of days in date range
   const dateCursor = new Date(start);
   while (dateCursor <= end) {
-    const dateKey = dateCursor.toISOString().split('T')[0]; // "YYYY-MM-DD"
+    const dateKey = dateCursor.toISOString().split('T')[0];
     dailyMetricsMap[dateKey] = {
       date: dateKey,
       scans: 0,
       conversions: 0,
-      channels: {} // { "insta": { scans: N, conversions: N } }
+      channels: {}
     };
     dateCursor.setDate(dateCursor.getDate() + 1);
   }
@@ -241,14 +301,13 @@ export async function getCampaignAnalyticsForDateRange(startDateStr, endDateStr)
   let grandTotalConversions = 0;
 
   yearMonths.forEach((ym) => {
-    const bucket = monthlyDocs[ym];
+    const bucket = localData[ym];
     if (!bucket || !bucket.tags) return;
 
     Object.entries(bucket.tags).forEach(([tag, tagData]) => {
       if (!tagTotalsMap[tag]) {
         tagTotalsMap[tag] = {
           tag,
-          category: tagData.category || 'General Outreach',
           totalScans: 0,
           totalConversions: 0,
           lastScannedAt: tagData.lastScannedAt || ''

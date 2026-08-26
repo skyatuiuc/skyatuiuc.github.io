@@ -2679,7 +2679,6 @@ export default function Admin() {
                     <thead>
                       <tr style={{ borderBottom: '1px solid var(--border-color)', background: '#F8FAFC' }}>
                         <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 }}>CAMPAIGN TAG</th>
-                        <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 }}>CATEGORY</th>
                         <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700, textAlign: 'center' }}>SCANS</th>
                         <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700, textAlign: 'center' }}>REGISTRATIONS</th>
                         <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700, textAlign: 'center' }}>CONVERSION %</th>
@@ -2693,9 +2692,6 @@ export default function Admin() {
                           <tr key={camp.tag} style={{ borderBottom: '1px solid rgba(35, 39, 95, 0.06)' }}>
                             <td style={{ padding: '0.75rem 1rem', fontWeight: 800, color: '#B45309' }}>
                               #{camp.tag}
-                            </td>
-                            <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>
-                              {camp.category}
                             </td>
                             <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--sky-blue)', textAlign: 'center' }}>
                               {camp.totalScans}

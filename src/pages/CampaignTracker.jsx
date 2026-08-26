@@ -17,19 +17,21 @@ export default function CampaignTracker() {
       return;
     }
 
-    const trackAndRedirect = async () => {
+    const trackAndRedirect = () => {
       // 1. Store referral tag in session and local storage for application conversion attribution
       try {
         sessionStorage.setItem('sky_referral_src', rawTag);
         localStorage.setItem('sky_referral_src', rawTag);
+        sessionStorage.setItem('sky_campaign_tag', rawTag);
+        localStorage.setItem('sky_campaign_tag', rawTag);
       } catch (err) {
-        console.warn("Session storage referral save error:", err);
+        console.warn("Storage referral save error:", err);
       }
 
-      // 2. Record daily scan metric using monthly-batched storage
-      await recordCampaignScan(rawTag, 'QR Outreach');
+      // 2. Fire-and-forget scan beacon to Google Apps Script (0 Firestore writes)
+      recordCampaignScan(rawTag);
 
-      // 3. Seamless redirect to application form with referral query parameter
+      // 3. Seamless instantaneous redirect to application form with referral query parameter
       navigate(`/register?src=${encodeURIComponent(rawTag)}`, { replace: true });
     };
 

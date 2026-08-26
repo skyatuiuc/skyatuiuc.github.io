@@ -97,6 +97,26 @@ export default function Register() {
     }
   }, [upcomingRetreatsList, selectedRetreatId]);
 
+  // Detect campaign referral parameter or stored campaign tag and pre-fill referral source
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const tag = searchParams.get('src') || searchParams.get('tag') || 
+                  sessionStorage.getItem('sky_referral_src') || localStorage.getItem('sky_referral_src') ||
+                  sessionStorage.getItem('sky_campaign_tag') || localStorage.getItem('sky_campaign_tag');
+      if (tag) {
+        setFormData(prev => {
+          if (!prev.referralSource) {
+            return { ...prev, referralSource: tag };
+          }
+          return prev;
+        });
+      }
+    } catch (e) {
+      console.warn("Referral source detection warning:", e);
+    }
+  }, []);
+
   // Autofill current user info & check existing app
   useEffect(() => {
     if (!currentUser) {
@@ -328,7 +348,10 @@ export default function Register() {
       // Record campaign conversion if referred
       try {
         const searchParams = new URLSearchParams(window.location.search);
-        const tag = searchParams.get('tag') || localStorage.getItem('sky_campaign_tag');
+        const tag = searchParams.get('src') || searchParams.get('tag') || 
+                    formData.referralSource ||
+                    sessionStorage.getItem('sky_referral_src') || localStorage.getItem('sky_referral_src') || 
+                    sessionStorage.getItem('sky_campaign_tag') || localStorage.getItem('sky_campaign_tag');
         if (tag) {
           await recordCampaignConversion(tag);
         }

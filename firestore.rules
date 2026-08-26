@@ -98,13 +98,10 @@ service cloud.firestore {
       }
     }
 
-    // 7. Monthly Batched Campaign & QR Code Scan Analytics
+    // 7. Monthly Batched Campaign & QR Code Scan Analytics (Protected: Volunteers/Admins Only)
     match /campaign_analytics_monthly/{document} {
       allow read: if isVolunteer();
-      // Enforce valid YYYY-MM document identifier structure (e.g. 2026-08) and size limit
-      allow create, update: if document.matches('^[0-9]{4}-(0[1-9]|1[0-2])$')
-        && request.resource.size() < 100000
-        && request.resource.data.yearMonth == document;
+      allow write: if isVolunteer();
       allow delete: if isAdmin();
     }
   }
