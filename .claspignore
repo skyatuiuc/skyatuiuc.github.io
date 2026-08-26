@@ -1,0 +1,4 @@
+# Ignore everything except files inside rootDir
+**/*
+!Code.js
+!appsscript.json
