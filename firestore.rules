@@ -32,9 +32,10 @@ service cloud.firestore {
 
     // 2. Participant Registrations, Group Assignments & Attendance Tracking
     match /registrations/{document} {
-      // On creation: Non-volunteers can only create records with unprivileged initial statuses
+      // On creation: Non-volunteers can only create records with deterministic doc IDs ({email}_{retreatId}) and unprivileged initial statuses
       allow create: if isVolunteer() || (
         isAuthenticated() && 
+        document == request.auth.token.email.lower() + '_' + request.resource.data.retreatId &&
         request.resource.data.email.lower() == request.auth.token.email.lower() &&
         (!('interviewStatus' in request.resource.data) || request.resource.data.interviewStatus in ['Uncontacted', 'Pending']) &&
         (!('status' in request.resource.data) || request.resource.data.status in ['Pending', 'Uncontacted']) &&
@@ -51,18 +52,9 @@ service cloud.firestore {
       
       allow read: if isVolunteer() || (isAuthenticated() && resource.data.email.lower() == request.auth.token.email.lower());
       
-      // Strict field protection: Non-volunteers cannot elevate payment/interview/attendance statuses, modify claims, or alter volunteer notes
-      allow update: if isVolunteer() || (
-        isAuthenticated() && 
-        resource.data.email.lower() == request.auth.token.email.lower() &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-          'interviewStatus', 'status', 'paymentStatus', 'paid', 'paymentExempt', 
-          'fee', 'feeTier', 'academicRole', 'attendanceStatus', 'attendance', 
-          'assignedVolunteer', 'claimedBy', 'claimedByName', 'volunteerNotes', 
-          'interviewNotes', 'groupName', 'groupId', 'assignedGroup', 'sentEmails', 
-          'iahvRegistered', 'paypalLink', 'lastContactedDate'
-        ])
-      );
+      // Strict field protection: Applicants cannot modify applications once submitted.
+      // All registration updates are strictly reserved for authorized volunteers and super admins.
+      allow update: if isVolunteer();
       
       allow delete: if isAdmin();
     }

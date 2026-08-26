@@ -296,6 +296,12 @@ export default function Register() {
       return;
     }
 
+    if (formData.firstName.trim().length > 50 || formData.lastName.trim().length > 50 || formData.phone.trim().length > 25 ||
+        formData.otherHealthConditions.trim().length > 300 || formData.foodAllergies.trim().length > 300 || formData.referralSource.trim().length > 50) {
+      setError('One or more fields exceed maximum character limits.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -307,13 +313,18 @@ export default function Register() {
         location: 'UIUC Campus'
       };
 
+      const userEmail = formData.email.trim().toLowerCase();
+      const retreatId = activeRetreat.id;
+      const deterministicId = `${userEmail}_${retreatId}`;
+
       const registrationPayload = {
-        retreatId: activeRetreat.id,
+        id: deterministicId,
+        retreatId: retreatId,
         retreatTitle: activeRetreat.title,
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         fullName: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
-        email: formData.email.trim().toLowerCase(),
+        email: userEmail,
         phone: formData.phone.trim(),
         isOver18: formData.isOver18,
         academicRole: formData.academicRole,
@@ -338,10 +349,9 @@ export default function Register() {
         console.warn("Local storage write error:", err);
       }
 
-      // Save to Firestore
+      // Save to Firestore with deterministic ID ({email}_{retreatId})
       if (isFirebaseConfigured && db) {
-        const regDocRef = doc(collection(db, 'registrations'));
-        registrationPayload.id = regDocRef.id;
+        const regDocRef = doc(db, 'registrations', deterministicId);
         await setDoc(regDocRef, registrationPayload);
       }
 
@@ -564,22 +574,34 @@ export default function Register() {
                   <input 
                     type="text"
                     required
+                    maxLength={50}
                     disabled={Boolean(existingApp)}
                     value={formData.firstName}
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
+                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.firstName.length >= 50 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
+                  {formData.firstName.length >= 50 && (
+                    <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, display: 'block', marginTop: '0.25rem' }}>
+                      Maximum 50 characters reached
+                    </span>
+                  )}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>LAST NAME *</label>
                   <input 
                     type="text"
                     required
+                    maxLength={50}
                     disabled={Boolean(existingApp)}
                     value={formData.lastName}
                     onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
+                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.lastName.length >= 50 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
+                  {formData.lastName.length >= 50 && (
+                    <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, display: 'block', marginTop: '0.25rem' }}>
+                      Maximum 50 characters reached
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -599,12 +621,18 @@ export default function Register() {
                   <input 
                     type="tel"
                     required
+                    maxLength={25}
                     disabled={Boolean(existingApp)}
                     placeholder="(217) 555-0199"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
+                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.phone.length >= 25 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
+                  {formData.phone.length >= 25 && (
+                    <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, display: 'block', marginTop: '0.25rem' }}>
+                      Maximum 25 characters reached
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -705,6 +733,7 @@ export default function Register() {
                     <input 
                       type="text"
                       required
+                      maxLength={300}
                       disabled={Boolean(existingApp)}
                       placeholder="Specify pre-existing medical or health conditions..."
                       value={formData.otherHealthConditions}
@@ -713,12 +742,17 @@ export default function Register() {
                         width: '100%',
                         padding: '0.75rem 1rem',
                         background: '#FFFFFF',
-                        border: '1px solid #FABC1D',
+                        border: formData.otherHealthConditions.length >= 300 ? '1.5px solid #EF4444' : '1px solid #FABC1D',
                         borderRadius: 'var(--radius-sm)',
                         color: 'var(--text-main)',
                         fontSize: '0.9rem'
                       }}
                     />
+                    {formData.otherHealthConditions.length >= 300 && (
+                      <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, display: 'block', marginTop: '0.25rem' }}>
+                        Maximum 300 characters reached
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -729,23 +763,35 @@ export default function Register() {
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>DIETARY RESTRICTIONS / ALLERGIES</label>
                   <input 
                     type="text"
+                    maxLength={300}
                     disabled={Boolean(existingApp)}
                     placeholder="Vegetarian, Vegan, Gluten Free, Nut Allergy..."
                     value={formData.foodAllergies}
                     onChange={(e) => setFormData({ ...formData, foodAllergies: e.target.value })}
-                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
+                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.foodAllergies.length >= 300 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
+                  {formData.foodAllergies.length >= 300 && (
+                    <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, display: 'block', marginTop: '0.25rem' }}>
+                      Maximum 300 characters reached
+                    </span>
+                  )}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>HOW DID YOU HEAR ABOUT US?</label>
                   <input 
                     type="text"
+                    maxLength={50}
                     disabled={Boolean(existingApp)}
                     placeholder="Quad Day, Friend, Instagram, Quad Flyer..."
                     value={formData.referralSource}
                     onChange={(e) => setFormData({ ...formData, referralSource: e.target.value })}
-                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
+                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.referralSource.length >= 50 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
+                  {formData.referralSource.length >= 50 && (
+                    <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, display: 'block', marginTop: '0.25rem' }}>
+                      Maximum 50 characters reached
+                    </span>
+                  )}
                 </div>
               </div>
 

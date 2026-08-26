@@ -1009,20 +1009,26 @@ export default function Volunteer() {
                   </label>
                   <input 
                     type="text"
+                    maxLength={32}
                     placeholder="e.g. insta, eceb, inews, quad-day"
                     value={campaignTagInput}
-                    onChange={(e) => setCampaignTagInput(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                    onChange={(e) => setCampaignTagInput(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '').substring(0, 32))}
                     style={{
                       width: '100%',
                       padding: '0.75rem 1rem',
                       background: '#FFFFFF',
-                      border: '1px solid rgba(35, 39, 95, 0.15)',
+                      border: campaignTagInput.length >= 32 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)',
                       borderRadius: 'var(--radius-sm)',
                       color: 'var(--text-main)',
                       fontSize: '1rem',
                       fontWeight: 700
                     }}
                   />
+                  {campaignTagInput.length >= 32 && (
+                    <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, display: 'block', marginTop: '0.25rem' }}>
+                      Maximum 32 characters reached
+                    </span>
+                  )}
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.35rem' }}>
                     Destination URL: <strong style={{ color: 'var(--sky-blue)' }}>skyuiuc.org/{(campaignTagInput || 'demo').trim().toLowerCase()}</strong>
                   </span>

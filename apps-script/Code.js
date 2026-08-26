@@ -171,12 +171,12 @@ function isAuthorizedCaller(callerEmail, idToken) {
  * @param {object} data { tag, fingerprint }
  */
 function handleRecordScan(data) {
-  var tag = (data.tag || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  var tag = (data.tag || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").substring(0, 32);
   if (!tag) {
     return createJsonResponse({ status: "error", message: "Invalid tag parameter" });
   }
 
-  var fingerprint = (data.fingerprint || "anon").trim();
+  var fingerprint = (data.fingerprint || "anon").trim().substring(0, 64);
   var now = new Date();
   var dateStr = Utilities.formatDate(now, "America/Chicago", "yyyy-MM-dd");
   var nowIso = now.toISOString();
@@ -232,7 +232,7 @@ function handleRecordScan(data) {
  * @param {object} data { tag }
  */
 function handleRecordConversion(data) {
-  var tag = (data.tag || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  var tag = (data.tag || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").substring(0, 32);
   if (!tag) {
     return createJsonResponse({ status: "error", message: "Invalid tag parameter" });
   }
@@ -398,6 +398,10 @@ function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
       return createJsonResponse({ status: "error", message: "No POST payload received" });
+    }
+
+    if (e.postData.contents.length > 65536) {
+      return createJsonResponse({ status: "error", message: "Payload size limit exceeded" });
     }
 
     var data;
