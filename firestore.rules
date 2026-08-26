@@ -1,0 +1,112 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Auth Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.email_verified == true && 
+             request.auth.token.email.lower() == 'skyatuiuc@gmail.com';
+    }
+    
+    function isVolunteer() {
+      return isAuthenticated() && (
+        isAdmin() || 
+        exists(/databases/$(database)/documents/authorized_volunteers/$(request.auth.token.email.lower()))
+      );
+    }
+
+    function isStudentRole(role) {
+      return role in ['Undergraduate Student', 'Graduate Student', 'PhD Student'];
+    }
+
+    // 1. Atomic Daily Telemetry Audit Counters
+    match /daily_audit_logs/{document} {
+      allow read: if isVolunteer();
+      allow write: if isVolunteer();
+    }
+
+    // 2. Participant Registrations, Group Assignments & Attendance Tracking
+    match /registrations/{document} {
+      // On creation: Non-volunteers can only create records with unprivileged initial statuses
+      allow create: if isVolunteer() || (
+        isAuthenticated() && 
+        request.resource.data.email.lower() == request.auth.token.email.lower() &&
+        (!('interviewStatus' in request.resource.data) || request.resource.data.interviewStatus in ['Uncontacted', 'Pending']) &&
+        (!('status' in request.resource.data) || request.resource.data.status in ['Pending', 'Uncontacted']) &&
+        (!('paymentStatus' in request.resource.data) || (isStudentRole(request.resource.data.academicRole) && request.resource.data.paymentStatus in ['Unpaid', 'Exempt']) || request.resource.data.paymentStatus == 'Unpaid') &&
+        (!('paid' in request.resource.data) || request.resource.data.paid == false) &&
+        (!('paymentExempt' in request.resource.data) || request.resource.data.paymentExempt == false || isStudentRole(request.resource.data.academicRole)) &&
+        (!('attendanceStatus' in request.resource.data) || request.resource.data.attendanceStatus in ['Unrecorded', 'Registered']) &&
+        (!('claimedBy' in request.resource.data) || request.resource.data.claimedBy == null) &&
+        (!('groupName' in request.resource.data) || request.resource.data.groupName == null) &&
+        (!('groupId' in request.resource.data) || request.resource.data.groupId == null) &&
+        (!('assignedGroup' in request.resource.data) || request.resource.data.assignedGroup == null) &&
+        (!('sentEmails' in request.resource.data) || request.resource.data.sentEmails == null || request.resource.data.sentEmails.size() == 0)
+      );
+      
+      allow read: if isVolunteer() || (isAuthenticated() && resource.data.email.lower() == request.auth.token.email.lower());
+      
+      // Strict field protection: Non-volunteers cannot elevate payment/interview/attendance statuses, modify claims, or alter volunteer notes
+      allow update: if isVolunteer() || (
+        isAuthenticated() && 
+        resource.data.email.lower() == request.auth.token.email.lower() &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'interviewStatus', 'status', 'paymentStatus', 'paid', 'paymentExempt', 
+          'fee', 'feeTier', 'academicRole', 'attendanceStatus', 'attendance', 
+          'assignedVolunteer', 'claimedBy', 'claimedByName', 'volunteerNotes', 
+          'interviewNotes', 'groupName', 'groupId', 'assignedGroup', 'sentEmails', 
+          'iahvRegistered', 'paypalLink', 'lastContactedDate'
+        ])
+      );
+      
+      allow delete: if isAdmin();
+    }
+
+    // 3. Authorized Volunteer Whitelist (Users can only verify themselves; volunteers can list)
+    match /authorized_volunteers/{userEmail} {
+      allow get: if isAuthenticated() && (request.auth.token.email.lower() == userEmail.lower() || isVolunteer());
+      allow list: if isVolunteer();
+      allow write, create, update, delete: if isAdmin();
+    }
+    
+    // 4. System Settings (Email Dispatch Webhook, Global Link Configurations)
+    match /system_settings/{document} {
+      allow read: if isVolunteer();
+      allow write: if isAdmin();
+    }
+
+    // 5. Retreat Event Records, History & Group Configurations
+    match /retreat_history/{document} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 6. Retreat Flyer Templates Studio (Super Admin creates/edits, Volunteers read)
+    match /flyer_templates/{document} {
+      allow read: if isVolunteer();
+      allow write, create, update, delete: if isAdmin();
+
+      // Chunk Subcollection for Lossless Image Slices
+      match /chunks/{chunkId} {
+        allow read: if isVolunteer();
+        allow write, create, update, delete: if isAdmin();
+      }
+    }
+
+    // 7. Monthly Batched Campaign & QR Code Scan Analytics
+    match /campaign_analytics_monthly/{document} {
+      allow read: if isVolunteer();
+      // Enforce valid YYYY-MM document identifier structure (e.g. 2026-08) and size limit
+      allow create, update: if document.matches('^[0-9]{4}-(0[1-9]|1[0-2])$')
+        && request.resource.size() < 100000
+        && request.resource.data.yearMonth == document;
+      allow delete: if isAdmin();
+    }
+  }
+}
+
