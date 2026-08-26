@@ -200,7 +200,6 @@ export default function Admin() {
   const [editingTemplateId, setEditingTemplateId] = useState(null);
   const [tplRetreatId, setTplRetreatId] = useState('');
   const [tplTitle, setTplTitle] = useState('');
-  const [tplCategory, setTplCategory] = useState('Campus Poster');
   const [tplImageBase64, setTplImageBase64] = useState('');
   const [tplWidth, setTplWidth] = useState(1200);
   const [tplHeight, setTplHeight] = useState(1600);
@@ -741,7 +740,6 @@ export default function Admin() {
     setEditingTemplateId(tpl.id);
     setTplRetreatId(tpl.retreatId);
     setTplTitle(tpl.templateName);
-    setTplCategory(tpl.category || 'Campus Poster');
     setTplWidth(tpl.width || 1200);
     setTplHeight(tpl.height || 1600);
 
@@ -819,7 +817,6 @@ export default function Admin() {
       retreatId: tplRetreatId,
       retreatTitle: selectedRetreat?.title || 'SKY Retreat',
       templateName: tplTitle.trim(),
-      category: tplCategory,
       width: Number(tplWidth),
       height: Number(tplHeight),
       qrBox: { 
@@ -1842,32 +1839,17 @@ export default function Admin() {
                   </select>
                 </div>
 
-                {/* Template Title & Category */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>TEMPLATE TITLE *</label>
-                    <input 
-                      type="text"
-                      required
-                      placeholder="e.g. ECEB Bulletin Board Poster"
-                      value={tplTitle}
-                      onChange={(e) => setTplTitle(e.target.value)}
-                      style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>CATEGORY</label>
-                    <select 
-                      value={tplCategory}
-                      onChange={(e) => setTplCategory(e.target.value)}
-                      style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
-                    >
-                      <option value="Campus Poster">Campus Poster (ECEB, Union, Libraries)</option>
-                      <option value="Social Media">Instagram Story / Post (9:16 / 1:1)</option>
-                      <option value="Faculty Outreach">Faculty / Department Email</option>
-                      <option value="Quad Flyer">Quad Day Handout Flyer</option>
-                    </select>
-                  </div>
+                {/* Template Title */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>TEMPLATE TITLE *</label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="e.g. ECEB Bulletin Board Poster"
+                    value={tplTitle}
+                    onChange={(e) => setTplTitle(e.target.value)}
+                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
+                  />
                 </div>
 
                 {/* Image Upload Input */}
@@ -2168,7 +2150,8 @@ export default function Admin() {
                       position: 'relative',
                       width: '100%',
                       aspectRatio: `${tplWidth} / ${tplHeight}`,
-                      background: tplImageBase64 ? `url(${tplImageBase64}) center/contain no-repeat` : '#FFFFFF',
+                      background: tplImageBase64 ? `url(${tplImageBase64}) 0 0 / 100% 100% no-repeat` : '#FFFFFF',
+                      containerType: 'inline-size',
                       transform: `scale(${previewZoom}) translate(${previewPan.x / previewZoom}px, ${previewPan.y / previewZoom}px)`,
                       transformOrigin: 'center center',
                       transition: activeDragItem ? 'none' : 'transform 0.1s ease-out',
@@ -2239,7 +2222,7 @@ export default function Admin() {
                             color: textColor || '#000000',
                             fontFamily: textFontFamily || "'Source Sans 3', sans-serif",
                             fontWeight: 800,
-                            fontSize: `calc(${(parsePixelSize(textSize, Math.round(tplHeight * 0.04)) / tplHeight) * 100} * 4.8px)`,
+                            fontSize: `calc(${(parsePixelSize(textSize, Math.round(tplHeight * 0.035)) / tplWidth) * 100}cqw)`,
                             textShadow: textHasShadow ? `0 2px 6px ${textShadowColor || 'rgba(0,0,0,0.2)'}` : 'none',
                             whiteSpace: 'nowrap',
                             outline: activeDragItem === 'text' ? '2px solid var(--sky-sun)' : '1px dashed rgba(35,39,95,0.3)',

@@ -3,14 +3,14 @@ import { useAuth, ADMIN_EMAIL } from '../context/AuthContext';
 import { db, isFirebaseConfigured } from '../firebase/config';
 import { INITIAL_RETREATS } from '../data/retreatData';
 import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { AlertTriangle, Calendar, UserCheck, CheckSquare, QrCode, Search, User, UserPlus, ChevronRight, Trash2, Download, Copy, BarChart2, Mail, Phone, FileText, CheckCircle2, X } from 'lucide-react';
+import { AlertTriangle, Calendar, UserCheck, CheckSquare, QrCode, Search, User, UserPlus, ChevronRight, Trash2, Download, Copy, Mail, Phone, FileText, CheckCircle2, X } from 'lucide-react';
 import { logDatabaseOperation } from '../services/telemetryService';
 import { loadFlyerTemplateImage } from '../services/flyerChunkService';
+import { renderAndExportFlyer, calculateScaledDimensions, colorToQrHex } from '../utils/graphicExportUtils';
 import QRCode from 'qrcode';
 import AttendanceTab from '../components/AttendanceTab';
 import { parseFeeAndPayment } from '../services/emailService';
 import { getDefaultActiveRetreatId } from '../utils/retreatUtils';
-import { getCampaignAnalyticsForDateRange } from '../services/campaignAnalyticsService';
 
 export default function Volunteer() {
   const { currentUser, isAdmin, authorizedEmails } = useAuth();
@@ -18,10 +18,13 @@ export default function Volunteer() {
 
   const [activeTab, setActiveTab] = useState('interviews'); // 'interviews' | 'attendance' | 'flyers'
 
-  // Campaign Analytics & Flyer Generator State
-  const [campaigns, setCampaigns] = useState([]);
+  // Campaign Flyer Generator State
   const [campaignTagInput, setCampaignTagInput] = useState('demo');
   const [qrDataUrl, setQrDataUrl] = useState('');
+  const [exportFormat, setExportFormat] = useState('png'); // 'png' | 'jpg'
+  const [exportScale, setExportScale] = useState(1.0);
+  const [jpegQuality, setJpegQuality] = useState(0.92);
+  const [isExporting, setIsExporting] = useState(false);
   
   const [flyerTemplates, setFlyerTemplates] = useState(() => {
     const saved = localStorage.getItem('sky_flyer_templates');
@@ -54,7 +57,6 @@ export default function Volunteer() {
   }, [retreats]);
 
   const activeRetreat = retreats.find(r => r.id === selectedRetreatId) || (retreats.length > 0 ? retreats[0] : null);
-  const todayStr = new Date().toISOString().split('T')[0];
 
   const [registrations, setRegistrations] = useState(() => {
     const saved = localStorage.getItem('sky_registrations');
@@ -82,36 +84,7 @@ export default function Volunteer() {
   const [syncError, setSyncError] = useState('');
   const [copyNotice, setCopyNotice] = useState('');
 
-  // Sync campaigns from monthly bucket service
-  useEffect(() => {
-    let isMounted = true;
-    const fetchCampaigns = async () => {
-      if (!isFirebaseConfigured || !db) return;
-      try {
-        const today = new Date();
-        const start = new Date(today);
-        start.setMonth(start.getMonth() - 2);
-        const data = await getCampaignAnalyticsForDateRange(
-          start.toISOString().split('T')[0],
-          today.toISOString().split('T')[0]
-        );
-        if (isMounted && data?.tags) {
-          const list = Object.entries(data.tags).map(([tag, metrics]) => ({
-            id: tag,
-            tag,
-            totalScans: metrics.totalScans || 0,
-            dailyScans: metrics.dailyScans || {},
-            lastScannedAt: metrics.lastScannedAt || null
-          }));
-          setCampaigns(list);
-        }
-      } catch (err) {
-        console.warn("Volunteer campaign analytics fetch error:", err);
-      }
-    };
-    fetchCampaigns();
-    return () => { isMounted = false; };
-  }, [activeTab]);
+
 
   // Sync Super Admin Flyer Templates live from Firestore
   useEffect(() => {
@@ -132,30 +105,6 @@ export default function Volunteer() {
     return () => { if (unsubscribe) unsubscribe(); };
   }, []);
 
-  // Helper to convert any color string into 8-digit #RRGGBBAA for QRCode library
-  const colorToQrHex = (col, fallback = '#161942FF') => {
-    if (!col || col === 'transparent') return '#00000000';
-    if (col.startsWith('#')) {
-      if (col.length === 7) return `${col}FF`;
-      if (col.length === 9) return col;
-      if (col.length === 4) {
-        const r = col[1], g = col[2], b = col[3];
-        return `#${r}${r}${g}${g}${b}${b}FF`;
-      }
-    }
-    if (col.startsWith('rgba') || col.startsWith('rgb')) {
-      const match = col.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/);
-      if (match) {
-        const r = parseInt(match[1]).toString(16).padStart(2, '0');
-        const g = parseInt(match[2]).toString(16).padStart(2, '0');
-        const b = parseInt(match[3]).toString(16).padStart(2, '0');
-        const aFloat = match[4] !== undefined ? parseFloat(match[4]) : 1;
-        const a = Math.round(aFloat * 255).toString(16).padStart(2, '0');
-        return `#${r}${g}${b}${a}`;
-      }
-    }
-    return fallback;
-  };
 
   const parsePixelX = (val, fallback = 600) => {
     const num = parseFloat(val);
@@ -199,134 +148,30 @@ export default function Volunteer() {
   }, [campaignTagInput, selectedTemplateId, flyerTemplates]);
 
   const downloadFlyerImage = async () => {
-    const cleanTag = (campaignTagInput || 'demo').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
     const activeTemplate = flyerTemplates.find(t => t.id === selectedTemplateId);
-    if (!activeTemplate) return;
-
     let highResBg = tplFullImage;
-    if (!highResBg && isFirebaseConfigured && db) {
+    if (activeTemplate && !highResBg && isFirebaseConfigured && db) {
       highResBg = await loadFlyerTemplateImage(db, selectedTemplateId);
     }
-    const bgSource = highResBg || activeTemplate.thumbnailBase64 || activeTemplate.bgImageUrl;
+    const bgSource = highResBg || activeTemplate?.thumbnailBase64 || activeTemplate?.bgImageUrl;
 
-    const canvas = document.createElement('canvas');
-
-    const renderOverlayAndDownload = (flyerW, flyerH) => {
-      canvas.width = flyerW;
-      canvas.height = flyerH;
-      const ctx = canvas.getContext('2d');
-
-      if (bgSource) {
-        const bgImg = new Image();
-        bgImg.crossOrigin = 'anonymous';
-        bgImg.onload = () => {
-          ctx.drawImage(bgImg, 0, 0, flyerW, flyerH);
-
-          if (qrDataUrl) {
-            const qrImg = new Image();
-            qrImg.onload = () => {
-              const qrSizePx = parsePixelSize(activeTemplate.qrBox?.size, flyerW * 0.125);
-              const qrXPx = parsePixelX(activeTemplate.qrBox?.x, flyerW / 2) - (qrSizePx / 2);
-              const qrYPx = parsePixelY(activeTemplate.qrBox?.y, flyerH / 2) - (qrSizePx / 2);
-              const qrBgColor = activeTemplate.qrBox?.bgColor || 'transparent';
-              const qrHasShadow = Boolean(activeTemplate.qrBox?.hasShadow);
-              const qrShadowColor = activeTemplate.qrBox?.shadowColor || '#000000';
-
-              if (qrBgColor !== 'transparent') {
-                if (qrHasShadow) {
-                  ctx.shadowColor = qrShadowColor;
-                  ctx.shadowBlur = 12;
-                  ctx.shadowOffsetX = 0;
-                  ctx.shadowOffsetY = 6;
-                } else {
-                  ctx.shadowColor = 'transparent';
-                  ctx.shadowBlur = 0;
-                }
-                ctx.fillStyle = qrBgColor;
-                ctx.fillRect(qrXPx, qrYPx, qrSizePx, qrSizePx);
-                ctx.shadowColor = 'transparent';
-                ctx.shadowBlur = 0;
-              } else if (qrHasShadow) {
-                ctx.shadowColor = qrShadowColor;
-                ctx.shadowBlur = 12;
-                ctx.shadowOffsetX = 0;
-                ctx.shadowOffsetY = 6;
-              } else {
-                ctx.shadowColor = 'transparent';
-                ctx.shadowBlur = 0;
-              }
-
-              ctx.drawImage(qrImg, qrXPx, qrYPx, qrSizePx, qrSizePx);
-              ctx.shadowColor = 'transparent';
-              ctx.shadowBlur = 0;
-
-              const textXPx = parsePixelX(activeTemplate.shortlinkText?.x, flyerW / 2);
-              const textYPx = parsePixelY(activeTemplate.shortlinkText?.y, flyerH * 0.55);
-              const fontSizePx = parsePixelSize(activeTemplate.shortlinkText?.fontSize, 4);
-              const fontFamily = activeTemplate.shortlinkText?.fontFamily || "'Source Sans 3', sans-serif";
-              const hasShadow = Boolean(activeTemplate.shortlinkText?.hasShadow);
-              const shadowColor = activeTemplate.shortlinkText?.shadowColor || '#000000';
-
-              if (hasShadow) {
-                ctx.shadowColor = shadowColor;
-                ctx.shadowBlur = 8;
-                ctx.shadowOffsetX = 0;
-                ctx.shadowOffsetY = 4;
-              } else {
-                ctx.shadowColor = 'transparent';
-                ctx.shadowBlur = 0;
-              }
-
-              ctx.fillStyle = activeTemplate.shortlinkText?.color || '#1F74F1';
-              ctx.font = `bold ${fontSizePx}px ${fontFamily}`;
-              ctx.textAlign = 'center';
-              ctx.fillText(`skyuiuc.org/${cleanTag}`, textXPx, textYPx);
-              ctx.shadowColor = 'transparent';
-              ctx.shadowBlur = 0;
-
-              const dataUri = canvas.toDataURL('image/png');
-              const a = document.createElement('a');
-              a.href = dataUri;
-              a.download = `skyatuiuc_flyer_${cleanTag}.png`;
-              a.click();
-            };
-            qrImg.src = qrDataUrl;
-          }
-        };
-        bgImg.src = bgSource;
-      } else {
-        const fallbackW = 1200;
-        const fallbackH = 1600;
-        canvas.width = fallbackW;
-        canvas.height = fallbackH;
-
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, fallbackW, fallbackH);
-
-        if (qrDataUrl) {
-          const qrImg = new Image();
-          qrImg.onload = () => {
-            ctx.drawImage(qrImg, 420, 990, 360, 360);
-
-            ctx.fillStyle = '#1F74F1';
-            ctx.font = 'bold 28px "Source Sans 3", sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(`skyuiuc.org/${cleanTag}`, 600, 1450);
-
-            const dataUri = canvas.toDataURL('image/png');
-            const a = document.createElement('a');
-            a.href = dataUri;
-            a.download = `skyatuiuc_flyer_${cleanTag}.png`;
-            a.click();
-          };
-          qrImg.src = qrDataUrl;
-        }
-      }
-    };
-
-    const targetW = activeTemplate?.width || 1200;
-    const targetH = activeTemplate?.height || 1600;
-    renderOverlayAndDownload(targetW, targetH);
+    setIsExporting(true);
+    try {
+      await renderAndExportFlyer({
+        activeTemplate,
+        bgSource,
+        campaignTag: campaignTagInput || 'demo',
+        activeRetreat,
+        scale: Number(exportScale) || 1.0,
+        format: exportFormat,
+        jpegQuality: Number(jpegQuality) || 0.92
+      });
+    } catch (err) {
+      console.error("Flyer export failed:", err);
+      alert("Failed to generate printable flyer. Please try again.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   // Sync retreats from Firestore
@@ -1150,7 +995,7 @@ export default function Volunteer() {
                         <option value="">Default SKY Brand Template</option>
                         {availableTemplates.map(tpl => (
                           <option key={tpl.id} value={tpl.id}>
-                            {tpl.templateName} ({tpl.category})
+                            {tpl.templateName}
                           </option>
                         ))}
                       </select>
@@ -1183,13 +1028,149 @@ export default function Volunteer() {
                   </span>
                 </div>
 
+                {/* Graphic Export & Scale Controls */}
+                <div style={{ background: '#F8FAFC', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Export Graphic Settings
+                    </label>
+                    {(() => {
+                      const activeTpl = flyerTemplates.find(t => t.id === selectedTemplateId);
+                      const baseW = activeTpl?.width || 1200;
+                      const baseH = activeTpl?.height || 1600;
+                      const dims = calculateScaledDimensions(baseW, baseH, exportScale);
+                      return (
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--sky-blue)', background: 'var(--sky-blue-subtle)', padding: '0.2rem 0.55rem', borderRadius: '12px', border: '1px solid rgba(31, 116, 241, 0.2)' }}>
+                          {dims.width} × {dims.height} px ({exportScale}x)
+                        </span>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Format Toggle (PNG / JPG) */}
+                  <div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
+                      FILE FORMAT
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setExportFormat('png')}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem 0.75rem',
+                          borderRadius: 'var(--radius-sm)',
+                          border: exportFormat === 'png' ? '1.5px solid var(--sky-blue)' : '1px solid var(--border-color)',
+                          background: exportFormat === 'png' ? '#FFFFFF' : '#F1F5F9',
+                          color: exportFormat === 'png' ? 'var(--sky-blue)' : 'var(--text-secondary)',
+                          fontWeight: exportFormat === 'png' ? 800 : 600,
+                          fontSize: '0.82rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        PNG (Lossless)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExportFormat('jpg')}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem 0.75rem',
+                          borderRadius: 'var(--radius-sm)',
+                          border: exportFormat === 'jpg' ? '1.5px solid var(--sky-blue)' : '1px solid var(--border-color)',
+                          background: exportFormat === 'jpg' ? '#FFFFFF' : '#F1F5F9',
+                          color: exportFormat === 'jpg' ? 'var(--sky-blue)' : 'var(--text-secondary)',
+                          fontWeight: exportFormat === 'jpg' ? 800 : 600,
+                          fontSize: '0.82rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        JPG (Print / Photo)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Continuous Scale Slider & Number Input */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
+                      <span>EXPORT SCALE</span>
+                      <strong style={{ color: 'var(--text-main)', fontSize: '0.82rem' }}>{exportScale}x</strong>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <input 
+                          type="range" 
+                          min="0.25" 
+                          max="4.0" 
+                          step="0.05"
+                          value={exportScale} 
+                          onChange={(e) => setExportScale(parseFloat(e.target.value))}
+                          style={{ width: '100%', accentColor: 'var(--sky-blue)', margin: '4px 0 0 0' }} 
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', padding: '0 2px' }}>
+                          <span>0.25x</span>
+                          <span>1x</span>
+                          <span>2x</span>
+                          <span>3x</span>
+                          <span>4x</span>
+                        </div>
+                      </div>
+                      <input 
+                        type="number" 
+                        min="0.25" 
+                        max="4.0" 
+                        step="0.05"
+                        value={exportScale} 
+                        onChange={(e) => setExportScale(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        onBlur={() => {
+                          if (!exportScale || isNaN(exportScale) || exportScale < 0.25) setExportScale(0.25);
+                          else if (exportScale > 4.0) setExportScale(4.0);
+                        }}
+                        style={{ 
+                          width: '68px', 
+                          padding: '0.35rem 0.5rem', 
+                          background: '#FFFFFF', 
+                          border: '1px solid var(--border-color)', 
+                          color: 'var(--text-main)', 
+                          borderRadius: '4px', 
+                          textAlign: 'center', 
+                          fontSize: '0.85rem',
+                          fontWeight: 700
+                        }} 
+                      />
+                    </div>
+                  </div>
+
+                  {/* JPEG Quality Slider (Visible when JPG format is active) */}
+                  {exportFormat === 'jpg' && (
+                    <div style={{ paddingTop: '0.25rem', borderTop: '1px dashed var(--border-color)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
+                        <span>JPEG QUALITY</span>
+                        <strong style={{ color: 'var(--text-main)', fontSize: '0.82rem' }}>{Math.round(jpegQuality * 100)}%</strong>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.50" 
+                        max="1.0" 
+                        step="0.01" 
+                        value={jpegQuality} 
+                        onChange={(e) => setJpegQuality(parseFloat(e.target.value))} 
+                        style={{ width: '100%', accentColor: 'var(--sky-blue)' }} 
+                      />
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
                   <button 
                     onClick={downloadFlyerImage}
+                    disabled={isExporting}
                     className="btn btn-primary"
-                    style={{ flex: 1, padding: '0.85rem 1rem', gap: '0.5rem', fontSize: '0.9rem' }}
+                    style={{ flex: 1, padding: '0.85rem 1rem', gap: '0.5rem', fontSize: '0.9rem', opacity: isExporting ? 0.7 : 1 }}
                   >
-                    <Download size={16} /> Download Printable Flyer PNG
+                    <Download size={16} /> {isExporting ? 'Rendering High-Res Flyer...' : `Download Printable Flyer (${exportFormat.toUpperCase()} • ${exportScale}x)`}
                   </button>
 
                   <button 
@@ -1238,7 +1219,8 @@ export default function Volunteer() {
                         width: '100%',
                         maxWidth: '360px',
                         aspectRatio: `${tplW} / ${tplH}`,
-                        background: `url(${bgSource}) center/contain no-repeat`,
+                        background: `url(${bgSource}) 0 0 / 100% 100% no-repeat`,
+                        containerType: 'inline-size',
                         borderRadius: 'var(--radius-md)',
                         border: '1px solid var(--border-color)',
                         overflow: 'hidden',
@@ -1272,7 +1254,7 @@ export default function Volunteer() {
                           color: activeTpl.shortlinkText?.color || '#1F74F1',
                           fontFamily: activeTpl.shortlinkText?.fontFamily || "'Source Sans 3', sans-serif",
                           fontWeight: 800,
-                          fontSize: `calc(${(parsePixelSize(activeTpl.shortlinkText?.fontSize, 4) / tplH) * 100} * 4.8px)`,
+                          fontSize: `calc(${(parsePixelSize(activeTpl.shortlinkText?.fontSize, Math.round(tplH * 0.035)) / tplW) * 100}cqw)`,
                           textShadow: activeTpl.shortlinkText?.hasShadow ? `0 2px 6px ${activeTpl.shortlinkText?.shadowColor || 'rgba(0,0,0,0.3)'}` : 'none',
                           whiteSpace: 'nowrap'
                         }}>
@@ -1330,88 +1312,6 @@ export default function Volunteer() {
                 })()}
               </div>
 
-            </div>
-
-            {/* CAMPAIGN SCAN ANALYTICS TABLE */}
-            <div className="glass-card" style={{ padding: '1.5rem', background: '#FFFFFF', boxShadow: 'var(--shadow-md)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                  <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <BarChart2 size={18} color="var(--sky-blue)" /> Campaign Outreach Analytics ({campaigns.length})
-                  </h3>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
-                    Track scan performance across Instagram, bulletin posters, faculty emails, and handouts.
-                  </p>
-                </div>
-              </div>
-
-              {campaigns.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)', background: '#F8FAFC', borderRadius: 'var(--radius-sm)' }}>
-                  No campaign scan data recorded yet. Create a flyer shortcode above to begin tracking scans!
-                </div>
-              ) : (
-                <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
-                    <thead>
-                      <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--border-color)' }}>
-                        <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 }}>CAMPAIGN TAG</th>
-                        <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 }}>DESTINATION LINK</th>
-                        <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 }}>TOTAL SCANS</th>
-                        <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 }}>TODAY SCANS</th>
-                        <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 }}>LAST SCANNED</th>
-                        <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700, textAlign: 'right' }}>ACTIONS</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {campaigns.map((camp) => {
-                        const tag = camp.tag || camp.id;
-                        const totalScans = camp.totalScans || 0;
-                        const todayScans = camp.dailyScans?.[todayStr] || 0;
-                        const lastScanned = camp.lastScannedAt ? new Date(camp.lastScannedAt).toLocaleDateString() : 'N/A';
-
-                        return (
-                          <tr key={camp.id} style={{ borderBottom: '1px solid rgba(35, 39, 95, 0.06)' }}>
-                            <td style={{ padding: '0.75rem 1rem' }}>
-                              <span className="badge badge-sun" style={{ fontWeight: 800 }}>
-                                {tag}
-                              </span>
-                            </td>
-
-                            <td style={{ padding: '0.75rem 1rem', color: 'var(--sky-blue)', fontWeight: 600 }}>
-                              skyuiuc.org/{tag}
-                            </td>
-
-                            <td style={{ padding: '0.75rem 1rem' }}>
-                              <strong style={{ color: '#16A34A', fontSize: '1rem' }}>{totalScans} scans</strong>
-                            </td>
-
-                            <td style={{ padding: '0.75rem 1rem', color: todayScans > 0 ? '#B45309' : 'var(--text-muted)', fontWeight: 600 }}>
-                              {todayScans} today
-                            </td>
-
-                            <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)' }}>
-                              {lastScanned}
-                            </td>
-
-                            <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                              <button 
-                                onClick={() => {
-                                  navigator.clipboard.writeText(`https://skyuiuc.org/${tag}`);
-                                  alert(`Copied shortlink (https://skyuiuc.org/${tag}) to clipboard!`);
-                                }}
-                                className="btn btn-secondary btn-sm"
-                                style={{ gap: '0.3rem', fontSize: '0.75rem' }}
-                              >
-                                <Copy size={12} /> Copy Link
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
 
           </div>
