@@ -8,6 +8,7 @@ import { DEFAULT_EMAIL_SETTINGS } from '../services/emailService';
 
 export default function EmailSettingsModal({ 
   emailSettings = {}, 
+  isSuperAdmin = false,
   onSave, 
   onClose 
 }) {
@@ -20,6 +21,7 @@ export default function EmailSettingsModal({
 
   const handleSave = (e) => {
     e.preventDefault();
+    if (!isSuperAdmin) return;
     onSave(formData);
     onClose();
   };
@@ -149,6 +151,23 @@ export default function EmailSettingsModal({
           </button>
         </div>
 
+        {/* Read-Only Notice for Non-Admins */}
+        {!isSuperAdmin && (
+          <div style={{
+            background: '#FEF3C7',
+            borderBottom: '1px solid #FCD34D',
+            padding: '0.75rem 1.75rem',
+            color: '#92400E',
+            fontSize: '0.82rem',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            🔒 Read-Only: Global email template links and Google Apps Script settings can only be modified by the Super Admin (skyatuiuc@gmail.com).
+          </div>
+        )}
+
         {/* Form Body */}
         <form onSubmit={handleSave} style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', background: '#FFFFFF' }}>
           
@@ -160,13 +179,14 @@ export default function EmailSettingsModal({
                 </label>
                 <input
                   type="url"
+                  disabled={!isSuperAdmin}
                   value={formData.whatsAppLink}
                   onChange={(e) => setFormData({ ...formData, whatsAppLink: e.target.value })}
                   placeholder="https://chat.whatsapp.com/..."
                   style={{
                     width: '100%',
                     padding: '0.65rem 0.85rem',
-                    background: '#FFFFFF',
+                    background: !isSuperAdmin ? '#F8FAFC' : '#FFFFFF',
                     border: '1px solid rgba(35, 39, 95, 0.15)',
                     color: 'var(--text-main)',
                     borderRadius: 'var(--radius-sm)',
@@ -181,13 +201,14 @@ export default function EmailSettingsModal({
                 </label>
                 <input
                   type="url"
+                  disabled={!isSuperAdmin}
                   value={formData.surveyLink}
                   onChange={(e) => setFormData({ ...formData, surveyLink: e.target.value })}
                   placeholder="https://forms.gle/..."
                   style={{
                     width: '100%',
                     padding: '0.65rem 0.85rem',
-                    background: '#FFFFFF',
+                    background: !isSuperAdmin ? '#F8FAFC' : '#FFFFFF',
                     border: '1px solid rgba(35, 39, 95, 0.15)',
                     color: 'var(--text-main)',
                     borderRadius: 'var(--radius-sm)',
@@ -202,13 +223,14 @@ export default function EmailSettingsModal({
                 </label>
                 <input
                   type="url"
+                  disabled={!isSuperAdmin}
                   value={formData.dailyPracticeLink}
                   onChange={(e) => setFormData({ ...formData, dailyPracticeLink: e.target.value })}
                   placeholder="https://illinois.zoom.us/j/..."
                   style={{
                     width: '100%',
                     padding: '0.65rem 0.85rem',
-                    background: '#FFFFFF',
+                    background: !isSuperAdmin ? '#F8FAFC' : '#FFFFFF',
                     border: '1px solid rgba(35, 39, 95, 0.15)',
                     color: 'var(--text-main)',
                     borderRadius: 'var(--radius-sm)',
@@ -224,12 +246,13 @@ export default function EmailSettingsModal({
                   </label>
                   <input
                     type="text"
+                    disabled={!isSuperAdmin}
                     value={formData.contactName}
                     onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
                     style={{
                       width: '100%',
                       padding: '0.65rem 0.85rem',
-                      background: '#FFFFFF',
+                      background: !isSuperAdmin ? '#F8FAFC' : '#FFFFFF',
                       border: '1px solid rgba(35, 39, 95, 0.15)',
                       color: 'var(--text-main)',
                       borderRadius: 'var(--radius-sm)',
@@ -244,12 +267,13 @@ export default function EmailSettingsModal({
                   </label>
                   <input
                     type="text"
+                    disabled={!isSuperAdmin}
                     value={formData.contactPhone}
                     onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
                     style={{
                       width: '100%',
                       padding: '0.65rem 0.85rem',
-                      background: '#FFFFFF',
+                      background: !isSuperAdmin ? '#F8FAFC' : '#FFFFFF',
                       border: '1px solid rgba(35, 39, 95, 0.15)',
                       color: 'var(--text-main)',
                       borderRadius: 'var(--radius-sm)',
@@ -269,13 +293,14 @@ export default function EmailSettingsModal({
                 </label>
                 <input
                   type="url"
+                  disabled={!isSuperAdmin}
                   value={formData.webhookUrl}
                   onChange={(e) => setFormData({ ...formData, webhookUrl: e.target.value })}
                   placeholder="https://script.google.com/macros/s/.../exec"
                   style={{
                     width: '100%',
                     padding: '0.65rem 0.85rem',
-                    background: '#FFFFFF',
+                    background: !isSuperAdmin ? '#F8FAFC' : '#FFFFFF',
                     border: '1px solid rgba(35, 39, 95, 0.15)',
                     color: 'var(--text-main)',
                     borderRadius: 'var(--radius-sm)',
@@ -326,15 +351,17 @@ export default function EmailSettingsModal({
               onClick={onClose}
               style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
             >
-              Cancel
+              {isSuperAdmin ? 'Cancel' : 'Close'}
             </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-            >
-              <Save size={15} /> Save Settings
-            </button>
+            {isSuperAdmin && (
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+              >
+                <Save size={15} /> Save Settings
+              </button>
+            )}
           </div>
 
         </form>

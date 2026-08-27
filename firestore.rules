@@ -32,11 +32,31 @@ service cloud.firestore {
 
     // 2. Participant Registrations, Group Assignments & Attendance Tracking
     match /registrations/{document} {
-      // On creation: Non-volunteers can only create records with deterministic doc IDs ({email}_{retreatId}) and unprivileged initial statuses
+      // On creation: Non-volunteers can only create records with valid retreat IDs, strict allowed keys, character limits, and unprivileged initial statuses
       allow create: if isVolunteer() || (
         isAuthenticated() && 
         document == request.auth.token.email.lower() + '_' + request.resource.data.retreatId &&
         request.resource.data.email.lower() == request.auth.token.email.lower() &&
+        (request.resource.data.retreatId == 'general' || exists(/databases/$(database)/documents/retreat_history/$(request.resource.data.retreatId))) &&
+        request.resource.data.keys().hasOnly([
+          'id', 'retreatId', 'retreatTitle', 'firstName', 'lastName', 'fullName',
+          'email', 'phone', 'isOver18', 'academicRole', 'completedSkyBefore',
+          'agreeToAll3Days', 'healthConditions', 'otherHealthConditions',
+          'foodAllergies', 'referralSource', 'status', 'interviewStatus',
+          'appliedAt', 'updatedAt'
+        ]) &&
+        request.resource.data.firstName is string && request.resource.data.firstName.size() <= 100 &&
+        request.resource.data.lastName is string && request.resource.data.lastName.size() <= 100 &&
+        request.resource.data.fullName is string && request.resource.data.fullName.size() <= 200 &&
+        request.resource.data.phone is string && request.resource.data.phone.size() <= 30 &&
+        request.resource.data.isOver18 is string && request.resource.data.isOver18.size() <= 20 &&
+        request.resource.data.academicRole is string && request.resource.data.academicRole.size() <= 50 &&
+        request.resource.data.completedSkyBefore is string && request.resource.data.completedSkyBefore.size() <= 10 &&
+        request.resource.data.agreeToAll3Days is string && request.resource.data.agreeToAll3Days.size() <= 10 &&
+        request.resource.data.healthConditions is list && request.resource.data.healthConditions.size() <= 15 &&
+        request.resource.data.otherHealthConditions is string && request.resource.data.otherHealthConditions.size() <= 1000 &&
+        request.resource.data.foodAllergies is string && request.resource.data.foodAllergies.size() <= 500 &&
+        request.resource.data.referralSource is string && request.resource.data.referralSource.size() <= 250 &&
         (!('interviewStatus' in request.resource.data) || request.resource.data.interviewStatus in ['Uncontacted', 'Pending']) &&
         (!('status' in request.resource.data) || request.resource.data.status in ['Pending', 'Uncontacted']) &&
         (!('paymentStatus' in request.resource.data) || (isStudentRole(request.resource.data.academicRole) && request.resource.data.paymentStatus in ['Unpaid', 'Exempt']) || request.resource.data.paymentStatus == 'Unpaid') &&

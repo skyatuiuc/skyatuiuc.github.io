@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db, isFirebaseConfigured } from '../firebase/config';
-import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { INITIAL_RETREATS } from '../data/retreatData';
 import { Calendar, CheckCircle2, Clock, User, LogIn, ArrowRight, Sparkles } from 'lucide-react';
+import { loadCachedRetreats } from '../utils/retreatUtils';
 
 export default function MyRetreats() {
   const { currentUser, loginWithGoogle } = useAuth();
@@ -15,23 +16,15 @@ export default function MyRetreats() {
   });
   const [loading, setLoading] = useState(true);
 
-  // Sync retreats
+  // Sync retreats with local caching (0 reads on repeated visits)
   useEffect(() => {
-    let unsubscribe = null;
     if (isFirebaseConfigured && db) {
-      try {
-        const retreatsRef = collection(db, 'retreat_history');
-        unsubscribe = onSnapshot(retreatsRef, (snapshot) => {
-          const fetched = [];
-          snapshot.forEach((d) => fetched.push({ id: d.id, ...d.data() }));
+      loadCachedRetreats(db).then((fetched) => {
+        if (fetched && fetched.length > 0) {
           setAllRetreats(fetched);
-          localStorage.setItem('sky_retreat_history', JSON.stringify(fetched));
-        });
-      } catch (e) {
-        console.warn("Retreat sync notice:", e);
-      }
+        }
+      });
     }
-    return () => { if (unsubscribe) unsubscribe(); };
   }, []);
 
   // Fetch registrations for current user

@@ -3,38 +3,29 @@ import { Link } from 'react-router-dom';
 import { INITIAL_RETREATS, GENERAL_FAQS } from '../data/retreatData';
 import { getRetreatDaySchedule } from '../data/scheduleData';
 import { db, isFirebaseConfigured } from '../firebase/config';
-import { collection, onSnapshot } from 'firebase/firestore';
 import { Calendar, MapPin, Users, HeartPulse, Brain, Award, ChevronDown, ArrowRight, Clock, Sparkles, CheckCircle2 } from 'lucide-react';
 import HeroGallery from '../components/HeroGallery';
+
+import { loadCachedRetreats } from '../utils/retreatUtils';
 
 export default function Home() {
   const [activeFaq, setActiveFaq] = useState(null);
   
-  // Retreat history state
+  // Retreat history state (Cached locally to consume 0 reads on repeated visits)
   const [retreats, setRetreats] = useState(() => {
     const saved = localStorage.getItem('sky_retreat_history');
     return saved ? JSON.parse(saved) : INITIAL_RETREATS;
   });
 
-  // Sync retreats live from Firestore or localStorage
+  // Load cached retreats (1 read per 12h, 0 reads on repeated navigations)
   useEffect(() => {
-    let unsubscribe = null;
     if (isFirebaseConfigured && db) {
-      try {
-        const retreatsRef = collection(db, 'retreat_history');
-        unsubscribe = onSnapshot(retreatsRef, (snapshot) => {
-          const fetched = [];
-          snapshot.forEach((d) => {
-            fetched.push({ id: d.id, ...d.data() });
-          });
-          setRetreats(fetched);
-          localStorage.setItem('sky_retreat_history', JSON.stringify(fetched));
-        }, (err) => console.warn("Home retreat sync notice:", err));
-      } catch (e) {
-        console.warn("Home retreat Firestore error:", e);
-      }
+      loadCachedRetreats(db).then((data) => {
+        if (data && data.length > 0) {
+          setRetreats(data);
+        }
+      });
     }
-    return () => { if (unsubscribe) unsubscribe(); };
   }, []);
 
   // Frontend Dynamic Categorization based on current date

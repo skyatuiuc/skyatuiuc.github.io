@@ -96,14 +96,20 @@ export default function AutoEmailDispatchTab({
     }, 3500);
   };
 
-  // Save updated email settings
+  const isSuperAdmin = Boolean(currentUser?.email && currentUser.email.toLowerCase().trim() === 'skyatuiuc@gmail.com');
+
+  // Save updated email settings (Super Admin only)
   const handleSaveSettings = (newSettings) => {
+    if (!isSuperAdmin) {
+      showToast('error', 'Unauthorized: Only the Super Admin can modify global email settings.');
+      return;
+    }
     setEmailSettings(newSettings);
     localStorage.setItem('sky_email_settings', JSON.stringify(newSettings));
     if (isFirebaseConfigured && db) {
       setDoc(doc(db, 'system_settings', 'email_config'), newSettings, { merge: true }).catch(console.warn);
     }
-    showToast('success', 'Email settings and template links saved!');
+    showToast('success', 'Email settings and template links saved to cloud!');
   };
 
   // Filter retreat registrations
@@ -993,6 +999,7 @@ export default function AutoEmailDispatchTab({
       {showSettingsModal && (
         <EmailSettingsModal
           emailSettings={emailSettings}
+          isSuperAdmin={isSuperAdmin}
           onSave={handleSaveSettings}
           onClose={() => setShowSettingsModal(false)}
         />

@@ -136,16 +136,24 @@ function isAuthorizedCaller(callerEmail, idToken) {
     return true;
   }
 
-  // 2. Check Script Property AUTHORIZED_VOLUNTEERS fallback if configured
+  // 2. Check CacheService to avoid burning Firestore read quota on every request
+  var cache = CacheService.getScriptCache();
+  var authCacheKey = "auth_vol_" + callerEmail;
+  if (cache.get(authCacheKey) === "1") {
+    return true;
+  }
+
+  // 3. Check Script Property AUTHORIZED_VOLUNTEERS fallback if configured
   var authorizedListStr = PropertiesService.getScriptProperties().getProperty("AUTHORIZED_VOLUNTEERS");
   if (authorizedListStr) {
     var authorizedList = authorizedListStr.toLowerCase().split(",").map(function(s) { return s.trim(); });
     if (authorizedList.indexOf(callerEmail) !== -1) {
+      cache.put(authCacheKey, "1", 600); // 10 minutes cache
       return true;
     }
   }
 
-  // 3. Query Cloud Firestore to check if authorized_volunteers/{callerEmail} document exists
+  // 4. Query Cloud Firestore to check if authorized_volunteers/{callerEmail} document exists
   if (idToken) {
     try {
       var fsUrl = "https://firestore.googleapis.com/v1/projects/" + FIREBASE_PROJECT_ID + "/databases/(default)/documents/authorized_volunteers/" + encodeURIComponent(callerEmail);
@@ -156,6 +164,7 @@ function isAuthorizedCaller(callerEmail, idToken) {
         }
       });
       if (fsResp.getResponseCode() === 200) {
+        cache.put(authCacheKey, "1", 600); // Cache authorization for 10 min to save Firestore reads
         return true;
       }
     } catch (e) {
@@ -229,7 +238,7 @@ function handleRecordScan(data) {
 
 /**
  * Handle campaign referral conversion tracking (when retreat application submitted)
- * @param {object} data { tag }
+ * @param {object} data { tag, fingerprint }
  */
 function handleRecordConversion(data) {
   var tag = (data.tag || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").substring(0, 32);
@@ -237,9 +246,18 @@ function handleRecordConversion(data) {
     return createJsonResponse({ status: "error", message: "Invalid tag parameter" });
   }
 
+  var fingerprint = (data.fingerprint || "anon").trim().substring(0, 64);
   var now = new Date();
   var dateStr = Utilities.formatDate(now, "America/Chicago", "yyyy-MM-dd");
   var nowIso = now.toISOString();
+
+  // Deduplication & Anti-Spam Rate Limiting via CacheService (5-minute window)
+  var cache = CacheService.getScriptCache();
+  var cacheKey = "conv_" + tag + "_" + fingerprint;
+  if (cache.get(cacheKey)) {
+    return createJsonResponse({ status: "ignored", reason: "duplicate_session_window", tag: tag });
+  }
+  cache.put(cacheKey, "1", 300); // 5 minutes TTL
 
   var lock = LockService.getScriptLock();
   try {

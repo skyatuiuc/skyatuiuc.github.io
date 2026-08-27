@@ -167,6 +167,7 @@ export async function recordCampaignConversion(rawTag) {
       const payload = JSON.stringify({
         action: 'record_campaign_conversion',
         tag,
+        fingerprint: getSessionFingerprint(),
         timestamp: now.toISOString()
       });
 

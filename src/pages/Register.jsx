@@ -9,6 +9,7 @@ import { Send, AlertCircle, CheckCircle2, LogIn, ArrowLeft, Clock, Mail } from '
 import { recordCampaignConversion } from '../services/campaignAnalyticsService';
 import confetti from 'canvas-confetti';
 import RetreatDetailsCard from '../components/RetreatDetailsCard';
+import { loadCachedRetreats } from '../utils/retreatUtils';
 
 export default function Register() {
   const { retreatId: paramRetreatId } = useParams();
@@ -71,23 +72,15 @@ export default function Register() {
     }
   };
 
-  // Sync retreats from Firestore
+  // Sync retreats from Firestore with local caching (0 reads on repeated visits)
   useEffect(() => {
-    let unsubscribe = null;
     if (isFirebaseConfigured && db) {
-      try {
-        const retreatsRef = collection(db, 'retreat_history');
-        unsubscribe = onSnapshot(retreatsRef, (snapshot) => {
-          const fetched = [];
-          snapshot.forEach((d) => fetched.push({ id: d.id, ...d.data() }));
+      loadCachedRetreats(db).then((fetched) => {
+        if (fetched && fetched.length > 0) {
           setAllRetreats(fetched);
-          localStorage.setItem('sky_retreat_history', JSON.stringify(fetched));
-        });
-      } catch (e) {
-        console.warn("Retreat sync error:", e);
-      }
+        }
+      });
     }
-    return () => { if (unsubscribe) unsubscribe(); };
   }, []);
 
   // Set default selected retreat
@@ -96,26 +89,6 @@ export default function Register() {
       setSelectedRetreatId(upcomingRetreatsList[0].id);
     }
   }, [upcomingRetreatsList, selectedRetreatId]);
-
-  // Detect campaign referral parameter or stored campaign tag and pre-fill referral source
-  useEffect(() => {
-    try {
-      const searchParams = new URLSearchParams(window.location.search);
-      const tag = searchParams.get('src') || searchParams.get('tag') || 
-                  sessionStorage.getItem('sky_referral_src') || localStorage.getItem('sky_referral_src') ||
-                  sessionStorage.getItem('sky_campaign_tag') || localStorage.getItem('sky_campaign_tag');
-      if (tag) {
-        setFormData(prev => {
-          if (!prev.referralSource) {
-            return { ...prev, referralSource: tag };
-          }
-          return prev;
-        });
-      }
-    } catch (e) {
-      console.warn("Referral source detection warning:", e);
-    }
-  }, []);
 
   // Autofill current user info & check existing app
   useEffect(() => {
@@ -296,8 +269,8 @@ export default function Register() {
       return;
     }
 
-    if (formData.firstName.trim().length > 50 || formData.lastName.trim().length > 50 || formData.phone.trim().length > 25 ||
-        formData.otherHealthConditions.trim().length > 300 || formData.foodAllergies.trim().length > 300 || formData.referralSource.trim().length > 50) {
+    if (formData.firstName.trim().length > 100 || formData.lastName.trim().length > 100 || formData.phone.trim().length > 30 ||
+        formData.otherHealthConditions.trim().length > 1000 || formData.foodAllergies.trim().length > 500 || formData.referralSource.trim().length > 250) {
       setError('One or more fields exceed maximum character limits.');
       return;
     }
@@ -574,15 +547,15 @@ export default function Register() {
                   <input 
                     type="text"
                     required
-                    maxLength={50}
+                    maxLength={100}
                     disabled={Boolean(existingApp)}
                     value={formData.firstName}
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.firstName.length >= 50 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
+                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.firstName.length >= 100 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
-                  {formData.firstName.length >= 50 && (
+                  {formData.firstName.length >= 100 && (
                     <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, display: 'block', marginTop: '0.25rem' }}>
-                      Maximum 50 characters reached
+                      Maximum 100 characters reached
                     </span>
                   )}
                 </div>
@@ -591,15 +564,15 @@ export default function Register() {
                   <input 
                     type="text"
                     required
-                    maxLength={50}
+                    maxLength={100}
                     disabled={Boolean(existingApp)}
                     value={formData.lastName}
                     onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.lastName.length >= 50 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
+                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.lastName.length >= 100 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
-                  {formData.lastName.length >= 50 && (
+                  {formData.lastName.length >= 100 && (
                     <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, display: 'block', marginTop: '0.25rem' }}>
-                      Maximum 50 characters reached
+                      Maximum 100 characters reached
                     </span>
                   )}
                 </div>
@@ -621,16 +594,16 @@ export default function Register() {
                   <input 
                     type="tel"
                     required
-                    maxLength={25}
+                    maxLength={30}
                     disabled={Boolean(existingApp)}
                     placeholder="(217) 555-0199"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.phone.length >= 25 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
+                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.phone.length >= 30 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
-                  {formData.phone.length >= 25 && (
+                  {formData.phone.length >= 30 && (
                     <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, display: 'block', marginTop: '0.25rem' }}>
-                      Maximum 25 characters reached
+                      Maximum 30 characters reached
                     </span>
                   )}
                 </div>
@@ -733,7 +706,7 @@ export default function Register() {
                     <input 
                       type="text"
                       required
-                      maxLength={300}
+                      maxLength={1000}
                       disabled={Boolean(existingApp)}
                       placeholder="Specify pre-existing medical or health conditions..."
                       value={formData.otherHealthConditions}
@@ -742,15 +715,15 @@ export default function Register() {
                         width: '100%',
                         padding: '0.75rem 1rem',
                         background: '#FFFFFF',
-                        border: formData.otherHealthConditions.length >= 300 ? '1.5px solid #EF4444' : '1px solid #FABC1D',
+                        border: formData.otherHealthConditions.length >= 1000 ? '1.5px solid #EF4444' : '1px solid #FABC1D',
                         borderRadius: 'var(--radius-sm)',
                         color: 'var(--text-main)',
                         fontSize: '0.9rem'
                       }}
                     />
-                    {formData.otherHealthConditions.length >= 300 && (
+                    {formData.otherHealthConditions.length >= 1000 && (
                       <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, display: 'block', marginTop: '0.25rem' }}>
-                        Maximum 300 characters reached
+                        Maximum 1000 characters reached
                       </span>
                     )}
                   </div>
@@ -763,16 +736,16 @@ export default function Register() {
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>DIETARY RESTRICTIONS / ALLERGIES</label>
                   <input 
                     type="text"
-                    maxLength={300}
+                    maxLength={500}
                     disabled={Boolean(existingApp)}
                     placeholder="Vegetarian, Vegan, Gluten Free, Nut Allergy..."
                     value={formData.foodAllergies}
                     onChange={(e) => setFormData({ ...formData, foodAllergies: e.target.value })}
-                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.foodAllergies.length >= 300 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
+                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.foodAllergies.length >= 500 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
-                  {formData.foodAllergies.length >= 300 && (
+                  {formData.foodAllergies.length >= 500 && (
                     <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, display: 'block', marginTop: '0.25rem' }}>
-                      Maximum 300 characters reached
+                      Maximum 500 characters reached
                     </span>
                   )}
                 </div>
@@ -780,16 +753,16 @@ export default function Register() {
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>HOW DID YOU HEAR ABOUT US?</label>
                   <input 
                     type="text"
-                    maxLength={50}
+                    maxLength={250}
                     disabled={Boolean(existingApp)}
                     placeholder="Quad Day, Friend, Instagram, Quad Flyer..."
                     value={formData.referralSource}
                     onChange={(e) => setFormData({ ...formData, referralSource: e.target.value })}
-                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.referralSource.length >= 50 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
+                    style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.referralSource.length >= 250 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
-                  {formData.referralSource.length >= 50 && (
+                  {formData.referralSource.length >= 250 && (
                     <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, display: 'block', marginTop: '0.25rem' }}>
-                      Maximum 50 characters reached
+                      Maximum 250 characters reached
                     </span>
                   )}
                 </div>
