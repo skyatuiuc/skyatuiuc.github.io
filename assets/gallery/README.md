@@ -4,11 +4,11 @@ Place your photo files in this directory (`public/assets/gallery/`).
 
 ### Recommended Setup:
 1. Copy your photos into this folder:
-   - `photo1.jpg`
-   - `photo2.jpg`
-   - `photo3.jpg`
-   - `photo4.jpg`
-   - `photo5.jpg`
+   - `photo1.webp`
+   - `photo2.webp`
+   - `photo3.webp`
+   - `photo4.webp`
+   - `photo5.webp`
    - *(or any additional images)*
 
 2. To customize the list or captions, edit [`src/data/heroGalleryData.js`](../../src/data/heroGalleryData.js).
