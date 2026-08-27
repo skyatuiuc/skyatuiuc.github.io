@@ -151,6 +151,7 @@ export default function HeroGallery({ children }) {
                       <img
                         src={imageSrc}
                         alt={img.title || 'SKY UIUC Retreat Moment'}
+                        loading={idx === 0 ? 'eager' : 'lazy'}
                         onError={() => handleImageError(img.id)}
                         style={{
                           width: '100%',
