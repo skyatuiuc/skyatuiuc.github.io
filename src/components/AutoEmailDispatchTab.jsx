@@ -128,7 +128,7 @@ export default function AutoEmailDispatchTab({
     let list = [...retreatRegistrations];
 
     if (filterType === 'APPROVED') {
-      list = list.filter(r => (r.interviewStatus || r.status || '').toLowerCase().includes('approved'));
+      list = list.filter(r => (r.orientationStatus || r.interviewStatus || r.status || '').toLowerCase().includes('approved'));
     } else if (filterType === 'NEEDS_PAYPAL') {
       list = list.filter(r => checkRequiresPayment(r) && !(r.paypalLink || '').trim());
     } else if (filterType === 'UNSENT_ACCEPTED') {
@@ -764,7 +764,7 @@ export default function AutoEmailDispatchTab({
             {displayedApplicants.map(applicant => {
               const isSelected = selectedApplicantIds.has(applicant.id);
               const initial = (applicant.firstName?.[0] || applicant.name?.[0] || 'U').toUpperCase();
-              const isApproved = (applicant.interviewStatus || applicant.status || '').toLowerCase().includes('approved');
+              const isApproved = (applicant.orientationStatus || applicant.interviewStatus || applicant.status || '').toLowerCase().includes('approved');
               const feeInfo = parseFeeAndPayment(applicant);
               const isPaypalSaved = savedPaypalLinks[applicant.id];
 
@@ -856,7 +856,7 @@ export default function AutoEmailDispatchTab({
                         fontWeight: 700
                       }}
                     >
-                      {applicant.interviewStatus || applicant.status || 'Pending'}
+                      {applicant.orientationStatus || applicant.interviewStatus || applicant.status || 'Pending'}
                     </span>
                   </div>
 

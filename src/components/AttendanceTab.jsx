@@ -112,7 +112,7 @@ export default function AttendanceTab({
     
     return registrations.filter(r => {
       const retreatMatches = r.retreatId === activeRetreat.id || (!r.retreatId && activeRetreat.id === 'general');
-      const isApproved = r.interviewStatus === 'Approved' || r.status === 'Approved';
+      const isApproved = r.orientationStatus === 'Approved' || r.interviewStatus === 'Approved' || r.status === 'Approved';
       return retreatMatches && isApproved;
     });
   }, [registrations, activeRetreat?.id]);

@@ -42,7 +42,7 @@ service cloud.firestore {
           'id', 'retreatId', 'retreatTitle', 'firstName', 'lastName', 'fullName',
           'email', 'phone', 'isOver18', 'academicRole', 'completedSkyBefore',
           'agreeToAll3Days', 'healthConditions', 'otherHealthConditions',
-          'foodAllergies', 'referralSource', 'status', 'interviewStatus',
+          'foodAllergies', 'referralSource', 'status', 'orientationStatus', 'interviewStatus',
           'appliedAt', 'updatedAt'
         ]) &&
         request.resource.data.firstName is string && request.resource.data.firstName.size() <= 100 &&
@@ -57,6 +57,7 @@ service cloud.firestore {
         request.resource.data.otherHealthConditions is string && request.resource.data.otherHealthConditions.size() <= 1000 &&
         request.resource.data.foodAllergies is string && request.resource.data.foodAllergies.size() <= 500 &&
         request.resource.data.referralSource is string && request.resource.data.referralSource.size() <= 250 &&
+        (!('orientationStatus' in request.resource.data) || request.resource.data.orientationStatus in ['Uncontacted', 'Pending']) &&
         (!('interviewStatus' in request.resource.data) || request.resource.data.interviewStatus in ['Uncontacted', 'Pending']) &&
         (!('status' in request.resource.data) || request.resource.data.status in ['Pending', 'Uncontacted']) &&
         (!('paymentStatus' in request.resource.data) || (isStudentRole(request.resource.data.academicRole) && request.resource.data.paymentStatus in ['Unpaid', 'Exempt']) || request.resource.data.paymentStatus == 'Unpaid') &&

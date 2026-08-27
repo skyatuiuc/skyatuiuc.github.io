@@ -302,11 +302,13 @@ export default function Home() {
                           <MapPin size={14} /> Location
                         </div>
                         <div style={{ color: 'var(--text-main)', fontWeight: 700, fontSize: '0.9rem', lineHeight: 1.35 }}>
-                          {upcomingRetreat.location || 'Sidney Lu Mechanical Engineering Building, Room 2100'}
+                          {upcomingRetreat.location || ''}
                         </div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.15rem' }}>
-                          {upcomingRetreat.address || 'UIUC Campus, Urbana IL'}
-                        </div>
+                        {upcomingRetreat.address && (
+                          <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.15rem' }}>
+                            {upcomingRetreat.address}
+                          </div>
+                        )}
                       </div>
 
                       {/* Instructors */}
@@ -340,7 +342,7 @@ export default function Home() {
                       lineHeight: 1.45
                     }}>
                       <CheckCircle2 size={16} color="#B45309" style={{ flexShrink: 0 }} />
-                      <span><strong>Fully funded for UIUC Students ($0)</strong> • Partial funding for post-docs ($25), faculty, staff, alumni & non-affiliates ($50). Originally $275.</span>
+                      <span><strong>Fully funded for UIUC Students ($0)</strong> • Partial funding for post-docs ($25), faculty, staff & non-UIUC students ($50), non-UIUC affiliates & non-students ($275).</span>
                     </div>
                   </div>
 

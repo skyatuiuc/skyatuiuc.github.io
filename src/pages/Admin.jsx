@@ -258,7 +258,7 @@ export default function Admin() {
     const headers = [
       "ID", "Retreat ID", "Retreat Title", "Full Name", "Email", "Phone", "NetID",
       "Academic Role", "Fee Tier", "Payment Status", "Attendance Status", "Check-ins Count",
-      "Food Allergies", "Health Conditions", "Interview Notes", "Created At"
+      "Food Allergies", "Health Conditions", "Orientation Notes", "Created At"
     ];
 
     const escapeCsv = (val) => {
@@ -282,7 +282,7 @@ export default function Admin() {
       escapeCsv(r.checkIns ? (Array.isArray(r.checkIns) ? r.checkIns.length : Object.keys(r.checkIns).length) : 0),
       escapeCsv(r.foodAllergies),
       escapeCsv(r.healthConditions),
-      escapeCsv(r.notes || r.interviewNotes),
+      escapeCsv(r.notes || r.orientationNotes || r.interviewNotes),
       escapeCsv(r.createdAt || r.registeredAt)
     ]);
 
@@ -515,11 +515,11 @@ export default function Admin() {
   const [endDate, setEndDate] = useState('');
   const [teachers, setTeachers] = useState('');
   const [courses, setCourses] = useState('SKY Breath Meditation');
-  const [location, setLocation] = useState('Sidney Lu Mechanical Engineering Building, Room 2100');
-  const [address, setAddress] = useState('1206 W Green St, Urbana, IL 61801');
-  const [fridayTime, setFridayTime] = useState('6:30 PM – 9:30 PM');
-  const [saturdayTime, setSaturdayTime] = useState('10:00 AM – 2:00 PM');
-  const [sundayTime, setSundayTime] = useState('10:00 AM – 2:00 PM');
+  const [location, setLocation] = useState('');
+  const [address, setAddress] = useState('');
+  const [fridayTime, setFridayTime] = useState('');
+  const [saturdayTime, setSaturdayTime] = useState('');
+  const [sundayTime, setSundayTime] = useState('');
 
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
@@ -959,11 +959,11 @@ export default function Admin() {
     setEndDate(ret.endDate || '');
     setTeachers(ret.teachers || '');
     setCourses(ret.courses || 'SKY Breath Meditation');
-    setLocation(ret.location || 'Sidney Lu Mechanical Engineering Building, Room 2100');
+    setLocation(ret.location || '');
     setAddress(ret.address || '');
-    setFridayTime(ret.fridayTime || ret.day1Time || '6:30 PM – 9:30 PM');
-    setSaturdayTime(ret.saturdayTime || ret.day2Time || '10:00 AM – 2:00 PM');
-    setSundayTime(ret.sundayTime || ret.day3Time || '10:00 AM – 2:00 PM');
+    setFridayTime(ret.fridayTime || ret.day1Time || '');
+    setSaturdayTime(ret.saturdayTime || ret.day2Time || '');
+    setSundayTime(ret.sundayTime || ret.day3Time || '');
     setMessage({ type: 'info', text: `Editing retreat record: ${ret.title}` });
   };
 
@@ -974,17 +974,17 @@ export default function Admin() {
     setEndDate('');
     setTeachers('');
     setCourses('SKY Breath Meditation');
-    setLocation('Sidney Lu Mechanical Engineering Building, Room 2100');
-    setAddress('1206 W Green St, Urbana, IL 61801');
-    setFridayTime('6:30 PM – 9:30 PM');
-    setSaturdayTime('10:00 AM – 2:00 PM');
-    setSundayTime('10:00 AM – 2:00 PM');
+    setLocation('');
+    setAddress('');
+    setFridayTime('');
+    setSaturdayTime('');
+    setSundayTime('');
   };
 
   const handleSaveRetreat = async (e) => {
     e.preventDefault();
-    if (!title.trim() || !startDate || !endDate) {
-      setMessage({ type: 'error', text: 'Please fill in Title, Start Date, and End Date.' });
+    if (!title.trim() || !startDate || !endDate || !location.trim()) {
+      setMessage({ type: 'error', text: 'Please fill in Title, Start Date, End Date, and Location.' });
       return;
     }
 
@@ -998,11 +998,11 @@ export default function Admin() {
         endDate,
         teachers: teachers.trim() || 'SKY Certified Teachers',
         courses: courses.trim() || 'SKY Breath Meditation',
-        location: location.trim() || 'Sidney Lu Mechanical Engineering Building, Room 2100',
-        address: address.trim() || '',
-        fridayTime: fridayTime.trim() || '6:30 PM – 9:30 PM',
-        saturdayTime: saturdayTime.trim() || '10:00 AM – 2:00 PM',
-        sundayTime: sundayTime.trim() || '10:00 AM – 2:00 PM',
+        location: location.trim(),
+        address: address.trim(),
+        fridayTime: fridayTime.trim(),
+        saturdayTime: saturdayTime.trim(),
+        sundayTime: sundayTime.trim(),
         updatedAt: new Date().toISOString()
       };
 
@@ -1031,11 +1031,11 @@ export default function Admin() {
         endDate,
         teachers: teachers.trim() || 'SKY Certified Teachers',
         courses: courses.trim() || 'SKY Breath Meditation',
-        location: location.trim() || 'Sidney Lu Mechanical Engineering Building, Room 2100',
-        address: address.trim() || '',
-        fridayTime: fridayTime.trim() || '6:30 PM – 9:30 PM',
-        saturdayTime: saturdayTime.trim() || '10:00 AM – 2:00 PM',
-        sundayTime: sundayTime.trim() || '10:00 AM – 2:00 PM',
+        location: location.trim(),
+        address: address.trim(),
+        fridayTime: fridayTime.trim(),
+        saturdayTime: saturdayTime.trim(),
+        sundayTime: sundayTime.trim(),
         createdAt: new Date().toISOString()
       };
 
@@ -1542,7 +1542,7 @@ export default function Admin() {
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>TEACHERS / INSTRUCTORS</label>
                     <input 
                       type="text"
-                      placeholder="e.g. Siddharth & Facilitators"
+                      placeholder="Facilitators"
                       value={teachers}
                       onChange={(e) => setTeachers(e.target.value)}
                       style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}

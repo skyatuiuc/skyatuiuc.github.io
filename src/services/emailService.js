@@ -28,17 +28,17 @@ export const sanitizeUrl = (url, fallback = '#') => {
 };
 
 export const DEFAULT_EMAIL_SETTINGS = {
-  webhookUrl: import.meta.env?.VITE_EMAIL_WEBHOOK_URL || 'https://script.google.com/macros/s/AKfycbzQ71gX5P3H0V7Z-EXAMPLE/exec', // Configurable Google Apps Script Webhook
+  webhookUrl: import.meta.env?.VITE_EMAIL_WEBHOOK_URL || '', // Configurable Google Apps Script Webhook
   senderEmail: 'skyatuiuc@gmail.com',
   senderName: 'SKY Meditation at UIUC',
   clubEmail: 'skyatuiuc@gmail.com',
-  contactName: 'SKY at UIUC Executive Team',
-  contactPhone: 'Inquiries via email',
+  contactName: '',
+  contactPhone: '',
   contactEmail: 'skyatuiuc@gmail.com',
   sattvaLink: 'https://www.sattva.life/',
-  whatsAppLink: import.meta.env?.VITE_WHATSAPP_LINK || 'https://chat.whatsapp.com/YOUR_WHATSAPP_INVITE_CODE',
-  surveyLink: import.meta.env?.VITE_SURVEY_LINK || 'https://forms.gle/YOUR_SURVEY_FORM_ID',
-  dailyPracticeLink: import.meta.env?.VITE_DAILY_PRACTICE_LINK || 'https://illinois.zoom.us/j/YOUR_ZOOM_MEETING_ID',
+  whatsAppLink: import.meta.env?.VITE_WHATSAPP_LINK || '',
+  surveyLink: import.meta.env?.VITE_SURVEY_LINK || '',
+  dailyPracticeLink: import.meta.env?.VITE_DAILY_PRACTICE_LINK || '',
   defaultRegistrationLink: 'https://members.us.iahv.org/us-en/course/checkout'
 };
 
@@ -72,7 +72,7 @@ export const parseFeeAndPayment = (participant) => {
 
   // Fallback default
   if (feeNum === null || isNaN(feeNum)) {
-    feeNum = 20; // UIUC Student default subsidized fee
+    feeNum = 0;
   }
 
   const isFreeTier = feeNum === 0;
@@ -125,6 +125,26 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
     }
   }
 
+  // Strict Validation: Required On-Site Contact for Welcome Email
+  if (effectiveTemplateKey === 'welcome') {
+    const contactName = (retreat?.contactName || settings.contactName || '').trim();
+    const contactPhone = (retreat?.contactPhone || settings.contactPhone || '').trim();
+    if (!contactName) {
+      throw new Error(`On-site Contact Name is required to send the Welcome email. Please configure it in Email Settings or on the Retreat.`);
+    }
+    if (!contactPhone) {
+      throw new Error(`On-site Contact Phone Number is required to send the Welcome email. Please configure it in Email Settings or on the Retreat.`);
+    }
+  }
+
+  // Strict Validation: Required WhatsApp Link for Completion Email
+  if (effectiveTemplateKey === 'completion') {
+    const whatsApp = (settings.whatsAppLink || '').trim();
+    if (!whatsApp || whatsApp.includes('YOUR_WHATSAPP_INVITE_CODE')) {
+      throw new Error(`WhatsApp Community Invite Link is required to send the Completion email. Please configure it in Email Settings.`);
+    }
+  }
+
   const template = EMAIL_TEMPLATES[effectiveTemplateKey];
   if (!template) {
     throw new Error(`Email template "${templateTypeKey}" not found.`);
@@ -132,9 +152,9 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
 
   // Dynamic Retreat Schedule Computation
   const schedule = getRetreatDaySchedule(retreat);
-  const day1 = schedule[0] || { fullLabel: 'Friday', time: retreat?.fridayTime || '6:30 PM – 9:30 PM' };
-  const day2 = schedule[1] || { fullLabel: 'Saturday', time: retreat?.saturdayTime || '10:00 AM – 2:00 PM' };
-  const day3 = schedule[2] || { fullLabel: 'Sunday', time: retreat?.sundayTime || '10:00 AM – 2:00 PM' };
+  const day1 = schedule[0] || { fullLabel: 'Friday', time: retreat?.fridayTime || retreat?.day1Time || '' };
+  const day2 = schedule[1] || { fullLabel: 'Saturday', time: retreat?.saturdayTime || retreat?.day2Time || '' };
+  const day3 = schedule[2] || { fullLabel: 'Sunday', time: retreat?.sundayTime || retreat?.day3Time || '' };
 
   const dates = retreat?.startDate && retreat?.endDate 
     ? `${escapeHtml(retreat.startDate)} to ${escapeHtml(retreat.endDate)}`
@@ -167,16 +187,16 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
     sundayDate: escapeHtml(day3.fullLabel),
     sundayTime: escapeHtml(day3.time),
     weekendDates: `${escapeHtml(day2.fullLabel)} & ${escapeHtml(day3.fullLabel)}`,
-    weekendTime: day2.time === day3.time ? escapeHtml(day2.time) : `${escapeHtml(day2.time)} (Sat), ${escapeHtml(day3.time)} (Sun)`,
-    location: escapeHtml(retreat?.location || 'Sidney Lu Mechanical Engineering Building, Room 2100'),
+    weekendTime: day2.time && day3.time ? (day2.time === day3.time ? escapeHtml(day2.time) : `${escapeHtml(day2.time)} (Sat), ${escapeHtml(day3.time)} (Sun)`) : escapeHtml(day2.time || day3.time || ''),
+    location: escapeHtml(retreat?.location || ''),
     address: escapeHtml(retreat?.address || ''),
-    fullLocationString: escapeHtml(retreat?.location ? `${retreat.location}${retreat.address ? ` (${retreat.address})` : ''}` : 'Sidney Lu Mechanical Engineering Building, Room 2100'),
+    fullLocationString: escapeHtml(retreat?.location ? `${retreat.location}${retreat.address ? ` (${retreat.address})` : ''}` : ''),
     teachers: escapeHtml(retreat?.teachers || 'SKY Certified Teachers'),
     registrationLink: sanitizeUrl(retreat?.registrationLink || settings.defaultRegistrationLink),
     clubEmail: escapeHtml(settings.clubEmail || 'skyatuiuc@gmail.com'),
-    contactName: escapeHtml(retreat?.contactName || settings.contactName),
-    contactPhone: escapeHtml(retreat?.contactPhone || settings.contactPhone),
-    contactEmail: escapeHtml(retreat?.contactEmail || settings.contactEmail),
+    contactName: escapeHtml(retreat?.contactName || settings.contactName || ''),
+    contactPhone: escapeHtml(retreat?.contactPhone || settings.contactPhone || ''),
+    contactEmail: escapeHtml(retreat?.contactEmail || settings.contactEmail || 'skyatuiuc@gmail.com'),
     sattvaLink: sanitizeUrl(settings.sattvaLink),
     whatsAppLink: sanitizeUrl(settings.whatsAppLink),
     surveyLink: sanitizeUrl(settings.surveyLink),

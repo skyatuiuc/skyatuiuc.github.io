@@ -242,11 +242,12 @@ export default function EmailSettingsModal({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-main)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.35rem' }}>
-                    On-Site Contact Name
+                    On-Site Contact Name *
                   </label>
                   <input
                     type="text"
                     disabled={!isSuperAdmin}
+                    placeholder="Contact Name"
                     value={formData.contactName}
                     onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
                     style={{
@@ -263,11 +264,12 @@ export default function EmailSettingsModal({
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-main)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.35rem' }}>
-                    On-Site Contact Phone
+                    On-Site Contact Phone *
                   </label>
                   <input
                     type="text"
                     disabled={!isSuperAdmin}
+                    placeholder="e.g. 217-555-0123"
                     value={formData.contactPhone}
                     onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
                     style={{

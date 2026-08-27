@@ -90,7 +90,7 @@ export default function GroupAssignmentTab({
       if (!matchesRetreat) return false;
 
       // 2. Must be approved application (case-insensitive substring)
-      const rawStatus = (r.interviewStatus || r.status || '').toLowerCase().trim();
+      const rawStatus = (r.orientationStatus || r.interviewStatus || r.status || '').toLowerCase().trim();
       return rawStatus.includes('approved');
     });
   }, [registrations, activeRetreat, selectedRetreatId, retreats]);
@@ -129,11 +129,12 @@ export default function GroupAssignmentTab({
         academicRole: reg.academicRole,
         feeTier: reg.feeTier,
         paymentStatus: reg.paymentStatus,
-        interviewStatus: reg.interviewStatus || reg.status || 'Approved',
+        orientationStatus: reg.orientationStatus || reg.interviewStatus || reg.status || 'Approved',
+        interviewStatus: reg.orientationStatus || reg.interviewStatus || reg.status || 'Approved',
         submittedAt: reg.submittedAt || reg.registeredAt,
         foodAllergies: reg.foodAllergies,
         healthConditions: reg.healthConditions,
-        volunteerNotes: reg.volunteerNotes || reg.interviewNotes,
+        volunteerNotes: reg.volunteerNotes || reg.orientationNotes || reg.interviewNotes,
         attendance: reg.attendance || {},
         isVolunteer: isVol,
         groupId: assignedGroupId,

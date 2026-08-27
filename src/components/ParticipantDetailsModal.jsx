@@ -18,7 +18,7 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
   const fullName = participant.name || `${participant.firstName || ''} ${participant.lastName || ''}`.trim() || participant.email || 'Anonymous Participant';
   const initial = (fullName[0] || 'U').toUpperCase();
   const photoUrl = participant.photoURL || participant.photoUrl || null;
-  const isApproved = participant.interviewStatus === 'Approved' || participant.status === 'Approved';
+  const isApproved = participant.orientationStatus === 'Approved' || participant.interviewStatus === 'Approved' || participant.status === 'Approved';
 
   const formatDateTime = (isoStr) => {
     if (!isoStr) return 'N/A';
@@ -182,7 +182,7 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
             color: isApproved ? '#166534' : '#B45309',
             border: isApproved ? '1px solid #86EFAC' : '1px solid #FCD34D'
           }}>
-            {participant.interviewStatus || participant.status || 'Approved'}
+            {participant.orientationStatus || participant.interviewStatus || participant.status || 'Approved'}
           </span>
         </div>
 
@@ -262,7 +262,7 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
         </div>
 
         {/* Additional Participant Notes & Health details if present */}
-        {(participant.foodAllergies || participant.healthConditions || participant.volunteerNotes || participant.interviewNotes) && (
+        {(participant.foodAllergies || participant.healthConditions || participant.volunteerNotes || participant.orientationNotes || participant.interviewNotes) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.82rem' }}>
             {participant.foodAllergies && participant.foodAllergies !== 'None' && (
               <div style={{ background: 'var(--sky-flower-light)', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(232, 74, 39, 0.25)', color: '#C2410C' }}>
@@ -275,9 +275,9 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
                 {participant.otherHealthConditions ? ` (${participant.otherHealthConditions})` : ''}
               </div>
             )}
-            {(participant.volunteerNotes || participant.interviewNotes) && (
+            {(participant.volunteerNotes || participant.orientationNotes || participant.interviewNotes) && (
               <div style={{ background: '#F8FAFC', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-                <strong>Volunteer Notes:</strong> {participant.volunteerNotes || participant.interviewNotes}
+                <strong>Volunteer Notes:</strong> {participant.volunteerNotes || participant.orientationNotes || participant.interviewNotes}
               </div>
             )}
           </div>

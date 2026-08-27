@@ -121,12 +121,14 @@ export default function RetreatDetailsCard({ retreat, showHeader = false, compac
             </div>
             
             <div style={{ color: 'var(--text-main)', fontWeight: 700, fontSize: '0.95rem', lineHeight: 1.35 }}>
-              {retreat.location || 'Sidney Lu Mechanical Engineering Building, Room 2100'}
+              {retreat.location || ''}
             </div>
 
-            <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '0.2rem' }}>
-              {retreat.address || 'On-Campus • UIUC, Urbana IL'}
-            </div>
+            {retreat.address && (
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '0.2rem' }}>
+                {retreat.address}
+              </div>
+            )}
           </div>
 
           {/* Instructors Card */}
@@ -279,7 +281,10 @@ export default function RetreatDetailsCard({ retreat, showHeader = false, compac
                   <strong>Post-Docs & Scholars:</strong> <span style={{ fontWeight: 700 }}>$25</span>
                 </div>
                 <div style={{ padding: '0.5rem 0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
-                  <strong>Faculty, Staff, Alumni & Others:</strong> <span style={{ fontWeight: 700 }}>$50</span>
+                  <strong>Faculty, Staff & Non-UIUC Students:</strong> <span style={{ fontWeight: 700 }}>$50</span>
+                </div>
+                <div style={{ padding: '0.5rem 0.75rem', background: '#F8FAFC', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+                  <strong>Non-UIUC Affiliates & Non-Students:</strong> <span style={{ fontWeight: 700 }}>$275</span>
                 </div>
               </div>
 
@@ -295,9 +300,6 @@ export default function RetreatDetailsCard({ retreat, showHeader = false, compac
               </span>
               <a href="https://doi.org/10.3389/fpsyt.2020.00590" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--sky-blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.2rem', fontWeight: 600 }}>
                 Yale Clinical Publication <ExternalLink size={12} />
-              </a>
-              <a href="https://www.bidmc.org/about-bidmc/news/2020/07/yogic-breathing-improved-university-students-response-to-stress" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--sky-blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.2rem', fontWeight: 600 }}>
-                Harvard / BIDMC Stress Study <ExternalLink size={12} />
               </a>
               <a href="https://youtu.be/Vlu3arLc0WE" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--sky-blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.2rem', fontWeight: 600 }}>
                 Yale Short Film <ExternalLink size={12} />

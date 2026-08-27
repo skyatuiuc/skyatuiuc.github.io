@@ -37,7 +37,7 @@ export const EMAIL_TEMPLATES = {
     </p>
     
     <p style="line-height: 1.6; font-size: 16px; margin-bottom: 16px; color: #23275F;">
-      Our club officers have begun the review process. We may reach out for a brief confirmation or interview within the next few days to confirm your details.
+      Our club officers have begun the review process. We will reach out for a brief confirmation or orientation phone call within the next few days to confirm your details.
     </p>
     
     <p style="line-height: 1.6; font-size: 16px; margin-top: 25px; margin-bottom: 5px; color: #23275F;">
@@ -106,11 +106,11 @@ export const EMAIL_TEMPLATES = {
       🕒 In-Person Retreat Schedule & Location
     </h3>
     <ul style="padding-left: 20px; line-height: 1.6; font-size: 15px; color: #23275F;">
-      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day1Label || data.fridayDate || 'Friday'}:</strong> ${data.day1Time || data.fridayTime || '6:30 PM – 9:30 PM'}</li>
-      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day2Label || data.saturdayDate || 'Saturday'}:</strong> ${data.day2Time || data.saturdayTime || '10:00 AM – 2:00 PM'}</li>
-      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day3Label || data.sundayDate || 'Sunday'}:</strong> ${data.day3Time || data.sundayTime || '10:00 AM – 2:00 PM'}</li>
+      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day1Label || 'Friday'}:</strong> ${data.day1Time}</li>
+      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day2Label || 'Saturday'}:</strong> ${data.day2Time}</li>
+      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day3Label || 'Sunday'}:</strong> ${data.day3Time}</li>
       <li style="color: #23275F; margin-top: 8px;">
-        <strong>Location:</strong> ${data.location || 'Sidney Lu Mechanical Engineering Building, Room 2100'}
+        <strong>Location:</strong> ${data.location}
         ${data.address ? `<br><span style="color: #718096; font-size: 14px;"><strong>Address:</strong> ${data.address}</span>` : ''}
       </li>
     </ul>
@@ -205,11 +205,11 @@ export const EMAIL_TEMPLATES = {
       🕒 In-Person Retreat Schedule & Location
     </h3>
     <ul style="padding-left: 20px; line-height: 1.6; font-size: 15px; color: #23275F;">
-      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day1Label || data.fridayDate || 'Friday'}:</strong> ${data.day1Time || data.fridayTime || '6:30 PM – 9:30 PM'}</li>
-      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day2Label || data.saturdayDate || 'Saturday'}:</strong> ${data.day2Time || data.saturdayTime || '10:00 AM – 2:00 PM'}</li>
-      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day3Label || data.sundayDate || 'Sunday'}:</strong> ${data.day3Time || data.sundayTime || '10:00 AM – 2:00 PM'}</li>
+      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day1Label || 'Friday'}:</strong> ${data.day1Time}</li>
+      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day2Label || 'Saturday'}:</strong> ${data.day2Time}</li>
+      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day3Label || 'Sunday'}:</strong> ${data.day3Time}</li>
       <li style="color: #23275F; margin-top: 8px;">
-        <strong>Location:</strong> ${data.location || 'Sidney Lu Mechanical Engineering Building, Room 2100'}
+        <strong>Location:</strong> ${data.location}
         ${data.address ? `<br><span style="color: #718096; font-size: 14px;"><strong>Address:</strong> ${data.address}</span>` : ''}
       </li>
     </ul>
@@ -342,17 +342,17 @@ export const EMAIL_TEMPLATES = {
     </h3>
     <div style="background-color: #F8FAFC; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
       <p style="margin: 0 0 8px 0; font-size: 15px; color: #23275F;">
-        <strong style="color: #DB6937;">${data.day1Label || data.fridayDate || 'Friday'}:</strong> ${data.day1Time || data.fridayTime || '6:30 PM – 9:30 PM'}
+        <strong style="color: #DB6937;">${data.day1Label || 'Friday'}:</strong> ${data.day1Time}
       </p>
       <ul style="margin: 0 0 12px 0; padding-left: 20px; font-size: 14px; color: #4A5568; line-height: 1.5;">
         <li style="color: #4A5568;">Please arrive early between <strong>15–20 minutes before</strong> for check-in.</li>
         <li style="color: #4A5568;">Have a light dinner beforehand; light snacks will be provided.</li>
       </ul>
       <p style="margin: 0 0 8px 0; font-size: 15px; color: #23275F;">
-        <strong style="color: #DB6937;">${data.day2Label || data.saturdayDate || 'Saturday'}:</strong> ${data.day2Time || data.saturdayTime || '10:00 AM – 2:00 PM'}
+        <strong style="color: #DB6937;">${data.day2Label || 'Saturday'}:</strong> ${data.day2Time}
       </p>
       <p style="margin: 0 0 8px 0; font-size: 15px; color: #23275F;">
-        <strong style="color: #DB6937;">${data.day3Label || data.sundayDate || 'Sunday'}:</strong> ${data.day3Time || data.sundayTime || '10:00 AM – 2:00 PM'}
+        <strong style="color: #DB6937;">${data.day3Label || 'Sunday'}:</strong> ${data.day3Time}
       </p>
       <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #4A5568; line-height: 1.5;">
         <li style="color: #4A5568;">Please have lunch beforehand (vegetarian meals recommended).</li>
@@ -364,7 +364,7 @@ export const EMAIL_TEMPLATES = {
       📍 Venue & Parking
     </h3>
     <p style="line-height: 1.5; font-size: 15px; margin: 8px 0; color: #23275F;">
-      <strong>Location:</strong> ${data.location || 'Sidney Lu Mechanical Engineering Building, Room 2100'}
+      <strong>Location:</strong> ${data.location}
       ${data.address ? `<br><span style="color: #718096; font-size: 14px;"><strong>Address:</strong> ${data.address}</span>` : ''}
     </p>
     <ul style="padding-left: 20px; font-size: 14px; color: #4A5568; line-height: 1.5; margin-bottom: 15px;">
@@ -390,7 +390,7 @@ export const EMAIL_TEMPLATES = {
     </h3>
     <p style="line-height: 1.5; font-size: 14px; color: #4A5568; margin: 8px 0;">
       If you have questions or trouble accessing the building: <br>
-      <strong style="color: #23275F;">${data.contactName || 'Sid'}:</strong> ${data.contactPhone || '000-000-0000'} | <a href="mailto:${data.contactEmail || data.clubEmail || 'skyatuiuc@gmail.com'}" style="color: #1F74F1;">${data.contactEmail || data.clubEmail || 'skyatuiuc@gmail.com'}</a>
+      <strong style="color: #23275F;">${data.contactName}:</strong> ${data.contactPhone} | <a href="mailto:${data.contactEmail || data.clubEmail || 'skyatuiuc@gmail.com'}" style="color: #1F74F1;">${data.contactEmail || data.clubEmail || 'skyatuiuc@gmail.com'}</a>
     </p>
 
     <p style="line-height: 1.6; font-size: 16px; margin-top: 25px; margin-bottom: 5px; color: #23275F;">
@@ -472,7 +472,7 @@ export const EMAIL_TEMPLATES = {
       Join our WhatsApp community group chat to stay updated on morning Zoom practices, workshops, and social hangouts:
     </p>
     <div style="margin: 15px 0;">
-      <a href="${data.whatsAppLink || 'https://chat.whatsapp.com/YOUR_WHATSAPP_INVITE_CODE'}" style="display: inline-block; background-color: #25D366; color: #ffffff !important; padding: 10px 22px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px;">
+      <a href="${data.whatsAppLink}" style="display: inline-block; background-color: #25D366; color: #ffffff !important; padding: 10px 22px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px;">
         Join SKY at UIUC WhatsApp Group &rarr;
       </a>
     </div>

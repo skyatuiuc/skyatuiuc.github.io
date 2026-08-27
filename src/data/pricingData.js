@@ -78,32 +78,32 @@ export const PRICING_TIERS = [
   },
   {
     id: 'faculty_staff',
-    role: 'Faculty / Staff',
+    role: 'UIUC Faculty / Staff',
     amount: 50,
     formattedFee: '$50',
     feeTierLabel: '$50 (Standard University Rate)',
-    dropdownLabel: 'Faculty / Staff ($50 Fee)',
-    description: 'Standard faculty and staff rate',
+    dropdownLabel: 'UIUC Faculty / Staff ($50 Fee)',
+    description: 'Standard UIUC faculty and staff rate',
     isFunded: false
   },
   {
-    id: 'alumni_community',
-    role: 'Alumni / Community',
+    id: 'non_uiuc_student',
+    role: 'Non-UIUC Student',
     amount: 50,
     formattedFee: '$50',
-    feeTierLabel: '$50 (Alumni & Community Rate)',
-    dropdownLabel: 'Alumni / Community ($50 Fee)',
-    description: 'Alumni & community affiliate rate',
+    feeTierLabel: '$50 (Non-UIUC Student Rate)',
+    dropdownLabel: 'Non-UIUC Student ($50 Fee)',
+    description: 'Discounted rate for visiting students from other universities',
     isFunded: false
   },
   {
     id: 'alumni_non_uiuc',
-    role: 'Alumni / Non-UIUC Affiliate',
-    amount: 50,
-    formattedFee: '$50',
-    feeTierLabel: '$50 (Alumni & Non-UIUC Rate)',
-    dropdownLabel: 'Alumni / Non-UIUC Affiliate ($50 Fee)',
-    description: 'Alumni & non-UIUC affiliate rate',
+    role: 'Alumni / Non-UIUC Affiliate / Non-Student',
+    amount: 275,
+    formattedFee: '$275',
+    feeTierLabel: '$275 (Non-Student / General Rate)',
+    dropdownLabel: 'Alumni / Non-UIUC Affiliate / Non-Student ($275 Fee)',
+    description: 'Alumni, community affiliates, and non-student rate',
     isFunded: false
   }
 ];
@@ -118,6 +118,7 @@ export const ROLE_TO_FEE_MAP = {
   'grad student': 0,
   'phd student': 0,
   'phd': 0,
+  'uiuc student': 0,
   'student': 0,
   'post-doctorate': 25,
   'postdoc': 25,
@@ -127,12 +128,23 @@ export const ROLE_TO_FEE_MAP = {
   'staff': 50,
   'faculty / staff': 50,
   'faculty/staff': 50,
-  'alumni': 50,
-  'alumni / community': 50,
-  'alumni/community': 50,
-  'alumni / non-uiuc affiliate': 50,
-  'community': 50,
-  'other': 50
+  'uiuc faculty / staff': 50,
+  'uiuc faculty/staff': 50,
+  'non-uiuc student': 50,
+  'non uiuc student': 50,
+  'non-uiuc student ($50 fee)': 50,
+  'alumni': 275,
+  'community': 275,
+  'alumni / community': 275,
+  'alumni/community': 275,
+  'alumni & community': 275,
+  'alumni / non-uiuc affiliate': 275,
+  'alumni / non-uiuc affiliate / non-student': 275,
+  'alumni/non-uiuc affiliate/non-student': 275,
+  'non-uiuc affiliate': 275,
+  'non-uiuc affiliate / non-student': 275,
+  'non-student': 275,
+  'other': 275
 };
 
 /**
@@ -148,8 +160,11 @@ export function getFeeAmount(role) {
     return ROLE_TO_FEE_MAP[clean];
   }
 
-  // Robust Substring matching fallback
-  if (clean.includes('undergrad') || clean.includes('student') || clean.includes('grad') || clean.includes('phd')) {
+  // Substring matching fallback
+  if (clean.includes('non-uiuc student') || clean.includes('non uiuc student')) {
+    return 50;
+  }
+  if (clean.includes('undergrad') || clean.includes('phd') || (clean.includes('student') && !clean.includes('non-student') && !clean.includes('non-uiuc'))) {
     return 0;
   }
   if (clean.includes('postdoc') || clean.includes('scholar')) {
@@ -158,8 +173,8 @@ export function getFeeAmount(role) {
   if (clean.includes('faculty') || clean.includes('staff')) {
     return 50;
   }
-  if (clean.includes('alumni') || clean.includes('community') || clean.includes('affiliate')) {
-    return 95;
+  if (clean.includes('alumni') || clean.includes('community') || clean.includes('affiliate') || clean.includes('non-student') || clean.includes('other')) {
+    return 275;
   }
 
   return 0;
@@ -175,7 +190,7 @@ export function getFeeTierLabel(role) {
   if (amount === 0) return '$0 (SORF Funded Waiver)';
   if (amount === 25) return '$25 (Partial Scholar Rate)';
   if (amount === 50) return '$50 (Standard Rate)';
-  return `$${amount} (Community Rate)`;
+  return `$${amount} (General Rate)`;
 }
 
 /**
@@ -187,6 +202,7 @@ export const ACADEMIC_ROLE_OPTIONS = [
   { value: 'PhD Student', label: 'PhD Student ($0 SORF Fee)', amount: 0 },
   { value: 'Post-Doctorate', label: 'Post-Doctorate ($25 Subsidized Fee)', amount: 25 },
   { value: 'Visiting Scholar', label: 'Visiting Scholar ($25 Subsidized Fee)', amount: 25 },
-  { value: 'Faculty / Staff', label: 'Faculty / Staff ($50 Fee)', amount: 50 },
-  { value: 'Alumni / Community', label: 'Alumni / Community ($95 Fee)', amount: 95 }
+  { value: 'UIUC Faculty / Staff', label: 'UIUC Faculty / Staff ($50 Fee)', amount: 50 },
+  { value: 'Non-UIUC Student', label: 'Non-UIUC Student ($50 Fee)', amount: 50 },
+  { value: 'Alumni / Non-UIUC Affiliate / Non-Student', label: 'Alumni / Non-UIUC Affiliate / Non-Student ($275 Fee)', amount: 275 }
 ];

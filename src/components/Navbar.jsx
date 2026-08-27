@@ -256,7 +256,7 @@ export default function Navbar() {
                       <HeartHandshake size={16} color="var(--sky-earth)" />
                       <div>
                         <div>Volunteer Workbench</div>
-                        <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Applicant Dossiers & Interviews</div>
+                        <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Applicant Dossiers & Orientations</div>
                       </div>
                     </Link>
                   )}

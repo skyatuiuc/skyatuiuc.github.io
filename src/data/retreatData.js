@@ -12,11 +12,11 @@ export const GENERAL_FAQS = [
   },
   {
     question: "What is the time commitment for the retreat?",
-    answer: "The SKY Happiness Retreat takes place over 3 consecutive days (typically Friday evening, Saturday day, and Sunday day) for a total of ~12-14 immersive hours. Full attendance at all sessions is required."
+    answer: "The SKY Happiness Retreat takes place over 3 consecutive days (typically Friday evening, Saturday day, and Sunday day) for a total of ~11-13 immersive hours. Full attendance at all sessions is required."
   },
   {
     question: "What are the retreat registration costs and fees?",
-    answer: "Thanks to UIUC Student Organization Resource Fee (SORF) funding and university wellness grants, SKY at UIUC retreats are heavily subsidized and 100% tuition-free for all UIUC students.\n\nRetreat Pricing Breakdown:\n• Undergraduate Students: $0 (100% Fully Funded SORF Waiver)\n• Graduate Students: $0 (100% Fully Funded SORF Waiver)\n• PhD Students: $0 (100% Fully Funded SORF Waiver)\n• Post-Doctorates & Visiting Scholars: $25 (Scholar Subsidized Rate)\n• UIUC Faculty & Staff: $50 (Standard University Rate)\n• Alumni & Community Affiliates: $95 (Community Rate)\n\nNeed-based scholarships and fee waivers are always available so that cost is never a barrier for anyone to participate."
+    answer: "Thanks to UIUC Student Organization Resource Fee (SORF) funding and university wellness grants, SKY at UIUC retreats are heavily subsidized and 100% tuition-free for all UIUC students.\n\nRetreat Pricing Breakdown:\n• Undergraduate Students: $0 (100% Fully Funded SORF Waiver)\n• Graduate Students: $0 (100% Fully Funded SORF Waiver)\n• PhD Students: $0 (100% Fully Funded SORF Waiver)\n• Post-Doctorates & Visiting Scholars: $25 (Scholar Subsidized Rate)\n• UIUC Faculty & Staff: $50 (Standard University Rate)\n• Non-UIUC Students: $50 (Non-UIUC Student Rate)\n• Alumni, Non-UIUC Affiliates & Non-Students: $275 (Non-Student Rate)\n\nNeed-based scholarships and fee waivers are always available so that cost is never a barrier for anyone to participate."
   },
   {
     question: "What happens after I complete the retreat?",

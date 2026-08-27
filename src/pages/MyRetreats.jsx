@@ -142,13 +142,13 @@ export default function MyRetreats() {
                 {userRegistrations.map((reg) => {
                   const retreatDetail = allRetreats.find(r => r.id === reg.retreatId) || {
                     title: reg.retreatTitle || 'SKY Happiness Retreat',
-                    startDate: 'Upcoming',
-                    endDate: 'Session',
-                    location: 'Illini Union, Urbana IL',
-                    teachers: 'SKY Certified Instructors'
+                    startDate: '',
+                    endDate: '',
+                    location: reg.retreatLocation || '',
+                    teachers: ''
                   };
 
-                  const isApproved = reg.interviewStatus?.includes('Approved') || reg.status?.includes('Approved');
+                  const isApproved = (reg.orientationStatus || reg.interviewStatus || reg.status || '').includes('Approved');
                   const isCompleted = reg.attendanceStatus === 'Completed' || reg.attendanceStatus === 'Graduated' || reg.completed === true;
 
                   return (
@@ -183,7 +183,7 @@ export default function MyRetreats() {
                             <span className="badge badge-sky" style={{ fontSize: '0.85rem', padding: '0.45rem 0.9rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                               <Sparkles size={16} /> Enrolled & Confirmed
                             </span>
-                          ) : reg.interviewStatus === 'Withdrawn' ? (
+                          ) : (reg.orientationStatus === 'Withdrawn' || reg.interviewStatus === 'Withdrawn') ? (
                             <span style={{ background: '#F1F5F9', color: 'var(--text-muted)', fontSize: '0.85rem', padding: '0.45rem 0.9rem', borderRadius: 'var(--radius-full)', fontWeight: 600, border: '1px solid var(--border-color)' }}>
                               Withdrawn
                             </span>
@@ -219,8 +219,8 @@ export default function MyRetreats() {
                         </div>
 
                         <div>
-                          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>INTERVIEW STATUS</div>
-                          <div style={{ color: 'var(--text-main)', fontWeight: 600 }}>{reg.interviewStatus || 'Pending Interview'}</div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>ORIENTATION STATUS</div>
+                          <div style={{ color: 'var(--text-main)', fontWeight: 600 }}>{reg.orientationStatus || reg.interviewStatus || 'Pending Orientation'}</div>
                         </div>
                       </div>
 

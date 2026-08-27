@@ -16,7 +16,7 @@ export default function Volunteer() {
   const { currentUser, isAdmin, authorizedEmails } = useAuth();
   const isSuperAdmin = Boolean(isAdmin || (currentUser?.email && currentUser.email.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim()));
 
-  const [activeTab, setActiveTab] = useState('interviews'); // 'interviews' | 'attendance' | 'flyers'
+  const [activeTab, setActiveTab] = useState('orientations'); // 'orientations' | 'attendance' | 'flyers'
 
   // Campaign Flyer Generator State
   const [campaignTagInput, setCampaignTagInput] = useState('demo');
@@ -65,13 +65,13 @@ export default function Volunteer() {
 
   // FILTERS & SEARCH STATE
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All'); // 'All' | 'Uncontacted' | 'Pending' | 'Approved' | 'Did Not Reply' | 'Rejected' | 'Withdrawn'
+  const [statusFilter, setStatusFilter] = useState('All'); // 'All' | 'Uncontacted' | 'Pending' | 'Approved' | 'Did Not Reply' | 'Withdrawn'
   const [claimFilter, setClaimFilter] = useState('All');   // 'All' | 'My Claims' | 'Unclaimed' | 'Claimed by Others'
   const [paymentFilter, setPaymentFilter] = useState('All'); // 'All' | 'Paid / Exempt' | 'Unpaid'
   const [iahvFilter, setIahvFilter] = useState('All');     // 'All' | 'Registered' | 'Not Registered'
   const [sortBy, setSortBy] = useState('newest');           // 'newest' | 'oldest' | 'name' | 'lastContacted'
 
-  // INTERVIEW MODAL WORKBENCH STATE
+  // ORIENTATION MODAL WORKBENCH STATE
   const [selectedApp, setSelectedApp] = useState(null);
   const [activeNotes, setActiveNotes] = useState('');
   const [activeStatus, setActiveStatus] = useState('Uncontacted');
@@ -226,11 +226,11 @@ export default function Volunteer() {
     if (selectedApp) {
       const currentDoc = registrations.find(r => r.id === selectedApp.id) || selectedApp;
       
-      const currentStatus = currentDoc.interviewStatus || 
-        (currentDoc.status === 'Approved' ? 'Approved' : currentDoc.status === 'Rejected' ? 'Rejected' : 'Uncontacted');
+      const currentStatus = currentDoc.orientationStatus || currentDoc.interviewStatus || 
+        (currentDoc.status === 'Approved' ? 'Approved' : 'Uncontacted');
 
       setActiveStatus(currentStatus);
-      setActiveNotes(currentDoc.interviewNotes || currentDoc.notes || '');
+      setActiveNotes(currentDoc.orientationNotes || currentDoc.interviewNotes || currentDoc.notes || '');
       setActiveIahv(Boolean(currentDoc.iahvRegistered));
       setActiveLastContacted(currentDoc.lastContactedDate || '');
       setActiveClaimedBy(currentDoc.claimedBy || '');
@@ -334,8 +334,8 @@ export default function Volunteer() {
   const handleStatusChange = (val) => {
     setActiveStatus(val);
     if (selectedApp) {
-      const statusField = (val === 'Approved' || val === 'Rejected') ? val : 'Pending';
-      updateRegistration(selectedApp.id, { interviewStatus: val, status: statusField });
+      const statusField = (val === 'Approved') ? 'Approved' : (val === 'Withdrawn') ? 'Withdrawn' : 'Pending';
+      updateRegistration(selectedApp.id, { orientationStatus: val, interviewStatus: val, status: statusField });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     }
@@ -381,10 +381,10 @@ export default function Volunteer() {
   useEffect(() => {
     if (!selectedApp) return;
     const currentDoc = registrations.find(r => r.id === selectedApp.id) || selectedApp;
-    const currentNotes = currentDoc.interviewNotes || currentDoc.notes || '';
+    const currentNotes = currentDoc.orientationNotes || currentDoc.interviewNotes || currentDoc.notes || '';
     if (activeNotes !== currentNotes) {
       const timer = setTimeout(() => {
-        updateRegistration(selectedApp.id, { interviewNotes: activeNotes });
+        updateRegistration(selectedApp.id, { orientationNotes: activeNotes, interviewNotes: activeNotes });
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 2000);
       }, 600);
@@ -425,8 +425,8 @@ export default function Volunteer() {
       }
     }
 
-    const currentStatus = reg.interviewStatus || 
-      (reg.status === 'Approved' ? 'Approved' : reg.status === 'Rejected' ? 'Rejected' : 'Uncontacted');
+    const currentStatus = reg.orientationStatus || reg.interviewStatus || 
+      (reg.status === 'Approved' ? 'Approved' : 'Uncontacted');
     
     if (statusFilter !== 'All' && currentStatus !== statusFilter) {
       return false;
@@ -474,7 +474,7 @@ export default function Volunteer() {
         {/* Volunteer Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            <h1 style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--text-main)' }}>Participant Interview & Roster Portal</h1>
+            <h1 style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--text-main)' }}>Participant Orientation & Roster Portal</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
               Logged in as: <strong style={{ color: 'var(--sky-blue)' }}>{currentUser?.email}</strong>
               {isSuperAdmin && <span className="badge badge-sun" style={{ marginLeft: '0.5rem', fontSize: '0.65rem' }}>SUPER ADMIN</span>}
@@ -578,13 +578,13 @@ export default function Volunteer() {
           paddingBottom: '0.25rem'
         }}>
           <button 
-            onClick={() => setActiveTab('interviews')}
+            onClick={() => setActiveTab('orientations')}
             style={{
               padding: '0.85rem 1.35rem',
-              background: activeTab === 'interviews' ? '#FFFFFF' : 'none',
+              background: activeTab === 'orientations' ? '#FFFFFF' : 'none',
               border: 'none',
-              borderBottom: activeTab === 'interviews' ? '3px solid var(--sky-blue)' : '3px solid transparent',
-              color: activeTab === 'interviews' ? 'var(--sky-blue)' : 'var(--text-secondary)',
+              borderBottom: activeTab === 'orientations' ? '3px solid var(--sky-blue)' : '3px solid transparent',
+              color: activeTab === 'orientations' ? 'var(--sky-blue)' : 'var(--text-secondary)',
               fontWeight: 700,
               fontSize: '0.95rem',
               cursor: 'pointer',
@@ -595,8 +595,8 @@ export default function Volunteer() {
               transition: 'var(--transition-fast)'
             }}
           >
-            <UserCheck size={18} color={activeTab === 'interviews' ? 'var(--sky-blue)' : 'var(--text-muted)'} />
-            Interview Workbench ({registrations.length})
+            <UserCheck size={18} color={activeTab === 'orientations' ? 'var(--sky-blue)' : 'var(--text-muted)'} />
+            Orientation Workbench ({registrations.length})
           </button>
 
           <button 
@@ -644,8 +644,8 @@ export default function Volunteer() {
           </button>
         </div>
 
-        {/* TAB 1: INTERVIEW WORKBENCH & DENSE APPLICATION ROSTER */}
-        {activeTab === 'interviews' && (
+        {/* TAB 1: ORIENTATION WORKBENCH & DENSE APPLICATION ROSTER */}
+        {activeTab === 'orientations' && (
           <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             
             {/* ADVANCED FILTERING & SEARCH TOOLBAR */}
@@ -683,7 +683,7 @@ export default function Volunteer() {
                 {/* Status Filter */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    INTERVIEW STATUS
+                    ORIENTATION STATUS
                   </label>
                   <select 
                     value={statusFilter}
@@ -695,7 +695,6 @@ export default function Volunteer() {
                     <option value="Pending">Pending</option>
                     <option value="Approved">Approved</option>
                     <option value="Did Not Reply">Did Not Reply</option>
-                    <option value="Rejected">Rejected</option>
                     <option value="Withdrawn">Withdrawn</option>
                   </select>
                 </div>
@@ -784,7 +783,7 @@ export default function Volunteer() {
                   >
                     <Copy size={12} /> Copy {filteredRegistrations.length} Emails
                   </button>
-                  <span>Click any applicant row to open interview dossier</span>
+                  <span>Click any applicant row to open orientation dossier</span>
                 </div>
               </div>
 
@@ -798,7 +797,7 @@ export default function Volunteer() {
                     <thead>
                       <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--border-color)' }}>
                         <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 }}>APPLICANT</th>
-                        <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 }}>INTERVIEW STATUS</th>
+                        <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 }}>ORIENTATION STATUS</th>
                         <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 }}>POINT OF CONTACT</th>
                         <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 }}>PAYMENT</th>
                         <th style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 }}>IAHV REG</th>
@@ -812,11 +811,10 @@ export default function Volunteer() {
                         const email = reg.email || 'No Email';
                         const phone = reg.phone || reg.phoneNumber || 'N/A';
 
-                        const rawStatus = reg.interviewStatus || reg.status || 'Uncontacted';
+                        const rawStatus = reg.orientationStatus || reg.interviewStatus || reg.status || 'Uncontacted';
                         const status = rawStatus.toLowerCase().includes('approved') ? 'Approved'
                           : rawStatus.toLowerCase().includes('did not reply') ? 'Did Not Reply'
                           : rawStatus.toLowerCase().includes('pending') ? 'Pending'
-                          : rawStatus.toLowerCase().includes('reject') ? 'Rejected'
                           : rawStatus.toLowerCase().includes('withdraw') ? 'Withdrawn'
                           : 'Uncontacted';
 
@@ -847,13 +845,12 @@ export default function Volunteer() {
                               </div>
                             </td>
 
-                            {/* Interview Status Badge */}
+                            {/* Orientation Status Badge */}
                             <td style={{ padding: '0.75rem 1rem' }}>
                               {status === 'Approved' && <span className="badge" style={{ background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>Approved</span>}
                               {status === 'Pending' && <span className="badge" style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FCD34D' }}>Pending</span>}
                               {status === 'Uncontacted' && <span className="badge" style={{ background: '#F1F5F9', color: 'var(--text-muted)', border: '1px solid var(--border-color)' }}>Uncontacted</span>}
                               {status === 'Did Not Reply' && <span className="badge" style={{ background: '#FFEDD5', color: '#C2410C', border: '1px solid #FDBA74' }}>Did Not Reply</span>}
-                              {status === 'Rejected' && <span className="badge" style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #F87171' }}>Rejected</span>}
                               {status === 'Withdrawn' && <span className="badge" style={{ background: '#F3E8FF', color: '#7E22CE', border: '1px solid #D8B4FE' }}>Withdrawn</span>}
                             </td>
 
@@ -914,7 +911,7 @@ export default function Volunteer() {
                                   className="btn btn-primary btn-sm"
                                   style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', gap: '0.3rem' }}
                                 >
-                                  Interview Dossier <ChevronRight size={14} />
+                                  Orientation Dossier <ChevronRight size={14} />
                                 </button>
                                 {isSuperAdmin && (
                                   <button 
@@ -1335,7 +1332,7 @@ export default function Volunteer() {
 
       </div>
 
-      {/* INTERVIEW WORKBENCH MODAL WINDOW */}
+      {/* ORIENTATION WORKBENCH MODAL WINDOW */}
       {selectedApp && (
         <div 
           onClick={() => setSelectedApp(null)}
@@ -1455,7 +1452,7 @@ export default function Volunteer() {
               </button>
             </div>
 
-            {/* INTERVIEW CONTROL BENCH */}
+            {/* ORIENTATION CONTROL BENCH */}
             <div style={{
               background: '#F8FAFC',
               border: '1px solid var(--border-color)',
@@ -1467,10 +1464,10 @@ export default function Volunteer() {
               gap: '1.25rem'
             }}>
               
-              {/* Interview Status Dropdown */}
+              {/* Orientation Status Dropdown */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
-                  INTERVIEW STATUS
+                  ORIENTATION STATUS
                 </label>
                 <select 
                   value={activeStatus}
@@ -1478,10 +1475,9 @@ export default function Volunteer() {
                   style={{ width: '100%', padding: '0.65rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontWeight: 700, fontSize: '0.9rem' }}
                 >
                   <option value="Uncontacted">Uncontacted</option>
-                  <option value="Pending">Pending Interview</option>
+                  <option value="Pending">Pending Orientation</option>
                   <option value="Approved">Approved</option>
                   <option value="Did Not Reply">Did Not Reply</option>
-                  <option value="Rejected">Rejected</option>
                   <option value="Withdrawn">Withdrawn</option>
                 </select>
               </div>
@@ -1574,7 +1570,7 @@ export default function Volunteer() {
             <div style={{ marginBottom: '1.75rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                  INTERVIEWER NOTES & LOGS
+                  ORIENTATION NOTES & LOGS
                 </label>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1598,7 +1594,7 @@ export default function Volunteer() {
 
               <textarea 
                 rows={4}
-                placeholder="Record interview notes, phone impressions, scheduling notes, or participant comments (auto-saved as you type)..."
+                placeholder="Record orientation notes, phone impressions, scheduling notes, or participant comments (auto-saved as you type)..."
                 value={activeNotes}
                 onChange={(e) => setActiveNotes(e.target.value)}
                 style={{

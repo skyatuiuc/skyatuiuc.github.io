@@ -5,7 +5,7 @@ import { db, isFirebaseConfigured } from '../firebase/config';
 import { doc, setDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { INITIAL_RETREATS } from '../data/retreatData';
 import { ACADEMIC_ROLE_OPTIONS } from '../data/pricingData';
-import { Send, AlertCircle, CheckCircle2, LogIn, ArrowLeft, Clock, Mail } from 'lucide-react';
+import { Send, AlertCircle, CheckCircle2, LogIn, ArrowLeft, Clock, Mail, PhoneCall } from 'lucide-react';
 import { recordCampaignConversion } from '../services/campaignAnalyticsService';
 import confetti from 'canvas-confetti';
 import RetreatDetailsCard from '../components/RetreatDetailsCard';
@@ -269,6 +269,11 @@ export default function Register() {
       return;
     }
 
+    if (!formData.referralSource.trim()) {
+      setError('Please let us know how you heard about us.');
+      return;
+    }
+
     if (formData.firstName.trim().length > 100 || formData.lastName.trim().length > 100 || formData.phone.trim().length > 30 ||
         formData.otherHealthConditions.trim().length > 1000 || formData.foodAllergies.trim().length > 500 || formData.referralSource.trim().length > 250) {
       setError('One or more fields exceed maximum character limits.');
@@ -308,6 +313,7 @@ export default function Register() {
         foodAllergies: formData.foodAllergies.trim(),
         referralSource: formData.referralSource.trim(),
         status: 'Uncontacted',
+        orientationStatus: 'Uncontacted',
         interviewStatus: 'Uncontacted',
         appliedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -354,6 +360,7 @@ export default function Register() {
       }
 
       setExistingApp(registrationPayload);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       console.error("Submission error:", err);
       setError(err?.message || 'Failed to submit application. Please try again.');
@@ -415,6 +422,47 @@ export default function Register() {
         ) : (
           <div>
             
+            {/* NEXT STEP PHONE ORIENTATION NOTICE PANEL */}
+            {existingApp && (
+              <div className="glass-card animate-fade-in" style={{
+                padding: '1.5rem 1.75rem',
+                marginBottom: '1.75rem',
+                background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+                border: '1.5px solid #F59E0B',
+                borderRadius: 'var(--radius-md)',
+                boxShadow: '0 4px 14px rgba(245, 158, 11, 0.15)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.9rem' }}>
+                  <div style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '50%',
+                    background: '#FEF3C7',
+                    border: '1px solid #F59E0B',
+                    color: '#B45309',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    marginTop: '0.15rem'
+                  }}>
+                    <PhoneCall size={22} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '1.15rem', color: '#92400E', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span>Next Step: Short Phone Orientation</span>
+                      <span className="badge" style={{ background: '#FDE68A', color: '#78350F', border: '1px solid #F59E0B', fontSize: '0.75rem' }}>
+                        Required for All Applicants
+                      </span>
+                    </div>
+                    <p style={{ color: '#78350F', fontSize: '0.925rem', lineHeight: 1.6, margin: 0, fontWeight: 500 }}>
+                      Every applicant must go through short orientation via phone call to confirm their attendance and secure their spot for the retreat. Our club officers will start reviewing your application shortly - please expect a brief phone call within the next few days, between <strong>12pm–6pm</strong>.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* EXISTING APPLICATION VIEW-ONLY BANNER */}
             {existingApp && (
               <div className="glass-card" style={{
@@ -438,18 +486,22 @@ export default function Register() {
                   </div>
 
                   {(() => {
-                    const appStatus = existingApp.interviewStatus || 
-                      (existingApp.status === 'Approved' ? 'Approved' : existingApp.status === 'Rejected' ? 'Rejected' : 'Uncontacted');
+                    const rawStatus = existingApp.orientationStatus || existingApp.interviewStatus || existingApp.status || 'Uncontacted';
+                    const appStatus = rawStatus.toLowerCase().includes('approved') ? 'Approved'
+                      : rawStatus.toLowerCase().includes('did not reply') ? 'Did Not Reply'
+                      : rawStatus.toLowerCase().includes('pending') ? 'Pending'
+                      : rawStatus.toLowerCase().includes('withdraw') ? 'Withdrawn'
+                      : 'Uncontacted';
                     
                     return (
                       <span className="badge" style={{
                         fontSize: '0.85rem',
                         padding: '0.4rem 0.85rem',
-                        background: appStatus === 'Approved' ? '#DCFCE7' : appStatus === 'Did Not Reply' ? '#FFEDD5' : appStatus === 'Pending' ? '#FEF3C7' : '#F1F5F9',
-                        color: appStatus === 'Approved' ? '#166534' : appStatus === 'Did Not Reply' ? '#C2410C' : appStatus === 'Pending' ? '#B45309' : '#475569',
+                        background: appStatus === 'Approved' ? '#DCFCE7' : appStatus === 'Did Not Reply' ? '#FFEDD5' : appStatus === 'Pending' ? '#FEF3C7' : appStatus === 'Withdrawn' ? '#F3E8FF' : '#F1F5F9',
+                        color: appStatus === 'Approved' ? '#166534' : appStatus === 'Did Not Reply' ? '#C2410C' : appStatus === 'Pending' ? '#B45309' : appStatus === 'Withdrawn' ? '#7E22CE' : '#475569',
                         border: '1px solid rgba(35, 39, 95, 0.1)'
                       }}>
-                        Status: {appStatus}
+                        Orientation Status: {appStatus}
                       </span>
                     );
                   })()}
@@ -464,7 +516,7 @@ export default function Register() {
                   color: 'var(--text-secondary)',
                   lineHeight: 1.5
                 }}>
-                  You have already submitted an application for this retreat. If you need to update any information or have questions about your interview status, please email <a href="mailto:skyatuiuc@gmail.com" style={{ color: 'var(--sky-blue)', fontWeight: 600 }}>skyatuiuc@gmail.com</a>.
+                  You have already submitted an application for this retreat. If you need to update any information or have questions about your orientation status, please email <a href="mailto:skyatuiuc@gmail.com" style={{ color: 'var(--sky-blue)', fontWeight: 600 }}>skyatuiuc@gmail.com</a>.
                 </div>
               </div>
             )}
@@ -750,9 +802,10 @@ export default function Register() {
                   )}
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>HOW DID YOU HEAR ABOUT US?</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>HOW DID YOU HEAR ABOUT US? *</label>
                   <input 
                     type="text"
+                    required
                     maxLength={250}
                     disabled={Boolean(existingApp)}
                     placeholder="Quad Day, Friend, Instagram, Quad Flyer..."
