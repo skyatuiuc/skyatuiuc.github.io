@@ -334,11 +334,10 @@ export default function Register() {
         await setDoc(regDocRef, registrationPayload);
       }
 
-      // Record campaign conversion if referred
+      // Record campaign conversion ONLY if referred via link redirection / campaign tag
       try {
         const searchParams = new URLSearchParams(window.location.search);
         const tag = searchParams.get('src') || searchParams.get('tag') || 
-                    formData.referralSource ||
                     sessionStorage.getItem('sky_referral_src') || localStorage.getItem('sky_referral_src') || 
                     sessionStorage.getItem('sky_campaign_tag') || localStorage.getItem('sky_campaign_tag');
         if (tag) {
