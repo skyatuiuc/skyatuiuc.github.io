@@ -198,7 +198,9 @@ export async function renderAndExportFlyer({
   const loadImage = (src) => {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
+      if (src && !src.startsWith('data:') && !src.startsWith('blob:')) {
+        img.crossOrigin = 'anonymous';
+      }
       img.onload = () => resolve(img);
       img.onerror = (err) => reject(err);
       img.src = src;

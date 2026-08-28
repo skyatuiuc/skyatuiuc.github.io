@@ -2150,15 +2150,31 @@ export default function Admin() {
                       position: 'relative',
                       width: '100%',
                       aspectRatio: `${tplWidth} / ${tplHeight}`,
-                      background: tplImageBase64 ? `url(${tplImageBase64}) 0 0 / 100% 100% no-repeat` : '#FFFFFF',
+                      background: '#FFFFFF',
                       containerType: 'inline-size',
                       transform: `scale(${previewZoom}) translate(${previewPan.x / previewZoom}px, ${previewPan.y / previewZoom}px)`,
                       transformOrigin: 'center center',
                       transition: activeDragItem ? 'none' : 'transform 0.1s ease-out',
-                      userSelect: 'none'
+                      userSelect: 'none',
+                      overflow: 'hidden'
                     }}
                   >
-                    
+                    {tplImageBase64 && (
+                      <img 
+                        src={tplImageBase64} 
+                        alt="Template Background" 
+                        style={{ 
+                          position: 'absolute', 
+                          inset: 0, 
+                          width: '100%', 
+                          height: '100%', 
+                          objectFit: 'fill', 
+                          pointerEvents: 'none',
+                          display: 'block' 
+                        }} 
+                      />
+                    )}
+
                     {!tplImageBase64 ? (
                       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', padding: '1.5rem', textAlign: 'center' }}>
                         <FileText size={36} color="var(--sky-blue)" style={{ marginBottom: '0.5rem' }} />
@@ -2198,7 +2214,7 @@ export default function Admin() {
                               style={{ 
                                 width: '100%', 
                                 height: '100%', 
-                                objectFit: 'contain',
+                                objectFit: 'contain', 
                                 pointerEvents: 'none'
                               }} 
                             />
@@ -2272,11 +2288,26 @@ export default function Admin() {
                       <div style={{
                         width: '70px',
                         height: '90px',
-                        background: tpl.thumbnailBase64 ? `url(${tpl.thumbnailBase64}) center/cover no-repeat` : (tpl.bgImageUrl ? `url(${tpl.bgImageUrl}) center/cover no-repeat` : '#FFFFFF'),
                         borderRadius: '6px',
                         border: '1px solid var(--border-color)',
-                        flexShrink: 0
-                      }}></div>
+                        flexShrink: 0,
+                        overflow: 'hidden',
+                        background: '#F1F5F9',
+                        position: 'relative',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        {(tpl.thumbnailBase64 || tpl.bgImageUrl) ? (
+                          <img 
+                            src={tpl.thumbnailBase64 || tpl.bgImageUrl} 
+                            alt={tpl.templateName} 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
+                          />
+                        ) : (
+                          <FileText size={20} color="var(--text-muted)" />
+                        )}
+                      </div>
 
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.95rem' }}>{tpl.templateName}</div>

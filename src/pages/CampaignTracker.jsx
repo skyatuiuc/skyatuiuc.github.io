@@ -9,11 +9,19 @@ export default function CampaignTracker() {
   useEffect(() => {
     const rawTag = (campaignTag || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
 
-    // Reserved paths that should never be treated as campaign tags
-    const reservedPaths = ['register', 'research', 'volunteer', 'admin', 'my-retreats', 'unauthorized'];
+    // Reserved paths and assets that should never be treated as campaign tags
+    const reservedPaths = [
+      'register', 'research', 'volunteer', 'admin', 'my-retreats', 'unauthorized',
+      'index', 'indexhtml', 'index.html', 'home', '404', '404.html', 'assets', 'favicon', 'robots', 'sitemap'
+    ];
     
-    if (!rawTag || reservedPaths.includes(rawTag)) {
-      navigate('/register', { replace: true });
+    if (!rawTag || ['index', 'indexhtml', 'home', '404'].includes(rawTag)) {
+      navigate('/', { replace: true });
+      return;
+    }
+
+    if (reservedPaths.includes(rawTag)) {
+      navigate(`/${rawTag}`, { replace: true });
       return;
     }
 

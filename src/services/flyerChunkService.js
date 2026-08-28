@@ -1,5 +1,4 @@
-// Lossless Chunk-Based Storage Service for Flyer Templates in Firestore
-import { doc, collection, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 
 export const PRIMARY_CHUNK_SIZE = 950 * 1000; // 950,000 bytes (~98.5 KB safety margin below 1 MiB)
 export const FALLBACK_CHUNK_SIZE = 500 * 1000; // 500,000 bytes (Ultra-conservative fallback)
@@ -75,6 +74,16 @@ export async function saveFlyerTemplateWithChunks(db, templateMetadata, fullBase
   // Helper to attempt committing chunks with a specific size
   const attemptCommit = async (chunkSize) => {
     const chunks = sliceIntoChunks(fullBase64, chunkSize);
+
+    // Fetch existing chunks to clean up orphan chunk documents from previous uploads
+    let existingDocs = [];
+    try {
+      const oldSnap = await getDocs(collection(db, 'flyer_templates', templateId, 'chunks'));
+      existingDocs = oldSnap.docs;
+    } catch (e) {
+      // Ignore if new template
+    }
+
     const batch = writeBatch(db);
 
     // Parent Document
@@ -92,6 +101,14 @@ export async function saveFlyerTemplateWithChunks(db, templateMetadata, fullBase
     delete parentPayload.bgImageDataUrl;
 
     batch.set(parentDocRef, parentPayload);
+
+    // Delete any obsolete chunks that exceed the new chunk count
+    existingDocs.forEach((d) => {
+      const idx = d.data().index;
+      if (typeof idx === 'number' && idx >= chunks.length) {
+        batch.delete(d.ref);
+      }
+    });
 
     // Chunk Subdocuments: flyer_templates/{templateId}/chunks/{index}
     chunks.forEach((chunk) => {
@@ -134,25 +151,45 @@ export async function loadFlyerTemplateImage(db, templateId) {
     return imageMemoryCache.get(templateId);
   }
 
-  // 2. Query subcollection chunks from Firestore
+  // 2. Query subcollection chunks and parent metadata from Firestore
   if (!db) return null;
 
   try {
+    const parentDocRef = doc(db, 'flyer_templates', templateId);
     const chunksCollRef = collection(db, 'flyer_templates', templateId, 'chunks');
-    const snapshot = await getDocs(chunksCollRef);
 
-    if (snapshot.empty) {
+    const [parentSnap, chunksSnapshot] = await Promise.all([
+      getDoc(parentDocRef),
+      getDocs(chunksCollRef)
+    ]);
+
+    if (chunksSnapshot.empty) {
       return null;
     }
 
-    // Sort chunks by index ascending and join losslessly
-    const sortedDocs = snapshot.docs.map((d) => d.data()).sort((a, b) => a.index - b.index);
-    const fullBase64 = sortedDocs.map((d) => d.data).join('');
+    const parentData = parentSnap.exists() ? parentSnap.data() : null;
+    const expectedChunkCount = (parentData && typeof parentData.chunkCount === 'number') ? parentData.chunkCount : null;
+    const expectedTotalLength = (parentData && typeof parentData.totalLength === 'number') ? parentData.totalLength : null;
 
-    if (fullBase64) {
-      imageMemoryCache.set(templateId, fullBase64);
+    // Filter out any stale/orphan chunks with index >= expectedChunkCount and sort ascending
+    const sortedDocs = chunksSnapshot.docs
+      .map((d) => d.data())
+      .filter((d) => typeof d.index === 'number' && (expectedChunkCount === null || d.index < expectedChunkCount))
+      .sort((a, b) => a.index - b.index);
+
+    let fullBase64 = sortedDocs.map((d) => d.data).join('');
+
+    // If exact total length is specified in metadata, slice exactly to prevent trailing junk
+    if (expectedTotalLength && fullBase64.length > expectedTotalLength) {
+      fullBase64 = fullBase64.slice(0, expectedTotalLength);
     }
-    return fullBase64;
+
+    if (fullBase64 && fullBase64.startsWith('data:image')) {
+      imageMemoryCache.set(templateId, fullBase64);
+      return fullBase64;
+    }
+
+    return fullBase64 || null;
   } catch (err) {
     console.warn("Failed to fetch flyer template image chunks:", err);
     return null;

@@ -121,7 +121,7 @@ export default function Volunteer() {
     return isNaN(num) ? fallback : num;
   };
 
-  // Live QR Code Generation & Background Image Preload Effect
+  // Live QR Code Generation Effect
   useEffect(() => {
     const activeTpl = flyerTemplates.find(t => t.id === selectedTemplateId);
     const cleanTag = (campaignTagInput || 'demo').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
@@ -132,20 +132,32 @@ export default function Volunteer() {
     QRCode.toDataURL(shortUrl, { width: 360, margin: 0, color: { dark: colorToQrHex(qrFg, '#161942FF'), light: colorToQrHex(qrBgRaw, '#00000000') } })
       .then(url => setQrDataUrl(url))
       .catch(err => console.warn('QR Code error:', err));
-
-    if (selectedTemplateId) {
-      if (activeTpl?.thumbnailBase64) {
-        setTplFullImage(activeTpl.thumbnailBase64);
-      }
-      if (isFirebaseConfigured && db) {
-        loadFlyerTemplateImage(db, selectedTemplateId).then(fullImg => {
-          if (fullImg) setTplFullImage(fullImg);
-        });
-      }
-    } else {
-      setTplFullImage(null);
-    }
   }, [campaignTagInput, selectedTemplateId, flyerTemplates]);
+
+  // Flyer Template High-Res Image Preload Effect
+  useEffect(() => {
+    if (!selectedTemplateId) {
+      setTplFullImage(null);
+      return;
+    }
+
+    const activeTpl = flyerTemplates.find(t => t.id === selectedTemplateId);
+    if (activeTpl?.thumbnailBase64) {
+      setTplFullImage(activeTpl.thumbnailBase64);
+    } else if (activeTpl?.bgImageUrl) {
+      setTplFullImage(activeTpl.bgImageUrl);
+    }
+
+    if (isFirebaseConfigured && db) {
+      let isMounted = true;
+      loadFlyerTemplateImage(db, selectedTemplateId).then(fullImg => {
+        if (isMounted && fullImg) {
+          setTplFullImage(fullImg);
+        }
+      }).catch(err => console.warn('Template image load error:', err));
+      return () => { isMounted = false; };
+    }
+  }, [selectedTemplateId, flyerTemplates]);
 
   const downloadFlyerImage = async () => {
     const activeTemplate = flyerTemplates.find(t => t.id === selectedTemplateId);
@@ -1222,13 +1234,33 @@ export default function Volunteer() {
                         width: '100%',
                         maxWidth: '360px',
                         aspectRatio: `${tplW} / ${tplH}`,
-                        background: `url(${bgSource}) 0 0 / 100% 100% no-repeat`,
                         containerType: 'inline-size',
                         borderRadius: 'var(--radius-md)',
                         border: '1px solid var(--border-color)',
                         overflow: 'hidden',
-                        boxShadow: 'var(--shadow-md)'
+                        boxShadow: 'var(--shadow-md)',
+                        background: '#FFFFFF'
                       }}>
+                        {/* High-Fidelity Flyer Base Image */}
+                        <img 
+                          src={bgSource} 
+                          alt={activeTpl.templateName || "Flyer Template"} 
+                          onError={() => {
+                            if (activeTpl?.thumbnailBase64 && bgSource !== activeTpl.thumbnailBase64) {
+                              setTplFullImage(activeTpl.thumbnailBase64);
+                            }
+                          }}
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'fill',
+                            pointerEvents: 'none',
+                            display: 'block'
+                          }} 
+                        />
+
                         {/* Overlay QR Code at exact pixel coordinates with custom colors & shadow */}
                         <div style={{
                           position: 'absolute',
@@ -1243,9 +1275,10 @@ export default function Volunteer() {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          boxSizing: 'border-box'
+                          boxSizing: 'border-box',
+                          zIndex: 2
                         }}>
-                          {qrDataUrl && <img src={qrDataUrl} alt="QR Code" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+                          {qrDataUrl && <img src={qrDataUrl} alt="QR Code" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />}
                         </div>
 
                         {/* Shortlink Text overlayed at exact pixel coordinates */}
@@ -1259,7 +1292,8 @@ export default function Volunteer() {
                           fontWeight: 800,
                           fontSize: `calc(${(parsePixelSize(activeTpl.shortlinkText?.fontSize, Math.round(tplH * 0.035)) / tplW) * 100}cqw)`,
                           textShadow: activeTpl.shortlinkText?.hasShadow ? `0 2px 6px ${activeTpl.shortlinkText?.shadowColor || 'rgba(0,0,0,0.3)'}` : 'none',
-                          whiteSpace: 'nowrap'
+                          whiteSpace: 'nowrap',
+                          zIndex: 2
                         }}>
                           skyuiuc.org/{(campaignTagInput || 'demo').trim().toLowerCase()}
                         </div>

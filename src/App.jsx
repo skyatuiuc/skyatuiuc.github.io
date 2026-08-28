@@ -57,6 +57,8 @@ export default function App() {
               <Routes>
                 {/* Public General Info & Marketing Page */}
                 <Route path="/" element={<Home />} />
+                <Route path="/index.html" element={<Home />} />
+                <Route path="/index" element={<Home />} />
 
                 {/* Public Scientific Research Directory (Lazy) */}
                 <Route path="/research" element={<Research />} />
