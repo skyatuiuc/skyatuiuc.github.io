@@ -11,7 +11,7 @@
     "deploy:pages": "gh-pages -d dist",
     "deploy:rules": "firebase deploy --only firestore:rules",
     "deploy:storage": "firebase deploy --only storage",
-    "deploy:apps-script": "clasp push && clasp deploy -i AKfycbyHJFonGIbqaZfADEed5QgzodmE65hTDLYp_iY-Tn_Nemg9k-eAUQV4s5mYMMRV3zDT -d 'Campaign Engine v4.0.0'",
+    "deploy:apps-script": "clasp push && clasp deploy -i AKfycbyHJFonGIbqaZfADEed5QgzodmE65hTDLYp_iY-Tn_Nemg9k-eAUQV4s5mYMMRV3zDT -d 'Campaign Engine v4.3.0'",
     "deploy": "npm run deploy:rules && npm run deploy:apps-script && gh-pages -d dist",
     "deploy:all": "npm run build && npm run deploy",
     "clasp:login": "clasp login",

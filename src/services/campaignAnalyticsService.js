@@ -268,7 +268,11 @@ export async function getCampaignAnalyticsForDateRange(startDateStr, endDateStr)
             grandTotalScans: data.grandTotalScans || 0,
             grandTotalConversions: data.grandTotalConversions || 0
           };
+        } else {
+          console.warn("GAS campaign analytics responded with non-success status:", data);
         }
+      } else {
+        console.warn("GAS campaign analytics HTTP error:", resp.status, resp.statusText);
       }
     } catch (err) {
       console.warn("Google Apps Script campaign fetch error, switching to fallback:", err);
