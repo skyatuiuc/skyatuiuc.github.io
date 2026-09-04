@@ -12,6 +12,43 @@ import AttendanceTab from '../components/AttendanceTab';
 import { parseFeeAndPayment } from '../services/emailService';
 import { getDefaultActiveRetreatId } from '../utils/retreatUtils';
 
+const getApplicantTimestamp = (reg) => {
+  if (!reg) return 0;
+  const raw = reg.appliedAt || reg.submittedAt || reg.createdAt || reg.registeredAt || reg.updatedAt || reg.timestamp;
+  if (!raw) return 0;
+  if (typeof raw === 'number') return raw;
+  if (raw instanceof Date) return raw.getTime();
+  if (typeof raw?.toDate === 'function') {
+    try {
+      return raw.toDate().getTime();
+    } catch {
+      // ignore
+    }
+  }
+  if (typeof raw?.seconds === 'number') {
+    return raw.seconds * 1000;
+  }
+  if (typeof raw === 'string') {
+    const parsed = Date.parse(raw);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+};
+
+const getEffectivePaymentStatus = (reg) => {
+  if (!reg) return 'Exempt';
+  const feeInfo = parseFeeAndPayment(reg);
+  // Applicants who do not have to pay fees ($0 tuition, SORF grant funded, or explicit paymentExempt)
+  if (feeInfo.amount === 0 || reg.paymentExempt || reg.isExempt || reg.exempt || reg.feeExempt) {
+    return 'Exempt';
+  }
+  const rawStatus = (reg.paymentStatus || '').toLowerCase().trim();
+  if (feeInfo.isPaid || reg.paid === true || rawStatus === 'paid' || rawStatus === 'completed' || rawStatus === 'waived') {
+    return 'Paid';
+  }
+  return 'Unpaid';
+};
+
 export default function Volunteer() {
   const { currentUser, isAdmin, authorizedEmails } = useAuth();
   const isSuperAdmin = Boolean(isAdmin || (currentUser?.email && currentUser.email.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim()));
@@ -69,7 +106,7 @@ export default function Volunteer() {
   const [claimFilter, setClaimFilter] = useState('All');   // 'All' | 'My Claims' | 'Unclaimed' | 'Claimed by Others'
   const [paymentFilter, setPaymentFilter] = useState('All'); // 'All' | 'Paid / Exempt' | 'Unpaid'
   const [iahvFilter, setIahvFilter] = useState('All');     // 'All' | 'Registered' | 'Not Registered'
-  const [sortBy, setSortBy] = useState('newest');           // 'newest' | 'oldest' | 'name' | 'lastContacted'
+  const [sortBy, setSortBy] = useState('oldest');           // Default to oldest first so first applicants get responses first
 
   // ORIENTATION MODAL WORKBENCH STATE
   const [selectedApp, setSelectedApp] = useState(null);
@@ -452,11 +489,10 @@ export default function Volunteer() {
     if (claimFilter === 'Unclaimed' && !isUnclaimed) return false;
     if (claimFilter === 'Claimed by Others' && !isClaimedByOther) return false;
 
-    const isFeeExempt = Number(reg.fee) === 0 || reg.fee === '0' || reg.paymentExempt;
-    const currentPayment = reg.paymentStatus || (isFeeExempt ? 'Exempt' : 'Unpaid');
+    const payment = getEffectivePaymentStatus(reg);
 
-    if (paymentFilter === 'Paid / Exempt' && currentPayment !== 'Paid' && currentPayment !== 'Exempt') return false;
-    if (paymentFilter === 'Unpaid' && currentPayment !== 'Unpaid') return false;
+    if (paymentFilter === 'Paid / Exempt' && payment !== 'Paid' && payment !== 'Exempt') return false;
+    if (paymentFilter === 'Unpaid' && payment !== 'Unpaid') return false;
 
     const isIahv = Boolean(reg.iahvRegistered);
     if (iahvFilter === 'Registered' && !isIahv) return false;
@@ -464,17 +500,45 @@ export default function Volunteer() {
 
     return true;
   }).sort((a, b) => {
-    if (sortBy === 'newest') return (b.submittedAt || b.id).localeCompare(a.submittedAt || a.id);
-    if (sortBy === 'oldest') return (a.submittedAt || a.id).localeCompare(b.submittedAt || b.id);
+    if (sortBy === 'oldest') {
+      const timeA = getApplicantTimestamp(a);
+      const timeB = getApplicantTimestamp(b);
+      if (timeA && timeB) {
+        if (timeA !== timeB) return timeA - timeB;
+      } else if (timeA && !timeB) {
+        return -1;
+      } else if (!timeA && timeB) {
+        return 1;
+      }
+      return (a.id || '').localeCompare(b.id || '');
+    }
+    if (sortBy === 'newest') {
+      const timeA = getApplicantTimestamp(a);
+      const timeB = getApplicantTimestamp(b);
+      if (timeA && timeB) {
+        if (timeA !== timeB) return timeB - timeA;
+      } else if (timeA && !timeB) {
+        return -1;
+      } else if (!timeA && timeB) {
+        return 1;
+      }
+      return (b.id || '').localeCompare(a.id || '');
+    }
     if (sortBy === 'name') {
-      const nameA = (a.fullName || `${a.firstName || ''} ${a.lastName || ''}`).toLowerCase();
-      const nameB = (b.fullName || `${b.firstName || ''} ${b.lastName || ''}`).toLowerCase();
+      const nameA = (a.fullName || `${a.firstName || ''} ${a.lastName || ''}`.trim() || a.email || '').toLowerCase();
+      const nameB = (b.fullName || `${b.firstName || ''} ${b.lastName || ''}`.trim() || b.email || '').toLowerCase();
       return nameA.localeCompare(nameB);
     }
     if (sortBy === 'lastContacted') {
-      const dateA = a.lastContactedDate || '0000-00-00';
-      const dateB = b.lastContactedDate || '0000-00-00';
-      return dateB.localeCompare(dateA);
+      const parseDate = (d) => {
+        if (!d || d === 'Never') return 0;
+        const parsed = Date.parse(d);
+        return isNaN(parsed) ? 0 : parsed;
+      };
+      const dateA = parseDate(a.lastContactedDate);
+      const dateB = parseDate(b.lastContactedDate);
+      if (dateA !== dateB) return dateB - dateA;
+      return (a.id || '').localeCompare(b.id || '');
     }
     return 0;
   });
@@ -770,8 +834,8 @@ export default function Volunteer() {
                     onChange={(e) => setSortBy(e.target.value)}
                     style={{ width: '100%', padding: '0.6rem 0.75rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.825rem' }}
                   >
-                    <option value="newest">Submission Date (Newest)</option>
-                    <option value="oldest">Submission Date (Oldest)</option>
+                    <option value="oldest">Submission Date (Oldest First)</option>
+                    <option value="newest">Submission Date (Newest First)</option>
                     <option value="name">Applicant Name (A-Z)</option>
                     <option value="lastContacted">Last Contacted Date</option>
                   </select>
@@ -830,11 +894,16 @@ export default function Volunteer() {
                           : rawStatus.toLowerCase().includes('withdraw') ? 'Withdrawn'
                           : 'Uncontacted';
 
-                        const isFeeExempt = Number(reg.fee) === 0 || reg.fee === '0' || reg.paymentExempt;
-                        const payment = reg.paymentStatus || (isFeeExempt ? 'Exempt' : 'Unpaid');
+                        const payment = getEffectivePaymentStatus(reg);
                         const isIahv = Boolean(reg.iahvRegistered);
 
                         const isClaimedByMe = reg.claimedBy && reg.claimedBy.toLowerCase() === userEmailLower;
+
+                        const appTimestamp = getApplicantTimestamp(reg);
+                        const appliedDateStr = appTimestamp ? new Date(appTimestamp).toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric'
+                        }) : null;
 
                         return (
                           <tr 
@@ -850,7 +919,17 @@ export default function Volunteer() {
                           >
                             {/* Applicant Name & Contact */}
                             <td style={{ padding: '0.75rem 1rem' }}>
-                              <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.9rem' }}>{name}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                                <span style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.9rem' }}>{name}</span>
+                                {appliedDateStr && (
+                                  <span 
+                                    title={`Applied: ${new Date(appTimestamp).toLocaleString()}`}
+                                    style={{ fontSize: '0.72rem', color: 'var(--text-muted)', background: '#F1F5F9', padding: '0.12rem 0.45rem', borderRadius: '4px', whiteSpace: 'nowrap' }}
+                                  >
+                                    {appliedDateStr}
+                                  </span>
+                                )}
+                              </div>
                               <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '0.15rem' }}>
                                 <span>{email}</span>
                                 {phone !== 'N/A' && <span>• {phone}</span>}
@@ -1472,7 +1551,16 @@ export default function Volunteer() {
 
                   {/* Submission Date */}
                   <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                    Submitted: {selectedApp.submittedAt ? new Date(selectedApp.submittedAt).toLocaleDateString() : 'Recent'}
+                    Submitted: {(() => {
+                      const ts = getApplicantTimestamp(selectedApp);
+                      return ts ? new Date(ts).toLocaleString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit'
+                      }) : 'Recent';
+                    })()}
                   </div>
                 </div>
 
@@ -1567,17 +1655,19 @@ export default function Volunteer() {
                 </label>
                 {(() => {
                   const feeInfo = parseFeeAndPayment(selectedApp);
+                  const payment = getEffectivePaymentStatus(selectedApp);
+                  const isPaidOrExempt = payment === 'Paid' || payment === 'Exempt';
                   return (
                     <div style={{
                       padding: '0.65rem',
-                      background: feeInfo.isPaid ? '#DCFCE7' : '#FFEDD5',
-                      border: feeInfo.isPaid ? '1px solid #86EFAC' : '1px solid #FDBA74',
+                      background: isPaidOrExempt ? '#DCFCE7' : '#FFEDD5',
+                      border: isPaidOrExempt ? '1px solid #86EFAC' : '1px solid #FDBA74',
                       borderRadius: 'var(--radius-sm)',
-                      color: feeInfo.isPaid ? '#166534' : '#C2410C',
+                      color: isPaidOrExempt ? '#166534' : '#C2410C',
                       fontWeight: 700,
                       fontSize: '0.85rem'
                     }}>
-                      {feeInfo.amount === 0 ? '✓ Free ($0 Tuition)' : feeInfo.isPaid ? `✓ ${feeInfo.formattedFee} Paid` : `⚠️ ${feeInfo.formattedFee} Unpaid`}
+                      {payment === 'Exempt' ? '✓ Free ($0 Tuition)' : payment === 'Paid' ? `✓ ${feeInfo.formattedFee} Paid` : `⚠️ ${feeInfo.formattedFee} Unpaid`}
                     </div>
                   );
                 })()}

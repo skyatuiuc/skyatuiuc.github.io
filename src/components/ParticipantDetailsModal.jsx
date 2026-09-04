@@ -226,7 +226,7 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
               <Clock size={13} /> Application Time
             </div>
             <div style={{ color: 'var(--text-main)', fontSize: '0.85rem', fontWeight: 600 }}>
-              {formatDateTime(participant.submittedAt || participant.registeredAt)}
+              {formatDateTime(participant.appliedAt || participant.submittedAt || participant.registeredAt || participant.createdAt)}
             </div>
           </div>
 

@@ -46,6 +46,11 @@ export const DEFAULT_EMAIL_SETTINGS = {
 export const parseFeeAndPayment = (participant) => {
   if (!participant) return { amount: 0, formattedFee: '$0', isPaid: true, requiresPayment: false };
 
+  // Check explicit exemption flags
+  if (participant.paymentExempt || participant.isExempt || participant.exempt || participant.feeExempt) {
+    return { amount: 0, formattedFee: '$0', isPaid: true, requiresPayment: false };
+  }
+
   // 1. Determine numeric fee amount
   let feeNum = null;
   
@@ -84,7 +89,7 @@ export const parseFeeAndPayment = (participant) => {
   let isPaid = false;
   if (isFreeTier) {
     isPaid = true;
-  } else if (rawPaidFlag || rawStatus === 'paid' || rawStatus === 'completed' || rawStatus === 'waived') {
+  } else if (rawPaidFlag || rawStatus === 'paid' || rawStatus === 'completed' || rawStatus === 'waived' || rawStatus === 'exempt') {
     isPaid = true;
   } else {
     isPaid = false;
