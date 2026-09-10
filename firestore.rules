@@ -117,6 +117,19 @@ service cloud.firestore {
       allow write: if isVolunteer();
       allow delete: if isAdmin();
     }
+
+    // 8. Retreat Nametag Templates Studio (Super Admin creates/edits, Volunteers read)
+    match /nametag_templates/{document} {
+      allow read: if isVolunteer();
+      allow write, create, update, delete: if isAdmin();
+
+      // Chunk Subcollection for Lossless Image Slices
+      match /chunks/{chunkId} {
+        allow read: if isVolunteer();
+        allow write, create, update, delete: if isAdmin();
+      }
+    }
   }
 }
+
 

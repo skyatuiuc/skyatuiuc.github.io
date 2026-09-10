@@ -18,5 +18,12 @@ service firebase.storage {
       allow read: if true;
       allow write: if isAdmin();
     }
+
+    // Nametag Templates Media (Public Read, Super Admin Write)
+    match /nametag_templates/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }
+

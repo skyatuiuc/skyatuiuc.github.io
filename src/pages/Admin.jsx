@@ -5,7 +5,7 @@ import { db, isFirebaseConfigured } from '../firebase/config';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, getCountFromServer } from 'firebase/firestore';
 import { saveFlyerTemplateWithChunks, loadFlyerTemplateImage, deleteFlyerTemplateWithChunks } from '../services/flyerChunkService';
 import { Link } from 'react-router-dom';
-import { UserPlus, Trash2, Mail, CheckCircle2, AlertCircle, Database, Calendar, Plus, Server, HeartHandshake, ArrowRight, Activity, ExternalLink, Users, FileText, ShieldCheck, BarChart3, QrCode, Edit3, Save, X, Download, TrendingUp } from 'lucide-react';
+import { UserPlus, Trash2, Mail, CheckCircle2, AlertCircle, Database, Calendar, Plus, Server, HeartHandshake, ArrowRight, Activity, ExternalLink, Users, FileText, ShieldCheck, BarChart3, QrCode, Edit3, Save, X, Download, TrendingUp, Tag } from 'lucide-react';
 import QRCode from 'qrcode';
 import { logDatabaseOperation } from '../services/telemetryService';
 import { getCampaignAnalyticsForDateRange } from '../services/campaignAnalyticsService';
@@ -13,6 +13,7 @@ import { SPARK_PLAN_QUOTAS, calculateDynamicStorageBytes, calculateDynamicEgress
 import ResourceUsageChart from '../components/ResourceUsageChart';
 import GroupAssignmentTab from '../components/GroupAssignmentTab';
 import AutoEmailDispatchTab from '../components/AutoEmailDispatchTab';
+import NametagTemplateTab from '../components/NametagTemplateTab';
 import { getDefaultActiveRetreatId } from '../utils/retreatUtils';
 
 // Reusable Compact Color Selector with Opacity / Alpha Control & RGB Display
@@ -143,7 +144,7 @@ const ColorPickerWithAlpha = ({ label, value, onChange }) => {
 
 export default function Admin() {
   const { currentUser, authorizedEmails, addVolunteerEmail, removeVolunteerEmail } = useAuth();
-  const [activeTab, setActiveTab] = useState('volunteers'); // 'volunteers' | 'retreats' | 'usage' | 'applications'
+  const [activeTab, setActiveTab] = useState('volunteers'); // 'volunteers' | 'retreats' | 'groups' | 'emails' | 'flyer_templates' | 'nametag_templates' | 'campaign_analytics' | 'usage'
   const [newEmail, setNewEmail] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
   
@@ -1315,6 +1316,30 @@ export default function Admin() {
           </button>
 
           <button 
+            onClick={() => setActiveTab('nametag_templates')}
+            style={{
+              padding: '0.8rem 1.25rem',
+              background: activeTab === 'nametag_templates' ? '#FFFFFF' : 'none',
+              border: 'none',
+              borderBottom: activeTab === 'nametag_templates' ? '3px solid #0284C7' : '3px solid transparent',
+              color: activeTab === 'nametag_templates' ? '#0284C7' : 'var(--text-secondary)',
+              fontWeight: 700,
+              fontSize: '0.9rem',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              borderRadius: 'var(--radius-sm) var(--radius-sm) 0 0',
+              transition: 'var(--transition-fast)'
+            }}
+          >
+            <Tag size={18} color={activeTab === 'nametag_templates' ? '#0284C7' : 'var(--text-muted)'} />
+            Nametag Templates
+          </button>
+
+          <button 
             onClick={() => setActiveTab('campaign_analytics')}
             style={{
               padding: '0.8rem 1.25rem',
@@ -2343,6 +2368,11 @@ export default function Admin() {
             </div>
 
           </div>
+        )}
+
+        {/* TAB 2.6: RETREAT NAMETAG TEMPLATES STUDIO */}
+        {activeTab === 'nametag_templates' && (
+          <NametagTemplateTab />
         )}
 
         {/* TAB 2.8: CAMPAIGN SCAN & REGISTRATION REFERRAL ANALYTICS DASHBOARD */}

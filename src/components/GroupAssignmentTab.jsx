@@ -16,9 +16,11 @@ import {
   Calendar, 
   Plus, 
   Minus, 
-  X
+  X,
+  Tag
 } from 'lucide-react';
 import ParticipantDetailsModal from './ParticipantDetailsModal';
+import NametagDownloadModal from './NametagDownloadModal';
 
 export default function GroupAssignmentTab({ 
   retreats = [], 
@@ -47,6 +49,7 @@ export default function GroupAssignmentTab({
   const [inspectParticipant, setInspectParticipant] = useState(null);
   const [toastMessage, setToastMessage] = useState({ type: '', text: '' });
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
+  const [showNametagModal, setShowNametagModal] = useState(false);
 
   // Sync retreat group config when activeRetreat changes
   useEffect(() => {
@@ -76,6 +79,17 @@ export default function GroupAssignmentTab({
     if (clean === ADMIN_EMAIL.toLowerCase().trim()) return true;
     return authorizedEmails.some(ae => ae.toLowerCase().trim() === clean);
   }, [authorizedEmails]);
+
+  // All applicants for active retreat (all statuses: approved, pending, uncontacted, waitlisted, etc.)
+  const retreatAllApplicants = useMemo(() => {
+    return registrations.filter(r => {
+      return selectedRetreatId === 'ALL' || 
+        retreats.length <= 1 ||
+        r.retreatId === activeRetreat?.id || 
+        (!r.retreatId && r.retreatTitle === activeRetreat?.title) ||
+        (r.retreatTitle && activeRetreat?.title && r.retreatTitle.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim());
+    });
+  }, [registrations, activeRetreat, selectedRetreatId, retreats]);
 
   // All Approved Registrations for active retreat (The SOLE source of members)
   const retreatApprovedParticipants = useMemo(() => {
@@ -803,8 +817,27 @@ export default function GroupAssignmentTab({
             </div>
           </div>
 
-          {/* Action Buttons: Auto-Arrange & Reset */}
+          {/* Action Buttons: Auto-Arrange, Print Nametags & Reset */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setShowNametagModal(true)}
+              style={{
+                padding: '0.65rem 1.15rem',
+                fontSize: '0.88rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)',
+                boxShadow: 'var(--shadow-sm)'
+              }}
+              title="Generate printable PDF nametag sheets for this retreat"
+            >
+              <Tag size={16} />
+              Print Nametag Sheets
+            </button>
+
             <button
               type="button"
               className="btn btn-primary"
@@ -1112,6 +1145,16 @@ export default function GroupAssignmentTab({
           onClose={() => setInspectParticipant(null)}
         />
       )}
+
+      {/* Printable Nametag Sheets Generation Modal */}
+      <NametagDownloadModal
+        isOpen={showNametagModal}
+        onClose={() => setShowNametagModal(false)}
+        activeRetreat={activeRetreat}
+        allApplicants={retreatAllApplicants}
+        groupNames={groupNames}
+        db={db}
+      />
 
     </div>
   );
