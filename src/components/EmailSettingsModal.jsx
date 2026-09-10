@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, 
   Save, 
@@ -19,6 +20,15 @@ export default function EmailSettingsModal({
 
   const [activeTab, setActiveTab] = useState('links'); // 'links' | 'webhook'
 
+  // Lock body scroll while modal is active so background doesn't scroll
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
   const handleSave = (e) => {
     e.preventDefault();
     if (!isSuperAdmin) return;
@@ -26,9 +36,9 @@ export default function EmailSettingsModal({
     onClose();
   };
 
-  return (
+  return createPortal(
     <div 
-      className="modal-overlay animate-fade-in" 
+      className="modal-overlay" 
       onClick={onClose}
       style={{
         position: 'fixed',
@@ -38,7 +48,7 @@ export default function EmailSettingsModal({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 9999,
+        zIndex: 99999,
         padding: '1.25rem'
       }}
     >
@@ -173,6 +183,37 @@ export default function EmailSettingsModal({
           
           {activeTab === 'links' && (
             <>
+              {/* IAHV Course Registration Link */}
+              <div style={{ background: 'var(--sky-blue-subtle)', padding: '0.85rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(31, 116, 241, 0.25)' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--sky-blue)', fontWeight: 800, textTransform: 'uppercase', marginBottom: '0.35rem' }}>
+                  IAHV Course Registration Link (Official Portal) *
+                </label>
+                <input
+                  type="url"
+                  disabled={!isSuperAdmin}
+                  value={formData.defaultRegistrationLink || formData.registrationLink || ''}
+                  onChange={(e) => setFormData({ 
+                    ...formData, 
+                    defaultRegistrationLink: e.target.value,
+                    registrationLink: e.target.value 
+                  })}
+                  placeholder="https://members.us.iahv.org/us-en/course/checkout..."
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    background: !isSuperAdmin ? '#F8FAFC' : '#FFFFFF',
+                    border: '1px solid rgba(35, 39, 95, 0.2)',
+                    color: 'var(--text-main)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.88rem',
+                    fontWeight: 600
+                  }}
+                />
+                <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                  This official IAHV registration URL is included in all <strong>Application Accepted</strong> and <strong>Registration Reminder</strong> emails so accepted participants can register prior to the retreat.
+                </p>
+              </div>
+
               <div>
                 <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-main)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.35rem' }}>
                   WhatsApp Community Chat Link
@@ -369,6 +410,7 @@ export default function EmailSettingsModal({
         </form>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

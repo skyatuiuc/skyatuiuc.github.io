@@ -5,9 +5,18 @@ import { EMAIL_TEMPLATES } from '../templates/emailTemplates';
 import { getRetreatDaySchedule } from '../data/scheduleData';
 import { getFeeAmount } from '../data/pricingData';
 
-export const escapeHtml = (str) => {
+export const normalizeEmailText = (str) => {
   if (str === null || str === undefined) return '';
   return String(str)
+    .replace(/[\u2018\u2019]/g, "'") // smart single quotes
+    .replace(/[\u201C\u201D]/g, '"') // smart double quotes
+    .replace(/[\u2013\u2014]/g, '-') // en-dash and em-dash
+    .replace(/\u2026/g, '...');      // ellipsis
+};
+
+export const escapeHtml = (str) => {
+  if (str === null || str === undefined) return '';
+  return normalizeEmailText(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -39,7 +48,8 @@ export const DEFAULT_EMAIL_SETTINGS = {
   whatsAppLink: import.meta.env?.VITE_WHATSAPP_LINK || '',
   surveyLink: import.meta.env?.VITE_SURVEY_LINK || '',
   dailyPracticeLink: import.meta.env?.VITE_DAILY_PRACTICE_LINK || '',
-  defaultRegistrationLink: 'https://members.us.iahv.org/us-en/course/checkout'
+  defaultRegistrationLink: 'https://members.us.iahv.org/us-en/course/checkout',
+  registrationLink: 'https://members.us.iahv.org/us-en/course/checkout'
 };
 
 // Robust Fee and Payment Status Parser
@@ -197,7 +207,7 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
     address: escapeHtml(retreat?.address || ''),
     fullLocationString: escapeHtml(retreat?.location ? `${retreat.location}${retreat.address ? ` (${retreat.address})` : ''}` : ''),
     teachers: escapeHtml(retreat?.teachers || 'SKY Certified Teachers'),
-    registrationLink: sanitizeUrl(retreat?.registrationLink || settings.defaultRegistrationLink),
+    registrationLink: sanitizeUrl(settings.registrationLink || settings.defaultRegistrationLink || retreat?.registrationLink),
     clubEmail: escapeHtml(settings.clubEmail || 'skyatuiuc@gmail.com'),
     contactName: escapeHtml(retreat?.contactName || settings.contactName || ''),
     contactPhone: escapeHtml(retreat?.contactPhone || settings.contactPhone || ''),
@@ -210,10 +220,24 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
 
   const htmlBody = template.renderHtml(templateData);
   const plainText = htmlBody
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<head[\s\S]*?<\/head>/gi, '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '- ')
+    .replace(/<hr[^>]*>/gi, '\n---\n')
     .replace(/<[^>]+>/g, '')
-    .replace(/\n\s*\n/g, '\n\n')
+    .replace(/&rarr;/gi, '->')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#039;/gi, "'")
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\n\s*\n/g, '\n\n')
     .trim();
 
   return {

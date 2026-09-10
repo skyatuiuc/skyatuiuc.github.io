@@ -11,8 +11,10 @@ export const EMAIL_TEMPLATES = {
 <!DOCTYPE html>
 <html>
 <head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="x-apple-disable-message-reformatting">
   <title>Application Received - SKY Happiness Retreat</title>
   <style>
     body, p, h1, h2, h3, li, div { color: #23275F; font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
@@ -64,8 +66,10 @@ export const EMAIL_TEMPLATES = {
 <!DOCTYPE html>
 <html>
 <head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="x-apple-disable-message-reformatting">
   <title>Application Accepted! - SKY Happiness Retreat</title>
   <style>
     body, p, h1, h2, h3, li, div { color: #23275F; font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
@@ -81,7 +85,7 @@ export const EMAIL_TEMPLATES = {
 
     <hr style="border: none; border-top: 1px solid #E2E8F0; margin-bottom: 20px;">
 
-    <h1 style="color: #1F74F1; font-size: 24px; text-align: center; margin-top: 0; margin-bottom: 20px;">🎉 Application Accepted!</h1>
+    <h1 style="color: #1F74F1; font-size: 24px; text-align: center; margin-top: 0; margin-bottom: 20px;">Application Accepted!</h1>
     
     <p style="line-height: 1.6; font-size: 16px; margin-bottom: 16px; color: #23275F;">Dear <strong>${data.firstName || 'Participant'}</strong>,</p>
     
@@ -90,33 +94,33 @@ export const EMAIL_TEMPLATES = {
     </p>
     
     <div style="background-color: #F0F7FF; border-left: 4px solid #1F74F1; padding: 15px 20px; border-radius: 4px; margin: 25px 0;">
-      <h3 style="color: #1F74F1; margin-top: 0; margin-bottom: 8px; font-size: 17px;">📌 Next Steps (Action Required within 24 Hours)</h3>
+      <h3 style="color: #1F74F1; margin-top: 0; margin-bottom: 8px; font-size: 17px;">Next Steps: Official IAHV Registration (Action Required within 24 Hours)</h3>
       <p style="line-height: 1.5; font-size: 15px; margin: 0 0 12px 0; color: #23275F;">
-        Please complete the official SKY registration to secure your fully funded spot. If you have a university email, be sure to use your <strong style="color: #1F74F1;">.edu email address</strong> to claim your club funding.
+        To secure your spot, please complete the official course registration through our partner organization, the <strong>International Association for Human Values (IAHV)</strong>. If you have a university email, be sure to use your <strong style="color: #1F74F1;">.edu email address</strong> to claim your fully funded tuition waiver.
       </p>
       ${data.registrationLink ? `
       <div style="text-align: center; margin-top: 15px;">
         <a href="${data.registrationLink}" style="display: inline-block; background-color: #1F74F1; color: #ffffff !important; padding: 12px 26px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 15px; box-shadow: 0 2px 6px rgba(31, 116, 241, 0.3);">
-          Complete Official Registration Here &rarr;
+          Complete Official IAHV Registration Here &rarr;
         </a>
       </div>` : ''}
     </div>
 
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
-      🕒 In-Person Retreat Schedule & Location
+      In-Person Retreat Schedule & Location
     </h3>
     <ul style="padding-left: 20px; line-height: 1.6; font-size: 15px; color: #23275F;">
-      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day1Label || 'Friday'}:</strong> ${data.day1Time}</li>
-      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day2Label || 'Saturday'}:</strong> ${data.day2Time}</li>
-      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day3Label || 'Sunday'}:</strong> ${data.day3Time}</li>
+      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day1Label || 'Friday'}:</strong> ${data.day1Time || 'TBA'}</li>
+      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day2Label || 'Saturday'}:</strong> ${data.day2Time || 'TBA'}</li>
+      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day3Label || 'Sunday'}:</strong> ${data.day3Time || 'TBA'}</li>
       <li style="color: #23275F; margin-top: 8px;">
-        <strong>Location:</strong> ${data.location}
+        <strong>Location:</strong> ${data.location || 'On campus (UIUC)'}
         ${data.address ? `<br><span style="color: #718096; font-size: 14px;"><strong>Address:</strong> ${data.address}</span>` : ''}
       </li>
     </ul>
 
     <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; padding: 12px 16px; border-radius: 6px; margin: 20px 0;">
-      <strong style="color: #B45309; font-size: 14px;">⚠️ Important Commitment Note:</strong>
+      <strong style="color: #B45309; font-size: 14px;">Important Commitment Note:</strong>
       <p style="font-size: 14px; line-height: 1.5; color: #92400E; margin: 4px 0 0 0;">
         Space and club funding are limited. Please ensure you are available for <strong>all 3 days</strong>. If your availability changes, kindly email <a href="mailto:${data.clubEmail || 'skyatuiuc@gmail.com'}" style="color: #B45309; font-weight: bold;">${data.clubEmail || 'skyatuiuc@gmail.com'}</a> immediately so your spot can be offered to another applicant on the waitlist.
       </p>
@@ -145,8 +149,10 @@ export const EMAIL_TEMPLATES = {
 <!DOCTYPE html>
 <html>
 <head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="x-apple-disable-message-reformatting">
   <title>Application Accepted & Payment Instructions - SKY Happiness Retreat</title>
   <style>
     body, p, h1, h2, h3, li, div { color: #23275F; font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
@@ -162,7 +168,7 @@ export const EMAIL_TEMPLATES = {
 
     <hr style="border: none; border-top: 1px solid #E2E8F0; margin-bottom: 20px;">
 
-    <h1 style="color: #DB6937; font-size: 24px; text-align: center; margin-top: 0; margin-bottom: 20px;">🎉 Application Accepted!</h1>
+    <h1 style="color: #DB6937; font-size: 24px; text-align: center; margin-top: 0; margin-bottom: 20px;">Application Accepted!</h1>
     
     <p style="line-height: 1.6; font-size: 16px; margin-bottom: 16px; color: #23275F;">Dear <strong>${data.firstName || 'Participant'}</strong>,</p>
     
@@ -172,14 +178,14 @@ export const EMAIL_TEMPLATES = {
     
     <!-- STEP 1: REGISTRATION -->
     <div style="background-color: #F0F7FF; border-left: 4px solid #1F74F1; padding: 15px 20px; border-radius: 4px; margin: 20px 0;">
-      <h3 style="color: #1F74F1; margin-top: 0; margin-bottom: 8px; font-size: 16px;">Step 1: Complete Official Registration (Within 24h)</h3>
+      <h3 style="color: #1F74F1; margin-top: 0; margin-bottom: 8px; font-size: 16px;">Step 1: Complete Official IAHV Registration (Within 24h)</h3>
       <p style="line-height: 1.5; font-size: 15px; margin: 0 0 10px 0; color: #23275F;">
-        Please complete the official SKY registration to secure your spot. Use your university or primary email address.
+        Please complete the official course registration through our partner organization, the <strong>International Association for Human Values (IAHV)</strong>, to secure your spot. Use your university or primary email address.
       </p>
       ${data.registrationLink ? `
       <div>
         <a href="${data.registrationLink}" style="display: inline-block; background-color: #1F74F1; color: #ffffff !important; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px;">
-          Complete Official Registration &rarr;
+          Complete Official IAHV Registration &rarr;
         </a>
       </div>` : ''}
     </div>
@@ -193,29 +199,29 @@ export const EMAIL_TEMPLATES = {
       ${data.paypalLink ? `
       <div>
         <a href="${data.paypalLink}" style="display: inline-block; background-color: #DB6937; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 15px; box-shadow: 0 2px 6px rgba(219, 105, 55, 0.35);">
-          💳 Pay via PayPal (${data.feeTier || 'Course Fee'}) &rarr;
+          Pay via PayPal (${data.feeTier || 'Course Fee'}) &rarr;
         </a>
       </div>` : `
       <div style="color: #DC2626; font-size: 14px; font-weight: bold;">
-        ⚠️ Payment link pending. Please contact the club at <a href="mailto:${data.clubEmail || 'skyatuiuc@gmail.com'}">${data.clubEmail || 'skyatuiuc@gmail.com'}</a>.
+        Payment link pending. Please contact the club at <a href="mailto:${data.clubEmail || 'skyatuiuc@gmail.com'}">${data.clubEmail || 'skyatuiuc@gmail.com'}</a>.
       </div>`}
     </div>
 
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
-      🕒 In-Person Retreat Schedule & Location
+      In-Person Retreat Schedule & Location
     </h3>
     <ul style="padding-left: 20px; line-height: 1.6; font-size: 15px; color: #23275F;">
-      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day1Label || 'Friday'}:</strong> ${data.day1Time}</li>
-      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day2Label || 'Saturday'}:</strong> ${data.day2Time}</li>
-      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day3Label || 'Sunday'}:</strong> ${data.day3Time}</li>
+      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day1Label || 'Friday'}:</strong> ${data.day1Time || 'TBA'}</li>
+      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day2Label || 'Saturday'}:</strong> ${data.day2Time || 'TBA'}</li>
+      <li style="margin-bottom: 6px; color: #23275F;"><strong style="color: #DB6937;">${data.day3Label || 'Sunday'}:</strong> ${data.day3Time || 'TBA'}</li>
       <li style="color: #23275F; margin-top: 8px;">
-        <strong>Location:</strong> ${data.location}
+        <strong>Location:</strong> ${data.location || 'On campus (UIUC)'}
         ${data.address ? `<br><span style="color: #718096; font-size: 14px;"><strong>Address:</strong> ${data.address}</span>` : ''}
       </li>
     </ul>
 
     <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; padding: 12px 16px; border-radius: 6px; margin: 20px 0;">
-      <strong style="color: #B45309; font-size: 14px;">⚠️ Important Attendance Note:</strong>
+      <strong style="color: #B45309; font-size: 14px;">Important Attendance Note:</strong>
       <p style="font-size: 14px; line-height: 1.5; color: #92400E; margin: 4px 0 0 0;">
         Space is limited. Please ensure you are available for <strong>all 3 days</strong>. If your schedule changes, kindly notify <a href="mailto:${data.clubEmail || 'skyatuiuc@gmail.com'}" style="color: #B45309; font-weight: bold;">${data.clubEmail || 'skyatuiuc@gmail.com'}</a> promptly.
       </p>
@@ -244,8 +250,10 @@ export const EMAIL_TEMPLATES = {
 <!DOCTYPE html>
 <html>
 <head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="x-apple-disable-message-reformatting">
   <title>Action Required: Registration Reminder - SKY Happiness Retreat</title>
   <style>
     body, p, h1, h2, h3, li, div { color: #23275F; font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
@@ -266,7 +274,7 @@ export const EMAIL_TEMPLATES = {
     <p style="line-height: 1.6; font-size: 16px; margin-bottom: 16px; color: #23275F;">Dear <strong>${data.firstName || 'Participant'}</strong>,</p>
     
     <p style="line-height: 1.6; font-size: 16px; margin-bottom: 16px; color: #23275F;">
-      This is a quick reminder to complete your official registration for the upcoming <strong>SKY Happiness Retreat at UIUC</strong> on <strong>${data.dates || 'the upcoming retreat dates'}</strong>. Official registration is required to attend.
+      This is a quick reminder to complete your official <strong>IAHV course registration</strong> for the upcoming <strong>SKY Happiness Retreat at UIUC</strong> on <strong>${data.dates || 'the upcoming retreat dates'}</strong>. Official registration through the IAHV portal is required prior to the retreat to confirm your attendance.
     </p>
     
     <p style="line-height: 1.6; font-size: 16px; margin-bottom: 16px; color: #23275F;">
@@ -276,7 +284,7 @@ export const EMAIL_TEMPLATES = {
     ${data.registrationLink ? `
     <div style="text-align: center; margin: 25px 0;">
       <a href="${data.registrationLink}" style="display: inline-block; background-color: #1F74F1; color: #ffffff !important; padding: 12px 26px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 15px; box-shadow: 0 2px 6px rgba(31, 116, 241, 0.3);">
-        Complete Registration Here &rarr;
+        Complete Official IAHV Registration Here &rarr;
       </a>
     </div>` : ''}
     
@@ -307,8 +315,10 @@ export const EMAIL_TEMPLATES = {
 <!DOCTYPE html>
 <html>
 <head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="x-apple-disable-message-reformatting">
   <title>Welcome to the SKY Happiness Retreat!</title>
   <style>
     body, p, h1, h2, h3, li, div { color: #23275F; font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
@@ -324,7 +334,7 @@ export const EMAIL_TEMPLATES = {
 
     <hr style="border: none; border-top: 1px solid #E2E8F0; margin-bottom: 20px;">
 
-    <h1 style="color: #1F74F1; font-size: 24px; text-align: center; margin-top: 0; margin-bottom: 20px;">🌿 Welcome to the SKY Happiness Retreat!</h1>
+    <h1 style="color: #1F74F1; font-size: 24px; text-align: center; margin-top: 0; margin-bottom: 20px;">Welcome to the SKY Happiness Retreat!</h1>
     
     <p style="line-height: 1.6; font-size: 16px; margin-bottom: 16px; color: #23275F;">Dear <strong>${data.firstName || 'Participant'}</strong>,</p>
     
@@ -338,21 +348,21 @@ export const EMAIL_TEMPLATES = {
 
     <!-- SCHEDULE -->
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
-      🕒 Retreat Schedule
+      Retreat Schedule
     </h3>
     <div style="background-color: #F8FAFC; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
       <p style="margin: 0 0 8px 0; font-size: 15px; color: #23275F;">
-        <strong style="color: #DB6937;">${data.day1Label || 'Friday'}:</strong> ${data.day1Time}
+        <strong style="color: #DB6937;">${data.day1Label || 'Friday'}:</strong> ${data.day1Time || 'TBA'}
       </p>
       <ul style="margin: 0 0 12px 0; padding-left: 20px; font-size: 14px; color: #4A5568; line-height: 1.5;">
-        <li style="color: #4A5568;">Please arrive early between <strong>15–20 minutes before</strong> for check-in.</li>
+        <li style="color: #4A5568;">Please arrive <strong>15-20 minutes before</strong> for check-in.</li>
         <li style="color: #4A5568;">Have a light dinner beforehand; light snacks will be provided.</li>
       </ul>
       <p style="margin: 0 0 8px 0; font-size: 15px; color: #23275F;">
-        <strong style="color: #DB6937;">${data.day2Label || 'Saturday'}:</strong> ${data.day2Time}
+        <strong style="color: #DB6937;">${data.day2Label || 'Saturday'}:</strong> ${data.day2Time || 'TBA'}
       </p>
       <p style="margin: 0 0 8px 0; font-size: 15px; color: #23275F;">
-        <strong style="color: #DB6937;">${data.day3Label || 'Sunday'}:</strong> ${data.day3Time}
+        <strong style="color: #DB6937;">${data.day3Label || 'Sunday'}:</strong> ${data.day3Time || 'TBA'}
       </p>
       <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #4A5568; line-height: 1.5;">
         <li style="color: #4A5568;">Please have lunch beforehand (vegetarian meals recommended).</li>
@@ -361,10 +371,10 @@ export const EMAIL_TEMPLATES = {
 
     <!-- VENUE & PARKING -->
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
-      📍 Venue & Parking
+      Venue & Parking
     </h3>
     <p style="line-height: 1.5; font-size: 15px; margin: 8px 0; color: #23275F;">
-      <strong>Location:</strong> ${data.location}
+      <strong>Location:</strong> ${data.location || 'On campus (UIUC)'}
       ${data.address ? `<br><span style="color: #718096; font-size: 14px;"><strong>Address:</strong> ${data.address}</span>` : ''}
     </p>
     <ul style="padding-left: 20px; font-size: 14px; color: #4A5568; line-height: 1.5; margin-bottom: 15px;">
@@ -375,7 +385,7 @@ export const EMAIL_TEMPLATES = {
 
     <!-- WHAT TO BRING -->
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
-      🎒 What to Bring
+      What to Bring
     </h3>
     <ul style="padding-left: 20px; font-size: 14px; color: #4A5568; line-height: 1.6; margin-bottom: 15px;">
       <li style="color: #4A5568;">Reusable water bottle</li>
@@ -386,11 +396,11 @@ export const EMAIL_TEMPLATES = {
 
     <!-- CONTACT -->
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
-      📞 On-Site Contact
+      On-Site Contact
     </h3>
     <p style="line-height: 1.5; font-size: 14px; color: #4A5568; margin: 8px 0;">
       If you have questions or trouble accessing the building: <br>
-      <strong style="color: #23275F;">${data.contactName}:</strong> ${data.contactPhone} | <a href="mailto:${data.contactEmail || data.clubEmail || 'skyatuiuc@gmail.com'}" style="color: #1F74F1;">${data.contactEmail || data.clubEmail || 'skyatuiuc@gmail.com'}</a>
+      ${data.contactName ? `<strong style="color: #23275F;">${data.contactName}:</strong> ` : ''}${data.contactPhone || ''}${data.contactPhone ? ' | ' : ''}<a href="mailto:${data.contactEmail || data.clubEmail || 'skyatuiuc@gmail.com'}" style="color: #1F74F1;">${data.contactEmail || data.clubEmail || 'skyatuiuc@gmail.com'}</a>
     </p>
 
     <p style="line-height: 1.6; font-size: 16px; margin-top: 25px; margin-bottom: 5px; color: #23275F;">
@@ -416,8 +426,10 @@ export const EMAIL_TEMPLATES = {
 <!DOCTYPE html>
 <html>
 <head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="x-apple-disable-message-reformatting">
   <title>Congratulations on completing the SKY Happiness Retreat!</title>
   <style>
     body, p, h1, h2, h3, li, div { color: #23275F; font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
@@ -433,7 +445,7 @@ export const EMAIL_TEMPLATES = {
 
     <hr style="border: none; border-top: 1px solid #E2E8F0; margin-bottom: 20px;">
 
-    <h1 style="color: #1F74F1; font-size: 22px; text-align: center; margin-top: 0; margin-bottom: 20px;">✨ Congratulations on completing the SKY Retreat!</h1>
+    <h1 style="color: #1F74F1; font-size: 22px; text-align: center; margin-top: 0; margin-bottom: 20px;">Congratulations on completing the SKY Retreat!</h1>
     
     <p style="line-height: 1.6; font-size: 16px; margin-bottom: 16px; color: #23275F;">Dear <strong>${data.firstName || 'Participant'}</strong>,</p>
     
@@ -443,7 +455,7 @@ export const EMAIL_TEMPLATES = {
 
     <!-- HOME PRACTICE -->
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
-      🧘 SKY Home Practice & Sattva App
+      SKY Home Practice & Sattva App
     </h3>
     <p style="line-height: 1.6; font-size: 15px; color: #23275F; margin: 8px 0;">
       You can practice daily with the guided audio in the <strong>Sattva Meditation App</strong> (under Meditations &rarr; Advanced &rarr; <em>Daily SKY</em>).
@@ -454,25 +466,25 @@ export const EMAIL_TEMPLATES = {
 
     <!-- WEEKLY REUNIONS -->
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
-      ☀️ Weekly Sunday SKY Reunions
+      Weekly Sunday SKY Reunions
     </h3>
     <p style="line-height: 1.6; font-size: 15px; color: #23275F; margin: 8px 0;">
       Every Sunday, our club meets to practice together, explore ancient wisdom, and grab lunch together!
     </p>
     <ul style="padding-left: 20px; font-size: 14px; color: #4A5568; line-height: 1.5; margin-bottom: 15px;">
-      <li style="color: #4A5568;"><strong>When:</strong> Sundays, 11:00 AM – 12:30 PM CST</li>
+      <li style="color: #4A5568;"><strong>When:</strong> Sundays, 11:00 AM - 12:30 PM CST</li>
       <li style="color: #4A5568;"><strong>Where:</strong> Illini Union (Room announced weekly in WhatsApp)</li>
     </ul>
 
     <!-- STAY CONNECTED -->
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
-      💬 Stay Connected on WhatsApp
+      Stay Connected on WhatsApp
     </h3>
     <p style="line-height: 1.6; font-size: 15px; color: #23275F; margin: 8px 0 15px 0;">
       Join our WhatsApp community group chat to stay updated on morning Zoom practices, workshops, and social hangouts:
     </p>
     <div style="margin: 15px 0;">
-      <a href="${data.whatsAppLink}" style="display: inline-block; background-color: #25D366; color: #ffffff !important; padding: 10px 22px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px;">
+      <a href="${data.whatsAppLink || '#'}" style="display: inline-block; background-color: #25D366; color: #ffffff !important; padding: 10px 22px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px;">
         Join SKY at UIUC WhatsApp Group &rarr;
       </a>
     </div>
@@ -480,7 +492,7 @@ export const EMAIL_TEMPLATES = {
     <!-- SURVEY -->
     ${data.surveyLink ? `
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
-      📝 Post-Retreat Feedback Survey
+      Post-Retreat Feedback Survey
     </h3>
     <p style="line-height: 1.6; font-size: 15px; color: #23275F; margin: 8px 0 12px 0;">
       Your feedback is immensely valuable to us and essential for securing campus funding for future students:
@@ -505,3 +517,4 @@ export const EMAIL_TEMPLATES = {
 </html>`
   }
 };
+

@@ -451,9 +451,13 @@ function doPost(e) {
       return createJsonResponse({ status: "error", message: "Payload size limit exceeded" });
     }
 
+    var rawContents = (e.postData && typeof e.postData.getDataAsString === 'function') 
+      ? e.postData.getDataAsString() 
+      : (e.postData ? e.postData.contents : "");
+
     var data;
     try {
-      data = JSON.parse(e.postData.contents);
+      data = JSON.parse(rawContents);
     } catch (parseErr) {
       // In case sendBeacon sends plain string or form-encoded
       data = e.parameter || {};

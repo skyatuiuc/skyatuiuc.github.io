@@ -3,7 +3,7 @@ import { useAuth, ADMIN_EMAIL } from '../context/AuthContext';
 import { db, isFirebaseConfigured } from '../firebase/config';
 import { INITIAL_RETREATS } from '../data/retreatData';
 import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { AlertTriangle, Calendar, UserCheck, CheckSquare, QrCode, Search, User, UserPlus, ChevronRight, Trash2, Download, Copy, Mail, Phone, FileText, CheckCircle2, X } from 'lucide-react';
+import { AlertTriangle, Calendar, UserCheck, CheckSquare, QrCode, Search, User, UserPlus, ChevronRight, Trash2, Download, Copy, Mail, Phone, MessageSquare, FileText, CheckCircle2, X } from 'lucide-react';
 import { logDatabaseOperation } from '../services/telemetryService';
 import { loadFlyerTemplateImage } from '../services/flyerChunkService';
 import { renderAndExportFlyer, calculateScaledDimensions, colorToQrHex } from '../utils/graphicExportUtils';
@@ -1521,9 +1521,9 @@ export default function Volunteer() {
                     </button>
                   </div>
 
-                  {/* Phone, Direct Call & Copy */}
+                  {/* Phone, Direct Call, SMS Text & Copy */}
                   {selectedApp.phone && selectedApp.phone !== 'N/A' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#F8FAFC', padding: '0.3rem 0.65rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#F8FAFC', padding: '0.3rem 0.65rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
                       <Phone size={14} color="#16A34A" />
                       <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{selectedApp.phone}</span>
                       
@@ -1537,9 +1537,27 @@ export default function Volunteer() {
                         <Phone size={11} /> Call
                       </a>
 
+                      {/* Direct Text / SMS Button */}
+                      <a 
+                        href={`sms:${selectedApp.phone.replace(/[^0-9+]/g, '')}`} 
+                        className="btn btn-primary btn-sm"
+                        style={{ padding: '0.15rem 0.5rem', fontSize: '0.72rem', gap: '0.25rem', background: '#0284C7', borderColor: '#0284C7', color: '#FFF' }}
+                        title="Click to Send Text Message (SMS) to Participant"
+                      >
+                        <MessageSquare size={11} /> Text
+                      </a>
+
                       {/* Copy Phone Button */}
                       <button 
-                        onClick={() => { navigator.clipboard.writeText(selectedApp.phone); alert(`Copied phone (${selectedApp.phone}) to clipboard!`); }}
+                        onClick={() => { 
+                          if (navigator?.clipboard?.writeText) {
+                            navigator.clipboard.writeText(selectedApp.phone)
+                              .then(() => alert(`Copied phone (${selectedApp.phone}) to clipboard!`))
+                              .catch(() => alert(`Phone: ${selectedApp.phone}`));
+                          } else {
+                            alert(`Phone: ${selectedApp.phone}`);
+                          }
+                        }}
                         className="btn btn-secondary btn-sm"
                         style={{ padding: '0.15rem 0.45rem', fontSize: '0.72rem', gap: '0.2rem' }}
                         title="Copy Phone Number"

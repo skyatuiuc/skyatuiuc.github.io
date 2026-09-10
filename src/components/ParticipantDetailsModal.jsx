@@ -1,16 +1,23 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Award, Layers, Mail, Phone, DollarSign, Clock, X } from 'lucide-react';
 import { parseFeeAndPayment } from '../services/emailService';
 
 export default function ParticipantDetailsModal({ participant, onClose, groupName, isVolunteer = false }) {
-  // Handle ESC key to close
+  // Handle ESC key to close & lock body scroll
   useEffect(() => {
     if (!participant) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [participant, onClose]);
 
   if (!participant) return null;
@@ -38,19 +45,18 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
 
   const attendance = participant.attendance || {};
 
-  return (
+  return createPortal(
     <div 
       style={{
         position: 'fixed',
         inset: 0,
         backgroundColor: 'rgba(35, 39, 95, 0.45)',
         backdropFilter: 'blur(8px)',
-        zIndex: 9999,
+        zIndex: 99999,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '1rem',
-        animation: 'fadeIn 0.2s ease-out'
+        padding: '1rem'
       }}
       onClick={onClose}
     >
@@ -296,6 +302,7 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

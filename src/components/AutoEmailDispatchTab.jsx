@@ -16,7 +16,9 @@ import {
   Check, 
   AlertTriangle,
   RefreshCw,
-  X
+  X,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import { 
   DEFAULT_EMAIL_SETTINGS, 
@@ -29,6 +31,43 @@ import { EMAIL_TEMPLATES } from '../templates/emailTemplates';
 import EmailPreviewModal from './EmailPreviewModal';
 import EmailSettingsModal from './EmailSettingsModal';
 import ParticipantDetailsModal from './ParticipantDetailsModal';
+
+const getApplicantTimestamp = (reg) => {
+  if (!reg) return 0;
+  const raw = reg.appliedAt || reg.submittedAt || reg.createdAt || reg.registeredAt || reg.updatedAt || reg.timestamp;
+  if (!raw) return 0;
+  if (typeof raw === 'number') return raw;
+  if (raw instanceof Date) return raw.getTime();
+  if (typeof raw?.toDate === 'function') {
+    try {
+      return raw.toDate().getTime();
+    } catch {
+      // ignore
+    }
+  }
+  if (typeof raw?.seconds === 'number') {
+    return raw.seconds * 1000;
+  }
+  if (typeof raw === 'string') {
+    const parsed = Date.parse(raw);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+};
+
+const getEffectivePaymentStatus = (reg) => {
+  if (!reg) return 'Exempt';
+  const feeInfo = parseFeeAndPayment(reg);
+  if (feeInfo.amount === 0 || reg.paymentExempt || reg.isExempt || reg.exempt || reg.feeExempt) {
+    return 'Exempt';
+  }
+  const rawStatus = (reg.paymentStatus || '').toLowerCase().trim();
+  const rawPaidFlag = reg.paid === true || reg.paid === 'true';
+  if (rawPaidFlag || rawStatus === 'paid' || rawStatus === 'completed' || rawStatus === 'waived' || rawStatus === 'exempt') {
+    return 'Paid';
+  }
+  return 'Unpaid';
+};
 
 export default function AutoEmailDispatchTab({ 
   retreats = [], 
@@ -72,9 +111,15 @@ export default function AutoEmailDispatchTab({
     };
   }, []);
 
-  // UI State: Search, Filter, Selection
+  // UI State: Full Volunteer Hub Filter & Sort Parity
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState('ALL'); // 'ALL' | 'APPROVED' | 'NEEDS_PAYPAL' | 'UNSENT_ACCEPTED' | 'UNSENT_WELCOME' | 'UNSENT_COMPLETION'
+  const [statusFilter, setStatusFilter] = useState('All'); // 'All' | 'Uncontacted' | 'Pending' | 'Approved' | 'Did Not Reply' | 'Withdrawn'
+  const [claimFilter, setClaimFilter] = useState('All');   // 'All' | 'My Claims' | 'Unclaimed' | 'Claimed by Others'
+  const [paymentFilter, setPaymentFilter] = useState('All'); // 'All' | 'Paid / Exempt' | 'Unpaid'
+  const [iahvFilter, setIahvFilter] = useState('All');     // 'All' | 'Registered' | 'Not Registered'
+  const [dispatchFilter, setDispatchFilter] = useState('ALL'); // 'ALL' | 'UNSENT_ACCEPTED' | 'UNSENT_WELCOME' | 'UNSENT_COMPLETION' | 'NEEDS_PAYPAL'
+  const [sortBy, setSortBy] = useState('oldest');          // 'oldest' | 'newest' | 'name' | 'lastContacted'
+
   const [selectedApplicantIds, setSelectedApplicantIds] = useState(new Set());
   const [batchTemplateKey, setBatchTemplateKey] = useState('application_accepted');
   const [isBatchSending, setIsBatchSending] = useState(false);
@@ -97,6 +142,7 @@ export default function AutoEmailDispatchTab({
   };
 
   const isSuperAdmin = Boolean(currentUser?.email && currentUser.email.toLowerCase().trim() === 'skyatuiuc@gmail.com');
+  const userEmailLower = (currentUser?.email || '').toLowerCase().trim();
 
   // Save updated email settings (Super Admin only)
   const handleSaveSettings = (newSettings) => {
@@ -112,6 +158,22 @@ export default function AutoEmailDispatchTab({
     showToast('success', 'Email settings and template links saved to cloud!');
   };
 
+  // Copy Email Roster Helper
+  const handleCopyEmails = (listToCopy) => {
+    const emails = listToCopy.map(r => r.email).filter(Boolean).join(', ');
+    if (!emails) {
+      showToast('error', "No email addresses found in current list.");
+      return;
+    }
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(emails)
+        .then(() => showToast('success', `Copied ${listToCopy.length} emails to clipboard!`))
+        .catch(() => showToast('error', "Clipboard permission denied."));
+    } else {
+      showToast('info', `Emails ready: ${emails.substring(0, 30)}...`);
+    }
+  };
+
   // Filter retreat registrations
   const retreatRegistrations = useMemo(() => {
     return registrations.filter(r => {
@@ -123,35 +185,108 @@ export default function AutoEmailDispatchTab({
     });
   }, [registrations, activeRetreat, selectedRetreatId, retreats]);
 
-  // Filtered applicants based on search & quick status filter
+  // Filtered applicants based on full Volunteer Hub search, filters & sort
   const displayedApplicants = useMemo(() => {
-    let list = [...retreatRegistrations];
+    let list = retreatRegistrations.filter(reg => {
+      // 1. Search Query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const name = (reg.fullName || `${reg.firstName || ''} ${reg.lastName || ''}`.trim() || reg.name || '').toLowerCase();
+        const email = (reg.email || '').toLowerCase();
+        const phone = (reg.phone || '').toLowerCase();
+        const netId = (reg.netId || '').toLowerCase();
+        const role = (reg.academicRole || '').toLowerCase();
 
-    if (filterType === 'APPROVED') {
-      list = list.filter(r => (r.orientationStatus || r.interviewStatus || r.status || '').toLowerCase().includes('approved'));
-    } else if (filterType === 'NEEDS_PAYPAL') {
-      list = list.filter(r => checkRequiresPayment(r) && !(r.paypalLink || '').trim());
-    } else if (filterType === 'UNSENT_ACCEPTED') {
-      list = list.filter(r => !r.sentEmails?.application_accepted?.sent);
-    } else if (filterType === 'UNSENT_WELCOME') {
-      list = list.filter(r => !r.sentEmails?.welcome?.sent);
-    } else if (filterType === 'UNSENT_COMPLETION') {
-      list = list.filter(r => !r.sentEmails?.completion?.sent);
-    }
+        if (!name.includes(q) && !email.includes(q) && !phone.includes(q) && !netId.includes(q) && !role.includes(q)) {
+          return false;
+        }
+      }
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      list = list.filter(r => 
-        (r.firstName && r.firstName.toLowerCase().includes(q)) ||
-        (r.lastName && r.lastName.toLowerCase().includes(q)) ||
-        (r.name && r.name.toLowerCase().includes(q)) ||
-        (r.email && r.email.toLowerCase().includes(q)) ||
-        (r.academicRole && r.academicRole.toLowerCase().includes(q))
-      );
-    }
+      // 2. Orientation Status Filter
+      const currentStatus = reg.orientationStatus || reg.interviewStatus || 
+        (reg.status === 'Approved' ? 'Approved' : 'Uncontacted');
+      if (statusFilter !== 'All' && currentStatus !== statusFilter) {
+        return false;
+      }
 
-    return list;
-  }, [retreatRegistrations, filterType, searchQuery]);
+      // 3. Claim Filter
+      const isClaimedByMe = reg.claimedBy && reg.claimedBy.toLowerCase() === userEmailLower;
+      const isUnclaimed = !reg.claimedBy;
+      const isClaimedByOther = reg.claimedBy && !isClaimedByMe;
+
+      if (claimFilter === 'My Claims' && !isClaimedByMe) return false;
+      if (claimFilter === 'Unclaimed' && !isUnclaimed) return false;
+      if (claimFilter === 'Claimed by Others' && !isClaimedByOther) return false;
+
+      // 4. Payment Filter
+      const payment = getEffectivePaymentStatus(reg);
+      if (paymentFilter === 'Paid / Exempt' && payment !== 'Paid' && payment !== 'Exempt') return false;
+      if (paymentFilter === 'Unpaid' && payment !== 'Unpaid') return false;
+
+      // 5. IAHV Registration Filter
+      const isIahv = Boolean(reg.iahvRegistered);
+      if (iahvFilter === 'Registered' && !isIahv) return false;
+      if (iahvFilter === 'Not Registered' && isIahv) return false;
+
+      // 6. Email Dispatch Filter
+      if (dispatchFilter === 'NEEDS_PAYPAL') {
+        if (!checkRequiresPayment(reg) || (reg.paypalLink || '').trim()) return false;
+      } else if (dispatchFilter === 'UNSENT_ACCEPTED') {
+        if (reg.sentEmails?.application_accepted?.sent) return false;
+      } else if (dispatchFilter === 'UNSENT_WELCOME') {
+        if (reg.sentEmails?.welcome?.sent) return false;
+      } else if (dispatchFilter === 'UNSENT_COMPLETION') {
+        if (reg.sentEmails?.completion?.sent) return false;
+      }
+
+      return true;
+    });
+
+    // Multi-criteria sorting matching Volunteer Hub
+    return list.sort((a, b) => {
+      if (sortBy === 'oldest') {
+        const timeA = getApplicantTimestamp(a);
+        const timeB = getApplicantTimestamp(b);
+        if (timeA && timeB) {
+          if (timeA !== timeB) return timeA - timeB;
+        } else if (timeA && !timeB) {
+          return -1;
+        } else if (!timeA && timeB) {
+          return 1;
+        }
+        return (a.id || '').localeCompare(b.id || '');
+      }
+      if (sortBy === 'newest') {
+        const timeA = getApplicantTimestamp(a);
+        const timeB = getApplicantTimestamp(b);
+        if (timeA && timeB) {
+          if (timeA !== timeB) return timeB - timeA;
+        } else if (timeA && !timeB) {
+          return -1;
+        } else if (!timeA && timeB) {
+          return 1;
+        }
+        return (b.id || '').localeCompare(a.id || '');
+      }
+      if (sortBy === 'name') {
+        const nameA = (a.fullName || `${a.firstName || ''} ${a.lastName || ''}`.trim() || a.name || a.email || '').toLowerCase();
+        const nameB = (b.fullName || `${b.firstName || ''} ${b.lastName || ''}`.trim() || b.name || b.email || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      }
+      if (sortBy === 'lastContacted') {
+        const parseDate = (d) => {
+          if (!d || d === 'Never') return 0;
+          const parsed = Date.parse(d);
+          return isNaN(parsed) ? 0 : parsed;
+        };
+        const dateA = parseDate(a.lastContactedDate);
+        const dateB = parseDate(b.lastContactedDate);
+        if (dateA !== dateB) return dateB - dateA;
+        return (a.id || '').localeCompare(b.id || '');
+      }
+      return 0;
+    });
+  }, [retreatRegistrations, searchQuery, statusFilter, claimFilter, paymentFilter, iahvFilter, dispatchFilter, sortBy, userEmailLower]);
 
   // Toggle single selection
   const handleToggleSelect = (id) => {
@@ -550,7 +685,7 @@ export default function AutoEmailDispatchTab({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1.25rem' }}>
           
           {/* Active Retreat Info */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: '1 1 250px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: '1 1 240px' }}>
             <Calendar size={22} color="var(--sky-blue)" />
             <div>
               <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '0.2rem' }}>
@@ -561,6 +696,53 @@ export default function AutoEmailDispatchTab({
               </div>
             </div>
           </div>
+
+          {/* IAHV Course Registration Link Badge */}
+          {(() => {
+            const activeIahvLink = emailSettings.registrationLink || emailSettings.defaultRegistrationLink || activeRetreat?.registrationLink;
+            return (
+              <div style={{
+                background: activeIahvLink ? '#F0FDF4' : '#FFFBEB',
+                padding: '0.5rem 0.85rem',
+                borderRadius: 'var(--radius-sm)',
+                border: activeIahvLink ? '1px solid #BBF7D0' : '1px solid #FDE68A',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                flex: '1 1 260px',
+                minWidth: '220px'
+              }}>
+                <ExternalLink size={16} color={activeIahvLink ? '#16A34A' : '#D97706'} />
+                <div style={{ fontSize: '0.78rem', minWidth: 0 }}>
+                  <span style={{ color: 'var(--text-muted)', display: 'block' }}>IAHV Course Reg Link:</span>
+                  {activeIahvLink ? (
+                    <a
+                      href={activeIahvLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color: '#16A34A',
+                        fontWeight: 700,
+                        textDecoration: 'underline',
+                        display: 'block',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        maxWidth: '220px'
+                      }}
+                      title={activeIahvLink}
+                    >
+                      {activeIahvLink}
+                    </a>
+                  ) : (
+                    <span style={{ color: '#D97706', fontWeight: 600, fontStyle: 'italic' }}>
+                      Not configured (Click Email Settings)
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Central Sender Identity Badge & Settings Trigger */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -596,30 +778,32 @@ export default function AutoEmailDispatchTab({
       </div>
 
       {/* FILTER & BATCH ACTION TOOLBAR */}
-      <div className="glass-card" style={{ padding: '1.25rem', background: '#FFFFFF', boxShadow: 'var(--shadow-sm)' }}>
+      <div className="glass-card" style={{ padding: '1.25rem 1.5rem', background: '#FFFFFF', boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+        {/* Tier 1: Advanced Filter & Sort Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: '1rem', alignItems: 'center' }}>
           
           {/* Search Input */}
-          <div style={{ position: 'relative', minWidth: '240px', flex: '1 1 260px' }}>
+          <div style={{ position: 'relative', gridColumn: 'span 2' }}>
             <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)' }} />
             <input
               type="text"
-              placeholder="Search applicant by name, email, or role..."
+              placeholder="Search applicant name, email, phone, NetID, or role..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
                 width: '100%',
-                padding: '0.55rem 0.85rem 0.55rem 2.4rem',
+                padding: '0.65rem 1rem 0.65rem 2.4rem',
                 background: '#FFFFFF',
                 border: '1px solid rgba(35, 39, 95, 0.15)',
                 color: 'var(--text-main)',
                 borderRadius: 'var(--radius-sm)',
-                fontSize: '0.85rem'
+                fontSize: '0.875rem'
               }}
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => setSearchQuery('')}
                 style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
               >
@@ -628,25 +812,85 @@ export default function AutoEmailDispatchTab({
             )}
           </div>
 
-          {/* Quick Filter Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Filter size={15} color="var(--text-muted)" />
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>Filter:</span>
+          {/* Orientation Status Filter */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+              ORIENTATION STATUS
+            </label>
             <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              style={{
-                padding: '0.45rem 0.75rem',
-                background: '#FFFFFF',
-                border: '1px solid var(--border-color)',
-                color: 'var(--text-main)',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: '0.82rem',
-                fontWeight: 600
-              }}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{ width: '100%', padding: '0.6rem 0.75rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.825rem', fontWeight: 600 }}
             >
-              <option value="ALL">All Applicants ({retreatRegistrations.length})</option>
-              <option value="APPROVED">Approved Only</option>
+              <option value="All">All Statuses</option>
+              <option value="Uncontacted">Uncontacted</option>
+              <option value="Pending">Pending</option>
+              <option value="Approved">Approved</option>
+              <option value="Did Not Reply">Did Not Reply</option>
+              <option value="Withdrawn">Withdrawn</option>
+            </select>
+          </div>
+
+          {/* Claim / Point of Contact Filter */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+              POINT OF CONTACT
+            </label>
+            <select
+              value={claimFilter}
+              onChange={(e) => setClaimFilter(e.target.value)}
+              style={{ width: '100%', padding: '0.6rem 0.75rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.825rem', fontWeight: 600 }}
+            >
+              <option value="All">All Claim States</option>
+              <option value="My Claims">Claimed by Me</option>
+              <option value="Unclaimed">Unclaimed</option>
+              <option value="Claimed by Others">Claimed by Others</option>
+            </select>
+          </div>
+
+          {/* Payment Status Filter */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+              PAYMENT STATUS
+            </label>
+            <select
+              value={paymentFilter}
+              onChange={(e) => setPaymentFilter(e.target.value)}
+              style={{ width: '100%', padding: '0.6rem 0.75rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.825rem', fontWeight: 600 }}
+            >
+              <option value="All">All Payment States</option>
+              <option value="Paid / Exempt">Paid / Exempt ($0)</option>
+              <option value="Unpaid">Unpaid</option>
+            </select>
+          </div>
+
+          {/* IAHV Registration Filter */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+              IAHV REGISTRATION
+            </label>
+            <select
+              value={iahvFilter}
+              onChange={(e) => setIahvFilter(e.target.value)}
+              style={{ width: '100%', padding: '0.6rem 0.75rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.825rem', fontWeight: 600 }}
+            >
+              <option value="All">All IAHV States</option>
+              <option value="Registered">Registered</option>
+              <option value="Not Registered">Not Registered</option>
+            </select>
+          </div>
+
+          {/* Email Dispatch Filter */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+              EMAIL DISPATCH
+            </label>
+            <select
+              value={dispatchFilter}
+              onChange={(e) => setDispatchFilter(e.target.value)}
+              style={{ width: '100%', padding: '0.6rem 0.75rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.825rem', fontWeight: 600 }}
+            >
+              <option value="ALL">All Applicants</option>
               <option value="NEEDS_PAYPAL">Missing PayPal Link</option>
               <option value="UNSENT_ACCEPTED">Unsent Acceptance</option>
               <option value="UNSENT_WELCOME">Unsent Welcome</option>
@@ -654,7 +898,54 @@ export default function AutoEmailDispatchTab({
             </select>
           </div>
 
-          {/* Batch Actions Bar (Enabled when items selected) */}
+          {/* Sort By Filter */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+              SORT BY
+            </label>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={{ width: '100%', padding: '0.6rem 0.75rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.825rem', fontWeight: 600 }}
+            >
+              <option value="oldest">Submission Date (Oldest First)</option>
+              <option value="newest">Submission Date (Newest First)</option>
+              <option value="name">Applicant Name (A-Z)</option>
+              <option value="lastContacted">Last Contacted Date</option>
+            </select>
+          </div>
+
+        </div>
+
+        {/* Tier 2: Summary Count, Copy Emails & Batch Actions Bar */}
+        <div style={{
+          paddingTop: '1rem',
+          borderTop: '1px solid var(--border-color)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '1rem'
+        }}>
+          
+          {/* Showing Count & Copy Emails */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
+            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-main)' }}>
+              Showing <span style={{ color: 'var(--sky-blue)' }}>{displayedApplicants.length}</span> of {retreatRegistrations.length} applicant records
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleCopyEmails(displayedApplicants)}
+              className="btn btn-secondary"
+              style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+              title="Copy email addresses of all currently filtered applicants"
+            >
+              <Copy size={12} /> Copy {displayedApplicants.length} Emails
+            </button>
+          </div>
+
+          {/* Batch Actions Selector & Trigger */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.8rem', color: selectedApplicantIds.size > 0 ? 'var(--sky-blue)' : 'var(--text-muted)', fontWeight: 700 }}>
               {selectedApplicantIds.size} Selected

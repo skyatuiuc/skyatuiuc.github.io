@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, 
   Send, 
@@ -22,6 +23,15 @@ export default function EmailPreviewModal({
   const [isSending, setIsSending] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Lock body scroll while preview is open
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
   let payload = null;
   let compileError = null;
 
@@ -44,9 +54,9 @@ export default function EmailPreviewModal({
     }
   };
 
-  return (
+  return createPortal(
     <div 
-      className="modal-overlay animate-fade-in" 
+      className="modal-overlay" 
       onClick={onClose}
       style={{
         position: 'fixed',
@@ -56,7 +66,7 @@ export default function EmailPreviewModal({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 9999,
+        zIndex: 99999,
         padding: '1.25rem'
       }}
     >
@@ -338,6 +348,7 @@ export default function EmailPreviewModal({
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
