@@ -1,4 +1,4 @@
-import{c as I,i as be,d as W,p as G,q as Qe,r as Ze,j as m,X as Xe,s as et,M as tt,a as ot}from"./index-CYS9c0Yo.js";import{e as D,v as re,s as Pe,h as we,f as nt,n as Fe,r as Be}from"./firebase-DVe_1dXv.js";import{r as it,a as rt}from"./vendor-KB3N6wHM.js";/**
+import{c as I,i as be,d as W,p as G,q as Qe,r as Ze,j as m,X as Xe,s as et,M as tt,a as ot}from"./index-BHKT8LWa.js";import{e as D,v as re,s as Pe,h as we,f as nt,n as Fe,r as Be}from"./firebase-DVe_1dXv.js";import{r as it,a as rt}from"./vendor-KB3N6wHM.js";/**
  * @license lucide-react v0.395.0 - ISC
  *
  * This source code is licensed under the ISC license.
@@ -405,8 +405,8 @@ Minimum version required to store current data is: `+i+`.
     </h3>
     <ul style="padding-left: 20px; font-size: 14px; color: #4A5568; line-height: 1.6; margin-bottom: 15px;">
       <li style="color: #4A5568;">Reusable water bottle</li>
-      <li style="color: #4A5568;">Your own yoga mat (if you have one; limited mats available on site)</li>
-      <li style="color: #4A5568;">Comfortable clothes / gym wear</li>
+      <li style="color: #4A5568;">Your own yoga mat if you have one, we can provide one otherwise</li>
+      <li style="color: #4A5568;">Comfortable Clothes</li>
       <li style="color: #4A5568;">A sweater, jacket, or shawl to stay warm during meditations</li>
     </ul>
 
