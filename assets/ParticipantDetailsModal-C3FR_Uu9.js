@@ -1,4 +1,4 @@
-import{c as T,i as be,d as W,p as J,q as Qe,r as Ze,j as m,X as Xe,s as et,M as tt,a as ot}from"./index-9T_ttUuI.js";import{e as D,v as re,s as Pe,h as we,f as nt,n as Fe,r as Be}from"./firebase-DVe_1dXv.js";import{r as it,a as rt}from"./vendor-KB3N6wHM.js";/**
+import{c as T,i as be,d as W,p as J,q as Qe,r as Ze,j as m,X as Xe,s as et,M as tt,a as ot}from"./index-DCF-hM7H.js";import{e as D,v as re,s as Pe,h as we,f as nt,n as Fe,r as Be}from"./firebase-DVe_1dXv.js";import{r as it,a as rt}from"./vendor-KB3N6wHM.js";/**
  * @license lucide-react v0.395.0 - ISC
  *
  * This source code is licensed under the ISC license.
@@ -508,8 +508,8 @@ Minimum version required to store current data is: `+i+`.
     <!-- PRACTICE CHEAT SHEET DOWNLOAD CARD -->
     ${e.cheatSheetUrl?`
     <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #1F74F1; border-radius: 4px; padding: 14px 16px; margin: 15px 0 20px 0;">
-      <p style="margin: 0 0 4px 0; font-size: 14px; font-weight: 700; color: #23275F;">
-        📄 SKY Daily Home Practice Cheat Sheet
+      <p style="margin: 0 0 4px 0; font-size: 14px; font-weight: 700; color: #23275F; text-transform: uppercase; letter-spacing: 0.03em;">
+        SKY Daily Home Practice Cheat Sheet
       </p>
       <p style="margin: 0 0 10px 0; font-size: 13px; color: #4A5568; line-height: 1.4;">
         Save our quick-reference guide for 3-stage pranayama, breath counts, and daily home practice steps:
