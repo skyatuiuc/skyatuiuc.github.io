@@ -383,14 +383,29 @@ export const EMAIL_TEMPLATES = {
       <li style="color: #4A5568;"><em>Note: Building doors lock on weekends; a volunteer will be stationed at the entrance to welcome you in.</em></li>
     </ul>
 
+    <!-- PARKING MAP GUIDE -->
+    <div style="margin: 16px 0 20px 0; text-align: center;">
+      <a href="${data.parkingMapUrl || 'https://skyuiuc.org/assets/parking_guide.png'}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; display: inline-block; max-width: 100%;">
+        <img 
+          src="${data.parkingMapUrl || 'https://skyuiuc.org/assets/parking_guide.png'}" 
+          alt="UIUC Campus Parking & Venue Guide Map - Lot B1 & Sidney Lu Building" 
+          width="540" 
+          style="width: 100%; max-width: 540px; height: auto; border-radius: 6px; border: 1.5px solid #CBD5E1; display: block; margin: 0 auto; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" 
+        />
+      </a>
+      <p style="margin: 8px 0 0 0; font-size: 12px; color: #718096; font-style: italic;">
+        Click map to view full-resolution guide: <a href="${data.parkingMapUrl || 'https://skyuiuc.org/assets/parking_guide.png'}" style="color: #1F74F1; text-decoration: underline;">https://skyuiuc.org/assets/parking_guide.png</a>
+      </p>
+    </div>
+
     <!-- WHAT TO BRING -->
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
       What to Bring
     </h3>
     <ul style="padding-left: 20px; font-size: 14px; color: #4A5568; line-height: 1.6; margin-bottom: 15px;">
       <li style="color: #4A5568;">Reusable water bottle</li>
-      <li style="color: #4A5568;">Your own yoga mat (if you have one; limited mats available on site)</li>
-      <li style="color: #4A5568;">Comfortable clothes / gym wear</li>
+      <li style="color: #4A5568;">Your own yoga mat if you have one, we can provide one otherwise</li>
+      <li style="color: #4A5568;">Comfortable Clothes</li>
       <li style="color: #4A5568;">A sweater, jacket, or shawl to stay warm during meditations</li>
     </ul>
 

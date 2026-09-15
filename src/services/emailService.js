@@ -206,6 +206,7 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
     location: escapeHtml(retreat?.location || ''),
     address: escapeHtml(retreat?.address || ''),
     fullLocationString: escapeHtml(retreat?.location ? `${retreat.location}${retreat.address ? ` (${retreat.address})` : ''}` : ''),
+    parkingMapUrl: sanitizeUrl(retreat?.parkingMapUrl || settings.parkingMapUrl || 'https://skyuiuc.org/assets/parking_guide.png'),
     teachers: escapeHtml(retreat?.teachers || 'SKY Certified Teachers'),
     registrationLink: sanitizeUrl(settings.registrationLink || settings.defaultRegistrationLink || retreat?.registrationLink),
     clubEmail: escapeHtml(settings.clubEmail || 'skyatuiuc@gmail.com'),

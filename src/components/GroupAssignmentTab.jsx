@@ -17,10 +17,126 @@ import {
   Plus, 
   Minus, 
   X,
-  Tag
+  Tag,
+  Filter
 } from 'lucide-react';
 import ParticipantDetailsModal from './ParticipantDetailsModal';
 import NametagDownloadModal from './NametagDownloadModal';
+
+// Normalize status into consistent category
+const normalizeStatusKey = (reg) => {
+  const raw = (reg.orientationStatus || reg.interviewStatus || reg.status || 'Uncontacted').trim();
+  const lower = raw.toLowerCase();
+  if (lower.includes('approved') || lower.includes('accept')) return 'Approved';
+  if (lower.includes('withdraw')) return 'Withdrawn';
+  if (lower.includes('progress')) return 'In Progress';
+  if (lower.includes('did not reply') || lower.includes('no reply')) return 'Did Not Reply';
+  if (lower.includes('pending')) return 'Pending';
+  if (lower.includes('uncontacted')) return 'Uncontacted';
+  return raw || 'Uncontacted';
+};
+
+// Priority Sort Rank:
+// 1. Volunteers appear first
+// 2. Then accepted / approved
+// 3. Then in progress
+// 4. Then pending
+// 5. Then did not reply
+// 6. Then uncontacted
+// 7. Then withdrawn
+const getMemberSortRank = (member) => {
+  if (member.isVolunteer) return 1;
+  const rawStatus = (member.orientationStatus || member.interviewStatus || member.status || '').toLowerCase().trim();
+  if (rawStatus.includes('approved') || rawStatus.includes('accept')) return 2;
+  if (rawStatus.includes('progress')) return 3;
+  if (rawStatus.includes('pending')) return 4;
+  if (rawStatus.includes('did not reply') || rawStatus.includes('no reply')) return 5;
+  if (rawStatus.includes('uncontacted')) return 6;
+  if (rawStatus.includes('withdraw')) return 7;
+  return 8;
+};
+
+// Sort members by rank, then application timestamp, then name
+const sortMembers = (members) => {
+  return [...members].sort((a, b) => {
+    const rankA = getMemberSortRank(a);
+    const rankB = getMemberSortRank(b);
+    if (rankA !== rankB) return rankA - rankB;
+
+    const timeA = new Date(a.submittedAt || a.registeredAt || 0).getTime();
+    const timeB = new Date(b.submittedAt || b.registeredAt || 0).getTime();
+    if (timeA && timeB && timeA !== timeB) {
+      return timeA - timeB;
+    }
+    return (a.name || '').localeCompare(b.name || '');
+  });
+};
+
+// Member chip color theming based on user specifications:
+// - Approved: Green
+// - Withdrawn: Red
+// - Volunteers: Current Yellow
+// - Pending / In Progress / Did Not Reply / Uncontacted: Blue
+const getMemberTheme = (member) => {
+  if (member.isVolunteer) {
+    return {
+      type: 'volunteer',
+      bg: 'var(--sky-sun-light)',
+      border: '1.5px solid rgba(250, 188, 29, 0.6)',
+      avatarBg: 'var(--sky-sun)',
+      avatarColor: '#161942',
+      textColor: '#B45309',
+      hoverShadow: '0 4px 12px rgba(250, 188, 29, 0.3)',
+      statusLabel: 'Volunteer'
+    };
+  }
+
+  const rawStatus = (member.orientationStatus || member.interviewStatus || member.status || '').toLowerCase().trim();
+
+  if (rawStatus.includes('withdraw')) {
+    return {
+      type: 'withdrawn',
+      bg: '#FEE2E2',
+      border: '1.5px solid rgba(239, 68, 68, 0.5)',
+      avatarBg: '#DC2626',
+      avatarColor: '#FFFFFF',
+      textColor: '#991B1B',
+      hoverShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
+      statusLabel: 'Withdrawn'
+    };
+  }
+
+  if (rawStatus.includes('approved') || rawStatus.includes('accept')) {
+    return {
+      type: 'approved',
+      bg: '#DCFCE7',
+      border: '1.5px solid rgba(34, 197, 94, 0.5)',
+      avatarBg: '#16A34A',
+      avatarColor: '#FFFFFF',
+      textColor: '#166534',
+      hoverShadow: '0 4px 12px rgba(34, 197, 94, 0.3)',
+      statusLabel: 'Approved'
+    };
+  }
+
+  // Pending / In Progress / Did Not Reply / Uncontacted -> Blue
+  let label = 'Pending';
+  if (rawStatus.includes('progress')) label = 'In Progress';
+  else if (rawStatus.includes('did not reply') || rawStatus.includes('no reply')) label = 'Did Not Reply';
+  else if (rawStatus.includes('uncontacted')) label = 'Uncontacted';
+  else if (member.orientationStatus) label = member.orientationStatus;
+
+  return {
+    type: 'pending',
+    bg: '#DBEAFE',
+    border: '1.5px solid rgba(59, 130, 246, 0.5)',
+    avatarBg: '#1F74F1',
+    avatarColor: '#FFFFFF',
+    textColor: '#1E40AF',
+    hoverShadow: '0 4px 12px rgba(31, 116, 241, 0.3)',
+    statusLabel: label
+  };
+};
 
 export default function GroupAssignmentTab({ 
   retreats = [], 
@@ -41,6 +157,14 @@ export default function GroupAssignmentTab({
   const [groupNames, setGroupNames] = useState(() => {
     return activeRetreat?.groupConfig?.groupNames || {};
   });
+
+  // Multi-Select Application Status Filter & Volunteers Visibility
+  const [selectedStatuses, setSelectedStatuses] = useState(() => new Set(['Approved']));
+  const [showVolunteers, setShowVolunteers] = useState(true);
+
+  // Role-based Auto-Arrangement Settings
+  const [autoArrangeRole, setAutoArrangeRole] = useState('participants'); // 'participants' | 'volunteers' | 'all' | 'undergraduate' | 'graduate' | 'faculty'
+  const [autoArrangeOnlyUnassigned, setAutoArrangeOnlyUnassigned] = useState(false);
 
   // UI Search & Drag state
   const [searchQuery, setSearchQuery] = useState('');
@@ -77,7 +201,10 @@ export default function GroupAssignmentTab({
     if (!email) return false;
     const clean = email.toLowerCase().trim();
     if (clean === ADMIN_EMAIL.toLowerCase().trim()) return true;
-    return authorizedEmails.some(ae => ae.toLowerCase().trim() === clean);
+    return authorizedEmails.some(ae => {
+      const authEmail = (typeof ae === 'string' ? ae : ae?.email || '').toLowerCase().trim();
+      return authEmail === clean;
+    });
   }, [authorizedEmails]);
 
   // All applicants for active retreat (all statuses: approved, pending, uncontacted, waitlisted, etc.)
@@ -91,27 +218,74 @@ export default function GroupAssignmentTab({
     });
   }, [registrations, activeRetreat, selectedRetreatId, retreats]);
 
-  // All Approved Registrations for active retreat (The SOLE source of members)
-  const retreatApprovedParticipants = useMemo(() => {
-    return registrations.filter(r => {
-      // 1. Check retreat match
-      const matchesRetreat = selectedRetreatId === 'ALL' || 
-        retreats.length <= 1 ||
-        r.retreatId === activeRetreat?.id || 
-        (!r.retreatId && r.retreatTitle === activeRetreat?.title) ||
-        (r.retreatTitle && activeRetreat?.title && r.retreatTitle.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim());
-      
-      if (!matchesRetreat) return false;
+  // Status counts across all retreat applicants
+  const statusCounts = useMemo(() => {
+    const counts = {
+      'Approved': 0,
+      'Pending': 0,
+      'In Progress': 0,
+      'Did Not Reply': 0,
+      'Uncontacted': 0,
+      'Withdrawn': 0
+    };
+    let volCount = 0;
 
-      // 2. Must be approved application (case-insensitive substring)
-      const rawStatus = (r.orientationStatus || r.interviewStatus || r.status || '').toLowerCase().trim();
-      return rawStatus.includes('approved');
+    retreatAllApplicants.forEach(reg => {
+      const email = reg.email?.toLowerCase().trim() || '';
+      if (isVolunteerEmail(email)) {
+        volCount++;
+      }
+      const st = normalizeStatusKey(reg);
+      counts[st] = (counts[st] || 0) + 1;
     });
-  }, [registrations, activeRetreat, selectedRetreatId, retreats]);
 
-  // Clean member list derived ONLY from approved applications
+    return { counts, volCount };
+  }, [retreatAllApplicants, isVolunteerEmail]);
+
+  // Status toggle handlers
+  const handleToggleStatus = (statusName) => {
+    setSelectedStatuses(prev => {
+      const next = new Set(prev);
+      if (next.has(statusName)) {
+        next.delete(statusName);
+      } else {
+        next.add(statusName);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllStatuses = () => {
+    const all = new Set(['Approved', 'Pending', 'In Progress', 'Did Not Reply', 'Uncontacted', 'Withdrawn', ...Object.keys(statusCounts.counts)]);
+    setSelectedStatuses(all);
+    setShowVolunteers(true);
+  };
+
+  const handleSelectApprovedOnly = () => {
+    setSelectedStatuses(new Set(['Approved']));
+    setShowVolunteers(true);
+  };
+
+  const handleClearStatuses = () => {
+    setSelectedStatuses(new Set());
+    setShowVolunteers(false);
+  };
+
+  // Manageable member list derived from retreat applicants filtered by selected statuses and volunteer toggle
   const allManageableMembers = useMemo(() => {
-    return retreatApprovedParticipants.map(reg => {
+    const matchingApplicants = retreatAllApplicants.filter(reg => {
+      const email = reg.email?.toLowerCase().trim() || '';
+      const isVol = isVolunteerEmail(email);
+
+      // If volunteer and showVolunteers is checked, include
+      if (isVol && showVolunteers) return true;
+
+      // Otherwise, match application status
+      const st = normalizeStatusKey(reg);
+      return selectedStatuses.has(st);
+    });
+
+    return matchingApplicants.map(reg => {
       const email = reg.email?.toLowerCase().trim() || '';
       const isVol = isVolunteerEmail(email);
 
@@ -131,6 +305,8 @@ export default function GroupAssignmentTab({
         ? (groupNames[assignedGroupId] || `Group ${assignedGroupId.replace('group-', '')}`)
         : '';
 
+      const normalizedSt = normalizeStatusKey(reg);
+
       return {
         id: reg.id,
         regId: reg.id,
@@ -143,8 +319,9 @@ export default function GroupAssignmentTab({
         academicRole: reg.academicRole,
         feeTier: reg.feeTier,
         paymentStatus: reg.paymentStatus,
-        orientationStatus: reg.orientationStatus || reg.interviewStatus || reg.status || 'Approved',
-        interviewStatus: reg.orientationStatus || reg.interviewStatus || reg.status || 'Approved',
+        orientationStatus: reg.orientationStatus || reg.interviewStatus || reg.status || normalizedSt,
+        interviewStatus: reg.orientationStatus || reg.interviewStatus || reg.status || normalizedSt,
+        normalizedStatus: normalizedSt,
         submittedAt: reg.submittedAt || reg.registeredAt,
         foodAllergies: reg.foodAllergies,
         healthConditions: reg.healthConditions,
@@ -155,20 +332,24 @@ export default function GroupAssignmentTab({
         assignedGroup: groupLabel
       };
     });
-  }, [retreatApprovedParticipants, isVolunteerEmail, numGroups, groupNames]);
+  }, [retreatAllApplicants, isVolunteerEmail, selectedStatuses, showVolunteers, numGroups, groupNames]);
 
-  // Filtered members based on search query
+  // Filtered members based on search query, sorted by rank (volunteers first, then accepted, then in progress, etc.)
   const filteredMembers = useMemo(() => {
-    if (!searchQuery.trim()) return allManageableMembers;
-    const q = searchQuery.toLowerCase().trim();
-    return allManageableMembers.filter(m => 
-      m.name.toLowerCase().includes(q) || 
-      m.email.toLowerCase().includes(q) ||
-      (m.academicRole && m.academicRole.toLowerCase().includes(q))
-    );
+    let list = allManageableMembers;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(m => 
+        m.name.toLowerCase().includes(q) || 
+        m.email.toLowerCase().includes(q) ||
+        (m.academicRole && m.academicRole.toLowerCase().includes(q)) ||
+        (m.normalizedStatus && m.normalizedStatus.toLowerCase().includes(q))
+      );
+    }
+    return sortMembers(list);
   }, [allManageableMembers, searchQuery]);
 
-  // Group buckets: 1 to N
+  // Group buckets: 1 to N with sorted members
   const groupList = useMemo(() => {
     const list = [];
     for (let i = 1; i <= numGroups; i++) {
@@ -176,7 +357,7 @@ export default function GroupAssignmentTab({
       const defaultName = `Group ${i}`;
       const customName = groupNames[gId] || defaultName;
       
-      const membersInGroup = filteredMembers.filter(m => m.groupId === gId);
+      const membersInGroup = sortMembers(filteredMembers.filter(m => m.groupId === gId));
       const participantCount = membersInGroup.filter(m => !m.isVolunteer).length;
       const volunteerCount = membersInGroup.filter(m => m.isVolunteer).length;
 
@@ -193,9 +374,9 @@ export default function GroupAssignmentTab({
     return list;
   }, [numGroups, groupNames, filteredMembers]);
 
-  // Unassigned bucket (including any with invalid/overflow group IDs)
+  // Unassigned bucket (sorted by rank: volunteers first, then accepted, then in progress, etc.)
   const unassignedMembers = useMemo(() => {
-    return filteredMembers.filter(m => {
+    const unassigned = filteredMembers.filter(m => {
       if (!m.groupId || m.groupId === 'unassigned') return true;
       const gMatch = m.groupId.match(/^group-(\d+)$/);
       if (gMatch) {
@@ -204,6 +385,7 @@ export default function GroupAssignmentTab({
       }
       return false;
     });
+    return sortMembers(unassigned);
   }, [filteredMembers, numGroups]);
 
   // Save Group Config to Retreat in Firestore
@@ -232,8 +414,8 @@ export default function GroupAssignmentTab({
     const validN = Math.max(1, Math.min(20, nextN));
     if (validN === numGroups) return;
 
-    // Check if any approved participant is in a removed group (groupId > validN)
-    const membersToUnassign = retreatApprovedParticipants.filter(r => {
+    // Check if any applicant is in a removed group (groupId > validN)
+    const membersToUnassign = retreatAllApplicants.filter(r => {
       const gMatch = r.groupId?.match(/^group-(\d+)$/);
       if (gMatch) {
         return parseInt(gMatch[1], 10) > validN;
@@ -310,8 +492,8 @@ export default function GroupAssignmentTab({
     showToast('success', `Moved ${member.name} to ${isUnassigning ? 'Unassigned' : targetGroupName}`);
   };
 
-  // Auto-Arrange Non-Volunteer Participants (Greedy Fewest-Members Algorithm in Application Time Order)
-  const handleAutoArrangeNonVolunteers = async () => {
+  // Auto-Arrange Participants / Selected Role into groups with FEWEST total participants
+  const handleAutoArrange = async () => {
     if (!activeRetreat) {
       showToast('error', 'Please select an active retreat first.');
       return;
@@ -322,46 +504,71 @@ export default function GroupAssignmentTab({
       return;
     }
 
-    // 1. Get all approved non-volunteer participants for this retreat
-    const nonVolunteers = retreatApprovedParticipants.filter(r => {
-      const email = r.email?.toLowerCase().trim();
-      return !isVolunteerEmail(email);
+    // 1. Identify members matching the selected role
+    const candidateMembers = allManageableMembers.filter(m => {
+      if (autoArrangeRole === 'volunteers') {
+        if (!m.isVolunteer) return false;
+      } else if (autoArrangeRole === 'participants') {
+        if (m.isVolunteer) return false;
+      } else if (autoArrangeRole === 'all') {
+        // all displayed members
+      } else {
+        // Academic role match
+        const role = (m.academicRole || '').toLowerCase();
+        if (!role.includes(autoArrangeRole.toLowerCase())) return false;
+      }
+
+      // If only unassigned option is selected
+      if (autoArrangeOnlyUnassigned) {
+        if (m.groupId && m.groupId !== 'unassigned') {
+          const gMatch = m.groupId.match(/^group-(\d+)$/);
+          if (gMatch) {
+            const gNum = parseInt(gMatch[1], 10);
+            if (gNum >= 1 && gNum <= numGroups) return false;
+          }
+        }
+      }
+
+      return true;
     });
 
-    if (nonVolunteers.length === 0) {
-      showToast('error', 'No approved non-volunteer participants found for this retreat.');
+    if (candidateMembers.length === 0) {
+      const roleName = autoArrangeRole === 'participants' ? 'non-volunteer participants' : autoArrangeRole === 'volunteers' ? 'volunteers' : `${autoArrangeRole} members`;
+      showToast('error', `No matching ${roleName} found to auto-arrange.`);
       return;
     }
 
     setIsAutoAssigning(true);
 
-    // 2. Count existing members in each group (volunteers already assigned to groups 1 to N)
+    // 2. Count existing members in each group that are NOT being auto-arranged
+    // (e.g. Group 1 has 3 volunteers and Group 2 has 1 volunteer)
+    const candidateIds = new Set(candidateMembers.map(m => m.id));
     const groupMemberCounts = {};
     for (let i = 1; i <= numGroups; i++) {
       groupMemberCounts[`group-${i}`] = 0;
     }
 
-    // Count volunteers already assigned
-    retreatApprovedParticipants.forEach(r => {
-      const email = r.email?.toLowerCase().trim();
-      if (isVolunteerEmail(email) && r.groupId && groupMemberCounts[r.groupId] !== undefined) {
-        groupMemberCounts[r.groupId]++;
+    allManageableMembers.forEach(m => {
+      if (!candidateIds.has(m.id) && m.groupId && groupMemberCounts[m.groupId] !== undefined) {
+        groupMemberCounts[m.groupId]++;
       }
     });
 
-    // 3. Sort non-volunteers sequentially by application timestamp (oldest submission first)
-    const sortedParticipants = [...nonVolunteers].sort((a, b) => {
+    // 3. Sort candidates sequentially by application timestamp (oldest submission first)
+    const sortedCandidates = [...candidateMembers].sort((a, b) => {
       const timeA = new Date(a.submittedAt || a.registeredAt || 0).getTime();
       const timeB = new Date(b.submittedAt || b.registeredAt || 0).getTime();
-      return timeA - timeB;
+      if (timeA && timeB && timeA !== timeB) {
+        return timeA - timeB;
+      }
+      return (a.name || '').localeCompare(b.name || '');
     });
 
-    // 4. Assign each participant to the group with the FEWEST current total members
+    // 4. Sequentially insert each participant into the group with the FEWEST current total members
     const updatedRegistrationsMap = new Map();
     const batchUpdates = [];
 
-    sortedParticipants.forEach((p) => {
-      // Find group(s) with minimum member count
+    sortedCandidates.forEach((p) => {
       let minCount = Infinity;
       let targetGroupId = 'group-1';
 
@@ -374,7 +581,7 @@ export default function GroupAssignmentTab({
         }
       }
 
-      // Assign to this target group
+      // Assign to target group and increment total count
       groupMemberCounts[targetGroupId]++;
       const targetGroupName = groupNames[targetGroupId] || `Group ${targetGroupId.replace('group-', '')}`;
 
@@ -426,15 +633,16 @@ export default function GroupAssignmentTab({
     }
 
     setIsAutoAssigning(false);
+    const roleLabel = autoArrangeRole === 'participants' ? 'participants' : autoArrangeRole === 'volunteers' ? 'volunteers' : 'members';
     showToast(
       'success', 
-      `Arranged ${sortedParticipants.length} participants across ${numGroups} groups in application order by fewest members!`
+      `Balanced & arranged ${sortedCandidates.length} ${roleLabel} across ${numGroups} groups by fewest total participants!`
     );
   };
 
   // Clear a single group (unassign ALL members in this group atomically)
   const handleClearGroup = async (groupId, groupTitle) => {
-    const membersInGroup = retreatApprovedParticipants.filter(r => r.groupId === groupId);
+    const membersInGroup = retreatAllApplicants.filter(r => r.groupId === groupId);
     if (membersInGroup.length === 0) {
       showToast('info', 'Group is already empty.');
       return;
@@ -481,7 +689,7 @@ export default function GroupAssignmentTab({
 
   // Reset / Unassign ALL participants and volunteers in this retreat atomically
   const handleResetAll = async () => {
-    const assignedMembers = retreatApprovedParticipants.filter(r => r.groupId && r.groupId !== 'unassigned');
+    const assignedMembers = retreatAllApplicants.filter(r => r.groupId && r.groupId !== 'unassigned');
     if (assignedMembers.length === 0) {
       showToast('info', 'No members are currently assigned.');
       return;
@@ -570,9 +778,9 @@ export default function GroupAssignmentTab({
     persistRetreatGroupConfig(numGroups, updated);
   };
 
-  // Clean, Concise Chip Renderer
+  // Clean, Concise Chip Renderer with Color Theming
   const renderMemberChip = (member) => {
-    const isVol = member.isVolunteer;
+    const theme = getMemberTheme(member);
     const initial = (member.name[0] || 'U').toUpperCase();
 
     return (
@@ -588,12 +796,8 @@ export default function GroupAssignmentTab({
           gap: '0.45rem',
           padding: '0.35rem 0.65rem',
           borderRadius: 'var(--radius-full)',
-          background: isVol 
-            ? 'var(--sky-sun-light)'
-            : 'var(--sky-blue-light)',
-          border: isVol 
-            ? '1.5px solid rgba(250, 188, 29, 0.5)' 
-            : '1px solid rgba(31, 116, 241, 0.3)',
+          background: theme.bg,
+          border: theme.border,
           boxShadow: 'var(--shadow-sm)',
           cursor: 'grab',
           userSelect: 'none',
@@ -602,9 +806,7 @@ export default function GroupAssignmentTab({
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)';
-          e.currentTarget.style.boxShadow = isVol 
-            ? '0 4px 12px rgba(250, 188, 29, 0.25)' 
-            : '0 4px 12px rgba(31, 116, 241, 0.2)';
+          e.currentTarget.style.boxShadow = theme.hoverShadow;
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.transform = 'none';
@@ -622,7 +824,7 @@ export default function GroupAssignmentTab({
               height: '24px',
               borderRadius: '50%',
               objectFit: 'cover',
-              border: isVol ? '1.5px solid var(--sky-sun)' : '1.5px solid var(--sky-blue)',
+              border: `1.5px solid ${theme.avatarBg}`,
               flexShrink: 0
             }}
           />
@@ -632,10 +834,8 @@ export default function GroupAssignmentTab({
               width: '24px',
               height: '24px',
               borderRadius: '50%',
-              background: isVol 
-                ? 'var(--sky-sun)' 
-                : 'var(--sky-blue)',
-              color: isVol ? '#161942' : '#FFF',
+              background: theme.avatarBg,
+              color: theme.avatarColor,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -653,15 +853,34 @@ export default function GroupAssignmentTab({
           style={{
             fontSize: '0.82rem',
             fontWeight: 600,
-            color: isVol ? '#B45309' : 'var(--text-main)',
+            color: theme.textColor,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            maxWidth: '150px'
+            maxWidth: '140px'
           }}
-          title={`${member.name} (${member.email})`}
+          title={`${member.name} (${member.email}) • Status: ${theme.statusLabel} • Role: ${member.academicRole || (member.isVolunteer ? 'Volunteer' : 'Participant')}`}
         >
           {member.name}
+        </span>
+
+        {/* Concise Status Tag */}
+        <span
+          style={{
+            fontSize: '0.65rem',
+            fontWeight: 700,
+            padding: '0.1rem 0.35rem',
+            borderRadius: '4px',
+            background: 'rgba(255, 255, 255, 0.7)',
+            color: theme.textColor,
+            border: `1px solid ${theme.textColor}33`,
+            lineHeight: 1,
+            textTransform: 'uppercase',
+            letterSpacing: '0.02em',
+            flexShrink: 0
+          }}
+        >
+          {theme.statusLabel}
         </span>
 
         {/* Details Inspection Info Button */}
@@ -675,16 +894,17 @@ export default function GroupAssignmentTab({
           style={{
             background: 'transparent',
             border: 'none',
-            color: isVol ? '#B45309' : 'var(--text-secondary)',
+            color: theme.textColor,
             cursor: 'pointer',
             padding: '2px',
             display: 'flex',
             alignItems: 'center',
             borderRadius: '50%',
-            transition: 'color 0.15s ease'
+            transition: 'opacity 0.15s ease',
+            opacity: 0.8
           }}
-          onMouseEnter={(e) => e.currentTarget.style.color = 'var(--sky-blue)'}
-          onMouseLeave={(e) => e.currentTarget.style.color = isVol ? '#B45309' : 'var(--text-secondary)'}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.8'; }}
         >
           <Info size={14} />
         </button>
@@ -817,7 +1037,7 @@ export default function GroupAssignmentTab({
             </div>
           </div>
 
-          {/* Action Buttons: Auto-Arrange, Print Nametags & Reset */}
+          {/* Action Buttons: Print Nametags, Role-based Auto-Arrange & Reset */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button
               type="button"
@@ -838,23 +1058,82 @@ export default function GroupAssignmentTab({
               Print Nametag Sheets
             </button>
 
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleAutoArrangeNonVolunteers}
-              disabled={isAutoAssigning}
-              style={{
-                padding: '0.65rem 1.25rem',
-                fontSize: '0.88rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
-              }}
-              title="Assigns approved non-volunteer participants in application order into the groups with fewest members"
-            >
-              <Sparkles size={16} />
-              {isAutoAssigning ? 'Arranging...' : 'Auto-Arrange Non-Volunteers'}
-            </button>
+            {/* Auto-Arrange Role Selector & Execution Button */}
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              background: '#F1F5F9',
+              padding: '0.25rem',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-color)',
+              gap: '0.35rem',
+              flexWrap: 'wrap'
+            }}>
+              <select
+                value={autoArrangeRole}
+                onChange={(e) => setAutoArrangeRole(e.target.value)}
+                style={{
+                  padding: '0.45rem 0.65rem',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  border: '1px solid rgba(35, 39, 95, 0.15)',
+                  borderRadius: 'var(--radius-sm)',
+                  background: '#FFFFFF',
+                  color: 'var(--text-main)',
+                  cursor: 'pointer'
+                }}
+                title="Select which role type to balance across groups"
+              >
+                <option value="participants">Participants (Non-Volunteers)</option>
+                <option value="volunteers">Volunteers Only</option>
+                <option value="all">All Roles (Everyone)</option>
+                <optgroup label="Academic Roles">
+                  <option value="undergraduate">Undergraduate Students</option>
+                  <option value="graduate">Graduate Students</option>
+                  <option value="faculty">Faculty / Staff</option>
+                </optgroup>
+              </select>
+
+              <label 
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  fontSize: '0.75rem',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  padding: '0 0.35rem',
+                  userSelect: 'none'
+                }}
+                title="Only assign currently unassigned members, keeping already assigned members in their groups"
+              >
+                <input
+                  type="checkbox"
+                  checked={autoArrangeOnlyUnassigned}
+                  onChange={(e) => setAutoArrangeOnlyUnassigned(e.target.checked)}
+                  style={{ cursor: 'pointer', accentColor: 'var(--sky-blue)' }}
+                />
+                Unassigned Only
+              </label>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleAutoArrange}
+                disabled={isAutoAssigning}
+                style={{
+                  padding: '0.55rem 1rem',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}
+                title="Sequentially assigns selected role into the group with fewest total participants"
+              >
+                <Sparkles size={15} />
+                {isAutoAssigning ? 'Arranging...' : 'Auto-Arrange'}
+              </button>
+            </div>
 
             <button
               type="button"
@@ -878,13 +1157,341 @@ export default function GroupAssignmentTab({
 
       </div>
 
+      {/* MULTI-SELECT APPLICATION STATUS FILTER BAR */}
+      <div 
+        className="glass-card" 
+        style={{ 
+          padding: '1rem 1.25rem', 
+          background: '#FFFFFF', 
+          borderRadius: 'var(--radius-md)',
+          boxShadow: 'var(--shadow-sm)',
+          border: '1px solid var(--border-color)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.75rem'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Filter size={15} color="var(--sky-blue)" />
+            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Filter Application Statuses:
+            </span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              ({allManageableMembers.length} displayed of {retreatAllApplicants.length} applicants)
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <button
+              type="button"
+              onClick={handleSelectAllStatuses}
+              style={{
+                background: '#F1F5F9',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '0.25rem 0.6rem',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                color: 'var(--text-main)',
+                cursor: 'pointer'
+              }}
+            >
+              Select All
+            </button>
+            <button
+              type="button"
+              onClick={handleSelectApprovedOnly}
+              style={{
+                background: '#DCFCE7',
+                border: '1px solid #86EFAC',
+                borderRadius: 'var(--radius-sm)',
+                padding: '0.25rem 0.6rem',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                color: '#166534',
+                cursor: 'pointer'
+              }}
+            >
+              Approved Only
+            </button>
+            <button
+              type="button"
+              onClick={handleClearStatuses}
+              style={{
+                background: '#FEF2F2',
+                border: '1px solid #FCA5A5',
+                borderRadius: 'var(--radius-sm)',
+                padding: '0.25rem 0.6rem',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                color: '#DC2626',
+                cursor: 'pointer'
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Pills with Checkboxes & Color Indicators */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+          
+          {/* Approved Pill (Green) */}
+          <label 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.35rem 0.75rem',
+              borderRadius: 'var(--radius-full)',
+              background: selectedStatuses.has('Approved') ? '#DCFCE7' : '#F8FAFC',
+              border: selectedStatuses.has('Approved') ? '1.5px solid #86EFAC' : '1px solid var(--border-color)',
+              color: selectedStatuses.has('Approved') ? '#166534' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              userSelect: 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={selectedStatuses.has('Approved')}
+              onChange={() => handleToggleStatus('Approved')}
+              style={{ accentColor: '#16A34A', cursor: 'pointer' }}
+            />
+            <span>Approved / Accepted</span>
+            <span style={{
+              background: selectedStatuses.has('Approved') ? '#BBF7D0' : '#E2E8F0',
+              padding: '0.1rem 0.45rem',
+              borderRadius: 'var(--radius-full)',
+              fontSize: '0.72rem'
+            }}>
+              {statusCounts.counts['Approved'] || 0}
+            </span>
+          </label>
+
+          {/* Volunteers Pill (Current Yellow) */}
+          <label 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.35rem 0.75rem',
+              borderRadius: 'var(--radius-full)',
+              background: showVolunteers ? 'var(--sky-sun-light)' : '#F8FAFC',
+              border: showVolunteers ? '1.5px solid rgba(250, 188, 29, 0.6)' : '1px solid var(--border-color)',
+              color: showVolunteers ? '#B45309' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              userSelect: 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showVolunteers}
+              onChange={() => setShowVolunteers(prev => !prev)}
+              style={{ accentColor: '#FABC1D', cursor: 'pointer' }}
+            />
+            <span>Volunteers</span>
+            <span style={{
+              background: showVolunteers ? 'rgba(250, 188, 29, 0.3)' : '#E2E8F0',
+              padding: '0.1rem 0.45rem',
+              borderRadius: 'var(--radius-full)',
+              fontSize: '0.72rem'
+            }}>
+              {statusCounts.volCount}
+            </span>
+          </label>
+
+          {/* Pending Pill (Blue) */}
+          <label 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.35rem 0.75rem',
+              borderRadius: 'var(--radius-full)',
+              background: selectedStatuses.has('Pending') ? '#DBEAFE' : '#F8FAFC',
+              border: selectedStatuses.has('Pending') ? '1.5px solid #93C5FD' : '1px solid var(--border-color)',
+              color: selectedStatuses.has('Pending') ? '#1E40AF' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              userSelect: 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={selectedStatuses.has('Pending')}
+              onChange={() => handleToggleStatus('Pending')}
+              style={{ accentColor: '#1F74F1', cursor: 'pointer' }}
+            />
+            <span>Pending</span>
+            <span style={{
+              background: selectedStatuses.has('Pending') ? '#BFDBFE' : '#E2E8F0',
+              padding: '0.1rem 0.45rem',
+              borderRadius: 'var(--radius-full)',
+              fontSize: '0.72rem'
+            }}>
+              {statusCounts.counts['Pending'] || 0}
+            </span>
+          </label>
+
+          {/* In Progress Pill (Blue) */}
+          <label 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.35rem 0.75rem',
+              borderRadius: 'var(--radius-full)',
+              background: selectedStatuses.has('In Progress') ? '#DBEAFE' : '#F8FAFC',
+              border: selectedStatuses.has('In Progress') ? '1.5px solid #93C5FD' : '1px solid var(--border-color)',
+              color: selectedStatuses.has('In Progress') ? '#1E40AF' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              userSelect: 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={selectedStatuses.has('In Progress')}
+              onChange={() => handleToggleStatus('In Progress')}
+              style={{ accentColor: '#1F74F1', cursor: 'pointer' }}
+            />
+            <span>In Progress</span>
+            <span style={{
+              background: selectedStatuses.has('In Progress') ? '#BFDBFE' : '#E2E8F0',
+              padding: '0.1rem 0.45rem',
+              borderRadius: 'var(--radius-full)',
+              fontSize: '0.72rem'
+            }}>
+              {statusCounts.counts['In Progress'] || 0}
+            </span>
+          </label>
+
+          {/* Did Not Reply Pill (Blue) */}
+          <label 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.35rem 0.75rem',
+              borderRadius: 'var(--radius-full)',
+              background: selectedStatuses.has('Did Not Reply') ? '#DBEAFE' : '#F8FAFC',
+              border: selectedStatuses.has('Did Not Reply') ? '1.5px solid #93C5FD' : '1px solid var(--border-color)',
+              color: selectedStatuses.has('Did Not Reply') ? '#1E40AF' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              userSelect: 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={selectedStatuses.has('Did Not Reply')}
+              onChange={() => handleToggleStatus('Did Not Reply')}
+              style={{ accentColor: '#1F74F1', cursor: 'pointer' }}
+            />
+            <span>Did Not Reply</span>
+            <span style={{
+              background: selectedStatuses.has('Did Not Reply') ? '#BFDBFE' : '#E2E8F0',
+              padding: '0.1rem 0.45rem',
+              borderRadius: 'var(--radius-full)',
+              fontSize: '0.72rem'
+            }}>
+              {statusCounts.counts['Did Not Reply'] || 0}
+            </span>
+          </label>
+
+          {/* Uncontacted Pill (Blue) */}
+          <label 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.35rem 0.75rem',
+              borderRadius: 'var(--radius-full)',
+              background: selectedStatuses.has('Uncontacted') ? '#DBEAFE' : '#F8FAFC',
+              border: selectedStatuses.has('Uncontacted') ? '1.5px solid #93C5FD' : '1px solid var(--border-color)',
+              color: selectedStatuses.has('Uncontacted') ? '#1E40AF' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              userSelect: 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={selectedStatuses.has('Uncontacted')}
+              onChange={() => handleToggleStatus('Uncontacted')}
+              style={{ accentColor: '#1F74F1', cursor: 'pointer' }}
+            />
+            <span>Uncontacted</span>
+            <span style={{
+              background: selectedStatuses.has('Uncontacted') ? '#BFDBFE' : '#E2E8F0',
+              padding: '0.1rem 0.45rem',
+              borderRadius: 'var(--radius-full)',
+              fontSize: '0.72rem'
+            }}>
+              {statusCounts.counts['Uncontacted'] || 0}
+            </span>
+          </label>
+
+          {/* Withdrawn Pill (Red) */}
+          <label 
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.35rem 0.75rem',
+              borderRadius: 'var(--radius-full)',
+              background: selectedStatuses.has('Withdrawn') ? '#FEE2E2' : '#F8FAFC',
+              border: selectedStatuses.has('Withdrawn') ? '1.5px solid #FCA5A5' : '1px solid var(--border-color)',
+              color: selectedStatuses.has('Withdrawn') ? '#991B1B' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              userSelect: 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={selectedStatuses.has('Withdrawn')}
+              onChange={() => handleToggleStatus('Withdrawn')}
+              style={{ accentColor: '#DC2626', cursor: 'pointer' }}
+            />
+            <span>Withdrawn</span>
+            <span style={{
+              background: selectedStatuses.has('Withdrawn') ? '#FECACA' : '#E2E8F0',
+              padding: '0.1rem 0.45rem',
+              borderRadius: 'var(--radius-full)',
+              fontSize: '0.72rem'
+            }}>
+              {statusCounts.counts['Withdrawn'] || 0}
+            </span>
+          </label>
+
+        </div>
+      </div>
+
       {/* QUICK SEARCH & ROSTER METRICS */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', minWidth: '260px', flex: '1 1 300px' }}>
           <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)' }} />
           <input
             type="text"
-            placeholder="Search approved applicants by name, email, or role..."
+            placeholder="Search applicants by name, email, role, or status..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
@@ -917,7 +1524,7 @@ export default function GroupAssignmentTab({
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.82rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--sky-blue)' }} />
             Participants: <strong style={{ color: 'var(--text-main)' }}>{allManageableMembers.filter(m => !m.isVolunteer).length}</strong>
@@ -1075,31 +1682,55 @@ export default function GroupAssignmentTab({
                     />
                   </div>
 
-                  {/* Clear Group Button at Top Right of Group Card */}
-                  {group.members.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => handleClearGroup(group.id, group.name)}
+                  {/* Total Participants Count & Clear Group Button */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexShrink: 0 }}>
+                    
+                    {/* Total participant count visible next to the clear button */}
+                    <div
                       style={{
-                        background: '#FEF2F2',
-                        border: '1px solid #FCA5A5',
-                        color: '#DC2626',
-                        borderRadius: 'var(--radius-sm)',
-                        fontSize: '0.72rem',
-                        padding: '0.2rem 0.55rem',
-                        cursor: 'pointer',
-                        display: 'flex',
+                        display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '0.25rem',
-                        fontWeight: 600,
-                        flexShrink: 0,
-                        transition: 'all 0.15s ease'
+                        gap: '0.3rem',
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: 'var(--radius-full)',
+                        background: group.members.length > 0 ? '#EFF6FF' : '#F1F5F9',
+                        color: group.members.length > 0 ? '#1D4ED8' : 'var(--text-muted)',
+                        border: group.members.length > 0 ? '1px solid #BFDBFE' : '1px solid var(--border-color)',
+                        fontSize: '0.75rem',
+                        fontWeight: 700
                       }}
-                      title={`Unassign all ${group.members.length} members from ${group.name}`}
+                      title={`Total participants in ${group.name}: ${group.members.length} (${group.participantCount} participants, ${group.volunteerCount} volunteers)`}
                     >
-                      <RotateCcw size={11} /> Clear
-                    </button>
-                  )}
+                      <Users size={12} />
+                      <span>{group.members.length}</span>
+                    </div>
+
+                    {/* Clear Group Button at Top Right of Group Card */}
+                    {group.members.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleClearGroup(group.id, group.name)}
+                        style={{
+                          background: '#FEF2F2',
+                          border: '1px solid #FCA5A5',
+                          color: '#DC2626',
+                          borderRadius: 'var(--radius-sm)',
+                          fontSize: '0.72rem',
+                          padding: '0.2rem 0.55rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          fontWeight: 600,
+                          flexShrink: 0,
+                          transition: 'all 0.15s ease'
+                        }}
+                        title={`Unassign all ${group.members.length} members from ${group.name}`}
+                      >
+                        <RotateCcw size={11} /> Clear
+                      </button>
+                    )}
+                  </div>
 
                 </div>
 

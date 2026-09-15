@@ -14,8 +14,35 @@ import {
   X
 } from 'lucide-react';
 import { db, isFirebaseConfigured } from '../firebase/config';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
+import { ADMIN_EMAIL } from '../context/AuthContext';
 import ParticipantDetailsModal from './ParticipantDetailsModal';
+
+// Normalize group ID to canonical format (e.g. 'group-1', 'group-2') or custom name resolution
+const normalizeGroupId = (val, groupNames = {}) => {
+  if (!val) return 'unassigned';
+  const str = String(val).trim();
+  if (!str || str.toLowerCase() === 'unassigned') return 'unassigned';
+
+  // Check if it's already 'group-X'
+  const match = str.match(/^group-(\d+)$/i);
+  if (match) return `group-${match[1]}`;
+
+  // Check if it's just a number: '2' or 2
+  if (/^\d+$/.test(str)) return `group-${str}`;
+
+  // Check if it matches 'Group 2'
+  const match2 = str.match(/^group\s*(\d+)$/i);
+  if (match2) return `group-${match2[1]}`;
+
+  // Check if it matches any custom name in groupNames
+  const foundEntry = Object.entries(groupNames).find(([_, name]) => 
+    name && name.toLowerCase().trim() === str.toLowerCase()
+  );
+  if (foundEntry) return foundEntry[0];
+
+  return str;
+};
 
 export default function AttendanceTab({
   activeRetreat,
@@ -85,37 +112,132 @@ export default function AttendanceTab({
   const numConfiguredGroups = Number(retreatGroupConfig.numGroups) || 4;
   const retreatGroupNames = useMemo(() => retreatGroupConfig.groupNames || {}, [retreatGroupConfig.groupNames]);
 
-  // Find user's assigned group from authorizedEmails or registrations
+  // Helper: check if email is an authorized volunteer
+  const isVolunteerEmail = React.useCallback((email) => {
+    if (!email) return false;
+    const clean = email.toLowerCase().trim();
+    if (clean === ADMIN_EMAIL.toLowerCase().trim()) return true;
+    return authorizedEmails.some(ae => {
+      const authEmail = (typeof ae === 'string' ? ae : ae?.email || '').toLowerCase().trim();
+      return authEmail === clean;
+    });
+  }, [authorizedEmails]);
+
+  // Find user's assigned group from registrations, groupConfig, or authorizedEmails
   const userEmail = (currentUser?.email || '').trim().toLowerCase();
   
   const userAssignedGroupId = useMemo(() => {
-    // Check volunteer assignment list in retreat groupConfig
-    const volAssignments = retreatGroupConfig.volunteerAssignments || {};
-    const directVol = Object.entries(volAssignments).find(([_, vList]) => 
-      Array.isArray(vList) && vList.some(vEmail => vEmail.toLowerCase() === userEmail)
-    );
-    if (directVol) return directVol[0];
+    if (!userEmail) return 'group-1';
 
-    // Check volunteer in authorizedEmails
-    const authRecord = authorizedEmails.find(a => (a.email || '').trim().toLowerCase() === userEmail);
-    if (authRecord?.assignedGroup && authRecord.assignedGroup !== 'unassigned') {
-      return authRecord.assignedGroup;
+    // 1. Check registrations specifically for the active retreat
+    const retreatReg = registrations.find(r => {
+      const rEmail = (r.email || '').trim().toLowerCase();
+      if (rEmail !== userEmail) return false;
+      if (!activeRetreat?.id) return true;
+      return (
+        r.retreatId === activeRetreat.id ||
+        r.selectedRetreat === activeRetreat.id ||
+        (!r.retreatId && activeRetreat.id === 'general') ||
+        (!r.retreatId && r.retreatTitle === activeRetreat?.title) ||
+        (r.retreatTitle && activeRetreat?.title && r.retreatTitle.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim()) ||
+        (r.selectedRetreat && activeRetreat?.title && r.selectedRetreat.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim())
+      );
+    });
+
+    if (retreatReg?.groupId && retreatReg.groupId !== 'unassigned') {
+      const norm = normalizeGroupId(retreatReg.groupId, retreatGroupNames);
+      if (norm !== 'unassigned') return norm;
+    }
+    if (retreatReg?.assignedGroup && retreatReg.assignedGroup !== 'unassigned') {
+      const norm = normalizeGroupId(retreatReg.assignedGroup, retreatGroupNames);
+      if (norm !== 'unassigned') return norm;
     }
 
-    // Default fallback to group-1 if volunteer
-    return 'group-1';
-  }, [retreatGroupConfig, authorizedEmails, userEmail]);
+    // 2. Check any registration matching user's email with a valid groupId
+    const anyReg = registrations.find(r => {
+      const rEmail = (r.email || '').trim().toLowerCase();
+      return rEmail === userEmail && (
+        (r.groupId && r.groupId !== 'unassigned') ||
+        (r.assignedGroup && r.assignedGroup !== 'unassigned')
+      );
+    });
+    if (anyReg) {
+      const g = anyReg.groupId || anyReg.assignedGroup;
+      const norm = normalizeGroupId(g, retreatGroupNames);
+      if (norm !== 'unassigned') return norm;
+    }
 
-  // 3. Filter approved registrations for this active retreat
+    // 3. Check direct assignments in retreat groupConfig
+    const assignments = retreatGroupConfig.assignments || {};
+    const directAssignment = assignments[userEmail] || (retreatReg?.id && assignments[retreatReg.id]);
+    if (directAssignment && directAssignment !== 'unassigned') {
+      const norm = normalizeGroupId(directAssignment, retreatGroupNames);
+      if (norm !== 'unassigned') return norm;
+    }
+
+    // 4. Check volunteer assignment list in retreat groupConfig
+    const volAssignments = retreatGroupConfig.volunteerAssignments || {};
+    const directVol = Object.entries(volAssignments).find(([_, vList]) => 
+      Array.isArray(vList) && vList.some(vEmail => (typeof vEmail === 'string' ? vEmail : vEmail?.email || '').toLowerCase().trim() === userEmail)
+    );
+    if (directVol && directVol[0]) {
+      const norm = normalizeGroupId(directVol[0], retreatGroupNames);
+      if (norm !== 'unassigned') return norm;
+    }
+
+    // 5. Check volunteer record in authorizedEmails
+    const authRecord = authorizedEmails.find(a => {
+      const e = (typeof a === 'string' ? a : a?.email || '').trim().toLowerCase();
+      return e === userEmail;
+    });
+    if (authRecord && typeof authRecord === 'object' && (authRecord.assignedGroup || authRecord.groupId)) {
+      const g = authRecord.assignedGroup || authRecord.groupId;
+      if (g && g !== 'unassigned') {
+        const norm = normalizeGroupId(g, retreatGroupNames);
+        if (norm !== 'unassigned') return norm;
+      }
+    }
+
+    // 6. Check currentUser properties directly
+    if (currentUser?.groupId && currentUser.groupId !== 'unassigned') {
+      const norm = normalizeGroupId(currentUser.groupId, retreatGroupNames);
+      if (norm !== 'unassigned') return norm;
+    }
+    if (currentUser?.assignedGroup && currentUser.assignedGroup !== 'unassigned') {
+      const norm = normalizeGroupId(currentUser.assignedGroup, retreatGroupNames);
+      if (norm !== 'unassigned') return norm;
+    }
+
+    // Default fallback to group-1 if volunteer has no assigned group
+    return 'group-1';
+  }, [retreatGroupConfig, authorizedEmails, userEmail, registrations, activeRetreat, retreatGroupNames, currentUser]);
+
+  // Selected group under My Group view (defaults to volunteer's assigned group, but allows quick switching)
+  const [selectedMyGroup, setSelectedMyGroup] = useState(userAssignedGroupId);
+  useEffect(() => {
+    if (userAssignedGroupId) {
+      setSelectedMyGroup(userAssignedGroupId);
+    }
+  }, [userAssignedGroupId]);
+
+  // 3. Filter approved registrations & volunteers for this active retreat
   const retreatApprovedParticipants = useMemo(() => {
     if (!activeRetreat?.id) return [];
     
     return registrations.filter(r => {
-      const retreatMatches = r.retreatId === activeRetreat.id || (!r.retreatId && activeRetreat.id === 'general');
+      const retreatMatches = 
+        r.retreatId === activeRetreat.id ||
+        r.selectedRetreat === activeRetreat.id ||
+        (!r.retreatId && activeRetreat.id === 'general') ||
+        (!r.retreatId && r.retreatTitle === activeRetreat?.title) ||
+        (r.retreatTitle && activeRetreat?.title && r.retreatTitle.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim()) ||
+        (r.selectedRetreat && activeRetreat?.title && r.selectedRetreat.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim());
+
       const isApproved = r.orientationStatus === 'Approved' || r.interviewStatus === 'Approved' || r.status === 'Approved';
-      return retreatMatches && isApproved;
+      const isVol = isVolunteerEmail(r.email) || Boolean(r.isVolunteer);
+      return retreatMatches && (isApproved || isVol);
     });
-  }, [registrations, activeRetreat?.id]);
+  }, [registrations, activeRetreat, isVolunteerEmail]);
 
   // 4. Group members roster list based on active view and group mappings
   const displayRoster = useMemo(() => {
@@ -123,8 +245,10 @@ export default function AttendanceTab({
 
     const list = retreatApprovedParticipants.map(r => {
       // Determine participant group assignment
-      const assignedGId = r.groupId || groupAssignments[r.id] || groupAssignments[r.email] || 'unassigned';
+      const rawGId = r.groupId || groupAssignments[r.id] || groupAssignments[r.email] || 'unassigned';
+      const assignedGId = normalizeGroupId(rawGId, retreatGroupNames);
       const assignedGName = retreatGroupNames[assignedGId] || (assignedGId === 'unassigned' ? 'Unassigned' : `Group ${assignedGId.replace('group-', '')}`);
+      const isVol = isVolunteerEmail(r.email) || Boolean(r.isVolunteer);
 
       return {
         id: r.id,
@@ -133,61 +257,85 @@ export default function AttendanceTab({
         lastName: r.lastName || '',
         email: r.email,
         phone: r.phone || '',
-        academicRole: r.academicRole || '',
-        feeTier: r.feeTier || '',
-        feeAmount: r.feeAmount,
-        isPaid: r.isPaid,
+        academicRole: r.academicRole || (isVol ? 'Volunteer Mentor' : ''),
+        feeTier: r.feeTier || (isVol ? 'Staff / Mentor' : ''),
+        feeAmount: r.feeAmount ?? (isVol ? 0 : undefined),
+        isPaid: r.isPaid ?? (isVol ? true : false),
         attendance: r.attendance || {},
         groupId: assignedGId,
         assignedGroup: assignedGName,
-        isVolunteer: false,
+        isVolunteer: isVol,
         rawRecord: r
       };
     });
 
-    // Also include assigned volunteers in the group view
+    // Also include assigned volunteers in the group view if not already in list
     const volAssignments = retreatGroupConfig.volunteerAssignments || {};
     const volunteerMembers = [];
 
     authorizedEmails.forEach(vol => {
-      const vEmail = (vol.email || '').trim().toLowerCase();
+      const vEmail = (typeof vol === 'string' ? vol : vol?.email || '').trim().toLowerCase();
       if (!vEmail) return;
+
+      // Check if this volunteer is already in list
+      const isAlreadyIn = list.some(m => (m.email || '').toLowerCase().trim() === vEmail);
+      if (isAlreadyIn) return;
+
+      // Find if they have any registration record
+      const volReg = registrations.find(r => {
+        const rEmail = (r.email || '').trim().toLowerCase();
+        if (rEmail !== vEmail) return false;
+        if (!activeRetreat?.id) return true;
+        return (
+          r.retreatId === activeRetreat.id ||
+          r.selectedRetreat === activeRetreat.id ||
+          (!r.retreatId && activeRetreat.id === 'general') ||
+          (!r.retreatId && r.retreatTitle === activeRetreat?.title) ||
+          (r.retreatTitle && activeRetreat?.title && r.retreatTitle.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim())
+        );
+      }) || registrations.find(r => (r.email || '').trim().toLowerCase() === vEmail);
 
       // Determine which group this volunteer belongs to
       let volGId = 'unassigned';
-      Object.entries(volAssignments).forEach(([gId, vList]) => {
-        if (Array.isArray(vList) && vList.some(email => email.toLowerCase() === vEmail)) {
-          volGId = gId;
-        }
-      });
-
-      if (volGId === 'unassigned' && vol.assignedGroup) {
-        volGId = vol.assignedGroup;
-      }
-
-      // Check if this volunteer is also a participant to prevent duplicate row
-      const isAlreadyIn = list.some(m => m.email.toLowerCase() === vEmail);
-      if (!isAlreadyIn) {
-        const volGName = retreatGroupNames[volGId] || (volGId === 'unassigned' ? 'Unassigned' : `Group ${volGId.replace('group-', '')}`);
-        volunteerMembers.push({
-          id: `vol-${vol.id || vEmail}`,
-          name: vol.name || vol.displayName || vEmail.split('@')[0],
-          firstName: vol.name?.split(' ')[0] || vEmail.split('@')[0],
-          lastName: vol.name?.split(' ')[1] || '',
-          email: vEmail,
-          phone: vol.phone || '',
-          academicRole: 'Volunteer Mentor',
-          feeTier: 'Staff / Mentor',
-          feeAmount: 0,
-          isPaid: true,
-          attendance: vol.attendance || {},
-          groupId: volGId,
-          assignedGroup: volGName,
-          isVolunteer: true,
-          photoURL: vol.photoURL || null,
-          rawRecord: vol
+      if (volReg?.groupId && volReg.groupId !== 'unassigned') {
+        volGId = normalizeGroupId(volReg.groupId, retreatGroupNames);
+      } else if (groupAssignments[vEmail]) {
+        volGId = normalizeGroupId(groupAssignments[vEmail], retreatGroupNames);
+      } else if (volReg?.id && groupAssignments[volReg.id]) {
+        volGId = normalizeGroupId(groupAssignments[volReg.id], retreatGroupNames);
+      } else {
+        Object.entries(volAssignments).forEach(([gId, vList]) => {
+          if (Array.isArray(vList) && vList.some(email => (typeof email === 'string' ? email : email?.email || '').toLowerCase().trim() === vEmail)) {
+            volGId = normalizeGroupId(gId, retreatGroupNames);
+          }
         });
       }
+
+      if (volGId === 'unassigned' && typeof vol === 'object' && (vol.assignedGroup || vol.groupId)) {
+        volGId = normalizeGroupId(vol.assignedGroup || vol.groupId, retreatGroupNames);
+      }
+
+      const volGName = retreatGroupNames[volGId] || (volGId === 'unassigned' ? 'Unassigned' : `Group ${volGId.replace('group-', '')}`);
+      const volName = volReg?.fullName || (volReg ? `${volReg.firstName || ''} ${volReg.lastName || ''}`.trim() : '') || (typeof vol === 'object' ? (vol.name || vol.displayName) : '') || vEmail.split('@')[0];
+
+      volunteerMembers.push({
+        id: `vol-${volReg?.id || (typeof vol === 'object' && vol.id) || vEmail}`,
+        name: volName,
+        firstName: volReg?.firstName || volName.split(' ')[0] || vEmail.split('@')[0],
+        lastName: volReg?.lastName || volName.split(' ')[1] || '',
+        email: vEmail,
+        phone: volReg?.phone || (typeof vol === 'object' ? vol.phone : '') || '',
+        academicRole: volReg?.academicRole || 'Volunteer Mentor',
+        feeTier: volReg?.feeTier || 'Staff / Mentor',
+        feeAmount: 0,
+        isPaid: true,
+        attendance: volReg?.attendance || (typeof vol === 'object' ? vol.attendance : {}) || {},
+        groupId: volGId,
+        assignedGroup: volGName,
+        isVolunteer: true,
+        photoURL: (typeof vol === 'object' ? vol.photoURL : null) || null,
+        rawRecord: volReg || (typeof vol === 'object' ? vol : { email: vEmail })
+      });
     });
 
     const combinedList = [...list, ...volunteerMembers];
@@ -195,7 +343,8 @@ export default function AttendanceTab({
     // Filter by Active View
     let filtered = combinedList;
     if (activeView === 'my_group') {
-      filtered = combinedList.filter(m => m.groupId === userAssignedGroupId);
+      const activeGroupTarget = selectedMyGroup || userAssignedGroupId;
+      filtered = combinedList.filter(m => m.groupId === activeGroupTarget);
     } else if (activeView === 'everyone' && everyoneGroupFilter !== 'ALL') {
       filtered = combinedList.filter(m => m.groupId === everyoneGroupFilter);
     }
@@ -206,7 +355,7 @@ export default function AttendanceTab({
       filtered = filtered.filter(m => 
         m.name.toLowerCase().includes(q) ||
         m.email.toLowerCase().includes(q) ||
-        m.academicRole.toLowerCase().includes(q)
+        (m.academicRole && m.academicRole.toLowerCase().includes(q))
       );
     }
 
@@ -219,12 +368,16 @@ export default function AttendanceTab({
   }, [
     retreatApprovedParticipants, 
     authorizedEmails, 
+    registrations,
+    activeRetreat,
     retreatGroupConfig, 
     retreatGroupNames, 
     activeView, 
     userAssignedGroupId, 
+    selectedMyGroup,
     everyoneGroupFilter, 
-    searchQuery
+    searchQuery,
+    isVolunteerEmail
   ]);
 
   // 5. Toggle Attendance Action
@@ -251,17 +404,9 @@ export default function AttendanceTab({
     const isGraduated = attendedCount === 3;
 
     try {
-      if (member.isVolunteer) {
-        // Save volunteer attendance in authorized_emails or local storage
-        if (isFirebaseConfigured && db) {
-          const volDocRef = doc(db, 'authorized_emails', member.rawRecord.id || member.email);
-          await updateDoc(volDocRef, {
-            attendance: updatedAttendance
-          });
-        }
-      } else {
+      if (member.id && !member.id.startsWith('vol-')) {
         // Save participant attendance in registrations
-        if (isFirebaseConfigured && db && member.id && !member.id.startsWith('vol-')) {
+        if (isFirebaseConfigured && db) {
           const regDocRef = doc(db, 'registrations', member.id);
           await updateDoc(regDocRef, {
             attendance: updatedAttendance,
@@ -269,6 +414,21 @@ export default function AttendanceTab({
             attendanceStatus: isGraduated ? 'Completed' : attendedCount > 0 ? 'In Progress' : 'Registered',
             completed: isGraduated
           });
+        }
+      } else if (member.isVolunteer) {
+        // Save volunteer attendance in authorized_volunteers
+        if (isFirebaseConfigured && db) {
+          const volEmail = (member.email || '').toLowerCase().trim();
+          if (volEmail) {
+            const volDocRef = doc(db, 'authorized_volunteers', volEmail);
+            try {
+              await updateDoc(volDocRef, {
+                attendance: updatedAttendance
+              });
+            } catch {
+              await setDoc(volDocRef, { email: volEmail, attendance: updatedAttendance }, { merge: true });
+            }
+          }
         }
       }
 
@@ -449,15 +609,59 @@ export default function AttendanceTab({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
         
         {activeView === 'my_group' ? (
-          /* MY GROUP HEADER */
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--sky-sun)' }} />
-            <h3 style={{ margin: 0, fontSize: '1.15rem', color: 'var(--text-main)' }}>
-              {retreatGroupNames[userAssignedGroupId] || `Group ${userAssignedGroupId.replace('group-', '')}`} Roster
-            </h3>
-            <span className="badge badge-sun" style={{ fontSize: '0.72rem' }}>
-              {displayRoster.length} Members
-            </span>
+          /* MY GROUP HEADER WITH QUICK GROUP SWITCHER */
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--sky-sun)' }} />
+              <h3 style={{ margin: 0, fontSize: '1.15rem', color: 'var(--text-main)' }}>
+                {retreatGroupNames[selectedMyGroup || userAssignedGroupId] || (
+                  (selectedMyGroup || userAssignedGroupId) !== 'unassigned'
+                    ? `Group ${(selectedMyGroup || userAssignedGroupId).replace('group-', '')}`
+                    : 'Unassigned'
+                )} Roster
+              </h3>
+              <span className="badge badge-sun" style={{ fontSize: '0.72rem' }}>
+                {displayRoster.length} Members
+              </span>
+              {(selectedMyGroup || userAssignedGroupId) === userAssignedGroupId && userAssignedGroupId !== 'unassigned' && (
+                <span className="badge badge-sky" style={{ fontSize: '0.7rem' }}>
+                  My Assigned Group
+                </span>
+              )}
+            </div>
+
+            {/* Quick Switch Group Dropdown */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Filter size={15} color="var(--text-muted)" />
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Switch Group:</span>
+              <select
+                value={selectedMyGroup || userAssignedGroupId}
+                onChange={(e) => setSelectedMyGroup(e.target.value)}
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  background: '#FFFFFF',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--text-main)',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.82rem',
+                  fontWeight: 600
+                }}
+              >
+                {Array.from({ length: numConfiguredGroups }).map((_, i) => {
+                  const gId = `group-${i + 1}`;
+                  const isUserGroup = gId === userAssignedGroupId;
+                  const gName = retreatGroupNames[gId] || `Group ${i + 1}`;
+                  return (
+                    <option key={gId} value={gId}>
+                      {gName}{isUserGroup ? ' ★ (My Group)' : ''}
+                    </option>
+                  );
+                })}
+                <option value="unassigned">
+                  Unassigned Only {userAssignedGroupId === 'unassigned' ? '★ (My Group)' : ''}
+                </option>
+              </select>
+            </div>
           </div>
         ) : (
           /* EVERYONE HEADER & GROUP FILTER */
