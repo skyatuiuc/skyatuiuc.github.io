@@ -1,4 +1,4 @@
-import{c as T,i as be,d as W,p as J,q as Qe,r as Ze,j as m,X as Xe,s as et,M as tt,a as ot}from"./index-B0vBcaeX.js";import{e as D,v as re,s as Pe,h as we,f as nt,n as Fe,r as Be}from"./firebase-DVe_1dXv.js";import{r as it,a as rt}from"./vendor-KB3N6wHM.js";/**
+import{c as T,i as be,d as W,p as J,q as Qe,r as Ze,j as m,X as Xe,s as et,M as tt,a as ot}from"./index-Cet5LHgX.js";import{e as D,v as re,s as Pe,h as we,f as nt,n as Fe,r as Be}from"./firebase-DVe_1dXv.js";import{r as it,a as rt}from"./vendor-KB3N6wHM.js";/**
  * @license lucide-react v0.395.0 - ISC
  *
  * This source code is licensed under the ISC license.
@@ -505,35 +505,35 @@ Minimum version required to store current data is: `+i+`.
       <a href="${e.sattvaLink||"https://www.sattva.life/"}" style="color: #1F74F1; font-weight: bold; text-decoration: none;">Download Sattva App &rarr;</a> (Join our UIUC Circle with code: <strong>KPN8RG</strong>)
     </p>
 
-    <!-- PRACTICE GUIDE DOWNLOAD / PREVIEW CARD -->
-    ${e.practiceGuideUrl||e.cheatSheetUrl?`
-    <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #1F74F1; border-radius: 4px; padding: 14px 16px; margin: 15px 0 20px 0;">
-      <p style="margin: 0 0 4px 0; font-size: 14px; font-weight: 700; color: #23275F; text-transform: uppercase; letter-spacing: 0.03em;">
-        SKY Daily Home Practice Guide
-      </p>
-      <p style="margin: 0 0 10px 0; font-size: 13px; color: #4A5568; line-height: 1.4;">
-        Reference guide for 3-stage pranayama, breath counts, and daily home practice sequence:
-      </p>
-      ${/\.(png|jpe?g|webp|gif)$/i.test((e.practiceGuideUrl||e.cheatSheetUrl).split("?")[0])?`
-      <div style="margin: 10px 0 12px 0; text-align: center;">
-        <a href="${e.practiceGuideUrl||e.cheatSheetUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; display: block;">
-          <img 
-            src="${e.practiceGuideUrl||e.cheatSheetUrl}" 
-            alt="SKY Daily Home Practice Guide - Sequence and Breath Counts" 
-            width="520"
-            style="width: 100%; max-width: 520px; height: auto; border-radius: 6px; border: 1px solid #E2E8F0; display: block; margin: 0 auto;" 
-          />
-        </a>
-      </div>`:""}
-      <div style="margin-top: 10px;">
-        <a href="${e.practiceGuideUrl||e.cheatSheetUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #1F74F1; color: #ffffff !important; padding: 8px 18px; border-radius: 5px; text-decoration: none; font-size: 13px; font-weight: bold;">
-          View Practice Guide &rarr;
-        </a>
-      </div>
-      <p style="margin: 8px 0 0 0; font-size: 12px; color: #718096; font-style: italic;">
-        Click to view full-resolution guide: <a href="${e.practiceGuideUrl||e.cheatSheetUrl}" style="color: #1F74F1; text-decoration: underline;">${e.practiceGuideUrl||e.cheatSheetUrl}</a>
-      </p>
-    </div>`:""}
+    // <!-- PRACTICE GUIDE DOWNLOAD / PREVIEW CARD -->
+    // ${e.practiceGuideUrl||e.cheatSheetUrl?`
+    // <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #1F74F1; border-radius: 4px; padding: 14px 16px; margin: 15px 0 20px 0;">
+    //   <p style="margin: 0 0 4px 0; font-size: 14px; font-weight: 700; color: #23275F; text-transform: uppercase; letter-spacing: 0.03em;">
+    //     SKY Daily Home Practice Guide
+    //   </p>
+    //   <p style="margin: 0 0 10px 0; font-size: 13px; color: #4A5568; line-height: 1.4;">
+    //     Reference guide for 3-stage pranayama, breath counts, and daily home practice sequence:
+    //   </p>
+    //   ${/\.(png|jpe?g|webp|gif)$/i.test((e.practiceGuideUrl||e.cheatSheetUrl).split("?")[0])?`
+    //   <div style="margin: 10px 0 12px 0; text-align: center;">
+    //     <a href="${e.practiceGuideUrl||e.cheatSheetUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; display: block;">
+    //       <img 
+    //         src="${e.practiceGuideUrl||e.cheatSheetUrl}" 
+    //         alt="SKY Daily Home Practice Guide - Sequence and Breath Counts" 
+    //         width="520"
+    //         style="width: 100%; max-width: 520px; height: auto; border-radius: 6px; border: 1px solid #E2E8F0; display: block; margin: 0 auto;" 
+    //       />
+    //     </a>
+    //   </div>`:""}
+    //   <div style="margin-top: 10px;">
+    //     <a href="${e.practiceGuideUrl||e.cheatSheetUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #1F74F1; color: #ffffff !important; padding: 8px 18px; border-radius: 5px; text-decoration: none; font-size: 13px; font-weight: bold;">
+    //       View Practice Guide &rarr;
+    //     </a>
+    //   </div>
+    //   <p style="margin: 8px 0 0 0; font-size: 12px; color: #718096; font-style: italic;">
+    //     Click to view full-resolution guide: <a href="${e.practiceGuideUrl||e.cheatSheetUrl}" style="color: #1F74F1; text-decoration: underline;">${e.practiceGuideUrl||e.cheatSheetUrl}</a>
+    //   </p>
+    // </div>`:""}
 
     <!-- WEEKLY REUNIONS -->
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
