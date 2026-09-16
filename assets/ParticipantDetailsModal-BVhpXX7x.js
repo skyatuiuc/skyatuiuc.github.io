@@ -1,4 +1,4 @@
-import{c as T,i as be,d as W,p as J,q as Qe,r as Ze,j as m,X as Xe,s as et,M as tt,a as ot}from"./index-BqbdXRMm.js";import{e as D,v as re,s as Pe,h as we,f as nt,n as Fe,r as Be}from"./firebase-DVe_1dXv.js";import{r as it,a as rt}from"./vendor-KB3N6wHM.js";/**
+import{c as T,i as be,d as W,p as J,q as Qe,r as Ze,j as m,X as Xe,s as et,M as tt,a as ot}from"./index-mXBv9hwq.js";import{e as D,v as re,s as Pe,h as we,f as nt,n as Fe,r as Be}from"./firebase-DVe_1dXv.js";import{r as it,a as rt}from"./vendor-KB3N6wHM.js";/**
  * @license lucide-react v0.395.0 - ISC
  *
  * This source code is licensed under the ISC license.
@@ -516,16 +516,13 @@ Minimum version required to store current data is: `+i+`.
       </p>
       ${/\.(png|jpe?g|webp|gif)$/i.test((e.practiceGuideUrl||e.cheatSheetUrl).split("?")[0])?`
       <div style="margin: 10px 0 12px 0; text-align: center;">
-        <a href="${e.practiceGuideUrl||e.cheatSheetUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; display: block;">
-        </a>
+        
       </div>`:""}
       <div style="margin-top: 10px;">
-        <a href="${e.practiceGuideUrl||e.cheatSheetUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #1F74F1; color: #ffffff !important; padding: 8px 18px; border-radius: 5px; text-decoration: none; font-size: 13px; font-weight: bold;">
-          View Practice Guide &rarr;
-        </a>
+        
       </div>
       <p style="margin: 8px 0 0 0; font-size: 12px; color: #718096; font-style: italic;">
-        Click to view full-resolution guide: <a href="${e.practiceGuideUrl||e.cheatSheetUrl}" style="color: #1F74F1; text-decoration: underline;">${e.practiceGuideUrl||e.cheatSheetUrl}</a>
+        Click to view full-resolution guide: 
       </p>
     </div>`:""}
 
