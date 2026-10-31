@@ -6,7 +6,8 @@ import { HERO_GALLERY_IMAGES, GALLERY_AUTO_ROTATE_INTERVAL_MS } from '../data/he
 export default function HeroGallery({ children }) {
   const { isAdmin } = useAuth();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(true);
+  // Respect the OS "reduce motion" setting: start paused (the play button still works)
+  const [isPlaying, setIsPlaying] = useState(() => !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
   const [failedImages, setFailedImages] = useState({});
   const timerRef = useRef(null);
 
@@ -130,8 +131,8 @@ export default function HeroGallery({ children }) {
                 {/* Rotating Images Layer */}
                 {HERO_GALLERY_IMAGES.map((img, idx) => {
                   const isActive = idx === currentIndex;
+                  // A missing photo leaves the framed background showing (remote fallbacks are blocked by the CSP)
                   const isFailed = failedImages[img.id];
-                  const imageSrc = isFailed ? img.fallbackSrc : img.src;
 
                   return (
                     <div
@@ -148,8 +149,8 @@ export default function HeroGallery({ children }) {
                         pointerEvents: 'none'
                       }}
                     >
-                      <img
-                        src={imageSrc}
+                      {!isFailed && <img
+                        src={img.src}
                         alt={img.title || 'SKY UIUC Retreat Moment'}
                         loading={idx === 0 ? 'eager' : 'lazy'}
                         onError={() => handleImageError(img.id)}
@@ -160,7 +161,7 @@ export default function HeroGallery({ children }) {
                           objectPosition: 'center 35%',
                           display: 'block'
                         }}
-                      />
+                      />}
                     </div>
                   );
                 })}

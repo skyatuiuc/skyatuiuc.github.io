@@ -322,6 +322,7 @@ export default function Register() {
       // Trigger Confetti Celebration
       try {
         confetti({
+          disableForReducedMotion: true,
           particleCount: 80,
           spread: 70,
           origin: { y: 0.6 }
