@@ -22,6 +22,7 @@ import {
   resolveParticipantTeamName,
   convertLength
 } from '../utils/nametagPdfUtils';
+import { getStatus, STATUS, STATUS_OPTIONS } from '../models/applicant';
 
 export default function NametagDownloadModal({
   isOpen,
@@ -93,15 +94,11 @@ export default function NametagDownloadModal({
     return templates.find(t => t.id === selectedTemplateId) || null;
   }, [templates, selectedTemplateId]);
 
-  // 2. Discover all distinct applicant statuses in the active retreat
-  const availableStatuses = useMemo(() => {
-    const statuses = new Set();
-    allApplicants.forEach(reg => {
-      const s = (reg.orientationStatus || reg.interviewStatus || reg.status || 'Uncontacted').trim();
-      statuses.add(s);
-    });
-    return Array.from(statuses);
-  }, [allApplicants]);
+  // 2. Statuses present in the active retreat (workflow order)
+  const availableStatuses = useMemo(
+    () => STATUS_OPTIONS.filter(status => allApplicants.some(reg => getStatus(reg) === status)),
+    [allApplicants]
+  );
 
   // 3. Initialize status filter and candidate selection on open or when applicants change
   useEffect(() => {
@@ -117,74 +114,35 @@ export default function NametagDownloadModal({
   }, [isOpen, availableStatuses, allApplicants]);
 
   // 4. Candidate status categorization & filtering
+  const selectStatuses = (statuses) => {
+    setSelectedStatusSet(new Set(statuses));
+    setSelectedCandidateIds(new Set(allApplicants.filter(a => statuses.includes(getStatus(a))).map(a => a.id)));
+  };
+
   const handleToggleStatus = (statusName) => {
-    setSelectedStatusSet(prev => {
-      const next = new Set(prev);
-      if (next.has(statusName)) {
-        next.delete(statusName);
-      } else {
-        next.add(statusName);
-      }
-      // Re-evaluate candidate IDs matching the new status set
-      const matchingIds = new Set();
-      allApplicants.forEach(app => {
-        const st = (app.orientationStatus || app.interviewStatus || app.status || 'Uncontacted').trim();
-        if (next.has(st)) {
-          matchingIds.add(app.id);
-        }
-      });
-      setSelectedCandidateIds(matchingIds);
-      return next;
-    });
+    const next = selectedStatusSet.has(statusName)
+      ? [...selectedStatusSet].filter(s => s !== statusName)
+      : [...selectedStatusSet, statusName];
+    selectStatuses(next);
   };
 
   const handleApplyPreset = (preset) => {
-    if (preset === 'all') {
-      const allS = new Set(availableStatuses);
-      setSelectedStatusSet(allS);
-      setSelectedCandidateIds(new Set(allApplicants.map(a => a.id)));
-    } else if (preset === 'approved') {
-      const approvedS = new Set(availableStatuses.filter(s => s.toLowerCase().includes('approved')));
-      setSelectedStatusSet(approvedS);
-      const appIds = new Set(
-        allApplicants
-          .filter(a => (a.orientationStatus || a.interviewStatus || a.status || '').toLowerCase().includes('approved'))
-          .map(a => a.id)
-      );
-      setSelectedCandidateIds(appIds);
-    } else if (preset === 'pending') {
-      const pendingS = new Set(availableStatuses.filter(s => {
-        const sl = s.toLowerCase();
-        return sl.includes('pending') || sl.includes('uncontacted');
-      }));
-      setSelectedStatusSet(pendingS);
-      const appIds = new Set(
-        allApplicants
-          .filter(a => {
-            const sl = (a.orientationStatus || a.interviewStatus || a.status || '').toLowerCase();
-            return sl.includes('pending') || sl.includes('uncontacted');
-          })
-          .map(a => a.id)
-      );
-      setSelectedCandidateIds(appIds);
-    }
+    if (preset === 'all') selectStatuses(availableStatuses);
+    else if (preset === 'approved') selectStatuses([STATUS.APPROVED]);
+    else if (preset === 'pending') selectStatuses([STATUS.PENDING, STATUS.UNCONTACTED]);
   };
 
   // 5. Filtered Candidate List for Checklist Display
   const visibleCandidates = useMemo(() => {
-    return allApplicants.filter(app => {
-      const st = (app.orientationStatus || app.interviewStatus || app.status || 'Uncontacted').trim();
-      const matchesStatus = selectedStatusSet.has(st);
-      if (!matchesStatus) return false;
-
-      if (!candidateSearch.trim()) return true;
-      const q = candidateSearch.toLowerCase().trim();
+    const q = candidateSearch.toLowerCase().trim();
+    return allApplicants.filter((app) => {
+      if (!selectedStatusSet.has(getStatus(app))) return false;
+      if (!q) return true;
       const name = `${app.firstName || ''} ${app.lastName || ''}`.toLowerCase();
-      const email = (app.email || '').toLowerCase();
-      const g = (app.assignedGroup || app.groupId || '').toLowerCase();
-      return name.includes(q) || email.includes(q) || g.includes(q);
+      const team = resolveParticipantTeamName(app, groupNames).toLowerCase();
+      return name.includes(q) || (app.email || '').toLowerCase().includes(q) || team.includes(q);
     });
-  }, [allApplicants, selectedStatusSet, candidateSearch]);
+  }, [allApplicants, selectedStatusSet, candidateSearch, groupNames]);
 
   const handleToggleCandidate = (id) => {
     setSelectedCandidateIds(prev => {

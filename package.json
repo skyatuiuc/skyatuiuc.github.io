@@ -18,7 +18,8 @@
     "clasp:pull": "clasp pull",
     "clasp:push": "clasp push",
     "clasp:deploy": "clasp push && clasp deploy -i AKfycbyHJFonGIbqaZfADEed5QgzodmE65hTDLYp_iY-Tn_Nemg9k-eAUQV4s5mYMMRV3zDT",
-    "test": "vitest run"
+    "test": "vitest run --exclude tests/rules/**",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-skyatuiuc 'vitest run tests/rules'"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
@@ -32,6 +33,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@firebase/rules-unit-testing": "^3.0.4",
     "@google/clasp": "^3.3.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

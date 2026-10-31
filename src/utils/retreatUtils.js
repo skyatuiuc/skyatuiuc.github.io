@@ -1,4 +1,5 @@
 import { collection, getDocs } from 'firebase/firestore';
+import { todayChicago } from './dateUtils';
 
 const RETREAT_CACHE_KEY = 'sky_retreat_history';
 const RETREAT_CACHE_TS_KEY = 'sky_retreat_history_ts';
@@ -75,7 +76,7 @@ export const getDefaultActiveRetreatId = (retreats, savedRetreatId = null) => {
     return savedRetreatId;
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = todayChicago();
 
   // 1. Ongoing or Upcoming retreats (nearest start date first)
   const upcomingOrOngoing = retreats

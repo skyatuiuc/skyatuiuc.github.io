@@ -1,9 +1,9 @@
 import { auth, db, isFirebaseConfigured } from '../firebase/config';
 import { doc, updateDoc } from 'firebase/firestore';
-import { logDatabaseOperation } from './telemetryService';
 import { EMAIL_TEMPLATES } from '../templates/emailTemplates';
 import { getRetreatDaySchedule } from '../data/scheduleData';
-import { getFeeAmount } from '../data/pricingData';
+import { getFeeTierLabel } from '../data/pricingData';
+import { getPayment, PAYMENT, getDisplayName, sentEmailKey } from '../models/applicant';
 
 export const normalizeEmailText = (str) => {
   if (str === null || str === undefined) return '';
@@ -71,64 +71,14 @@ export const DEFAULT_EMAIL_SETTINGS = {
   cheatSheetUrl: 'https://skyuiuc.org/assets/skyhomepracticeguide.png'
 };
 
-// Robust Fee and Payment Status Parser
+// Fee and payment status for templates and the dispatch table (single source: models/applicant)
 export const parseFeeAndPayment = (participant) => {
-  if (!participant) return { amount: 0, formattedFee: '$0', isPaid: true, requiresPayment: false };
-
-  // Check explicit exemption flags
-  if (participant.paymentExempt || participant.isExempt || participant.exempt || participant.feeExempt) {
-    return { amount: 0, formattedFee: '$0', isPaid: true, requiresPayment: false };
-  }
-
-  // 1. Determine numeric fee amount
-  let feeNum = null;
-
-  if (participant.fee !== undefined && participant.fee !== null && participant.fee !== '') {
-    const parsed = typeof participant.fee === 'number' ? participant.fee : parseFloat(String(participant.fee).replace(/[^0-9.]/g, ''));
-    if (!isNaN(parsed)) {
-      feeNum = parsed;
-    }
-  }
-
-  if (feeNum === null && participant.feeTier) {
-    const tierStr = String(participant.feeTier);
-    const match = tierStr.match(/\$(\d+)/);
-    if (match) {
-      feeNum = parseInt(match[1], 10);
-    } else if (tierStr.toLowerCase().includes('free') || tierStr.toLowerCase().includes('student') || tierStr.toLowerCase().includes('undergrad') || tierStr.includes('$0')) {
-      feeNum = 0;
-    }
-  }
-
-  if (feeNum === null && participant.academicRole) {
-    feeNum = getFeeAmount(participant.academicRole);
-  }
-
-  // Fallback default
-  if (feeNum === null || isNaN(feeNum)) {
-    feeNum = 0;
-  }
-
-  const isFreeTier = feeNum === 0;
-
-  // 2. Determine Paid Status
-  const rawStatus = (participant.paymentStatus || '').toLowerCase().trim();
-  const rawPaidFlag = participant.paid === true || participant.paid === 'true';
-
-  let isPaid = false;
-  if (isFreeTier) {
-    isPaid = true;
-  } else if (rawPaidFlag || rawStatus === 'paid' || rawStatus === 'completed' || rawStatus === 'waived' || rawStatus === 'exempt') {
-    isPaid = true;
-  } else {
-    isPaid = false;
-  }
-
+  const payment = getPayment(participant);
   return {
-    amount: feeNum,
-    formattedFee: `$${feeNum}`,
-    isPaid,
-    requiresPayment: !isPaid && !isFreeTier
+    amount: payment.amount,
+    formattedFee: payment.formattedFee,
+    isPaid: payment.isSettled,
+    requiresPayment: payment.status === PAYMENT.UNPAID
   };
 };
 
@@ -151,7 +101,7 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
       // Validate PayPal Link existence
       const link = (participant.paypalLink || '').trim();
       if (!link) {
-        throw new Error(`Missing PayPal Invoice Link for ${participant.name || participant.email}. Please provide a PayPal link on their row before sending.`);
+        throw new Error(`Missing PayPal Invoice Link for ${getDisplayName(participant)}. Please provide a PayPal link on their row before sending.`);
       }
       effectiveTemplateKey = 'application_accepted_paypal';
     } else {
@@ -198,14 +148,14 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
   const formattedPaypalLink = cleanPaypalLink !== '#' ? cleanPaypalLink : '';
 
   const templateData = {
-    firstName: escapeHtml(participant.firstName || (participant.name || '').split(' ')[0] || 'Participant'),
+    firstName: escapeHtml(participant.firstName || 'Participant'),
     lastName: escapeHtml(participant.lastName || ''),
-    name: escapeHtml(participant.name || participant.email),
+    name: escapeHtml(getDisplayName(participant)),
     email: escapeHtml(participant.email),
     phone: escapeHtml(participant.phone || ''),
     academicRole: escapeHtml(participant.academicRole || 'Participant'),
-    feeTier: escapeHtml(participant.feeTier || 'Standard'),
-    paymentStatus: escapeHtml(participant.paymentStatus || 'Pending'),
+    feeTier: escapeHtml(getFeeTierLabel(participant.academicRole)),
+    paymentStatus: escapeHtml(getPayment(participant).status),
     paypalLink: formattedPaypalLink,
     dates,
     day1Label: escapeHtml(day1.fullLabel),
@@ -268,7 +218,7 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
     templateName: template.name,
     subject: template.subject,
     recipientEmail: participant.email,
-    recipientName: participant.name || participant.email,
+    recipientName: getDisplayName(participant),
     senderEmail: settings.senderEmail || 'skyatuiuc@gmail.com',
     senderName: settings.senderName || 'SKY Meditation at UIUC',
     htmlBody,
@@ -279,7 +229,7 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
 };
 
 // Send single email and persist status
-export const sendSingleEmail = async (templateTypeKey, participant, retreat, emailSettings = {}, currentUser = null) => {
+export const sendSingleEmail = async (templateTypeKey, participant, retreat, emailSettings = {}) => {
   if (!participant?.email) {
     throw new Error("Cannot send email: participant has no email address.");
   }
@@ -348,14 +298,14 @@ export const sendSingleEmail = async (templateTypeKey, participant, retreat, ema
     sent: true,
     sentAt: new Date().toISOString(),
     // The relay reports the identity it verified from the ID token
-    sentBy: dispatchedBy || auth?.currentUser?.email || currentUser?.email || '',
+    sentBy: dispatchedBy || auth?.currentUser?.email || '',
     templateKey: payload.templateKey,
     subject: payload.subject,
     paypalLinkUsed: payload.paypalLink || null
   };
 
   // Canonical key for status tracking
-  const stateKey = (templateTypeKey.startsWith('application_accepted')) ? 'application_accepted' : templateTypeKey;
+  const stateKey = sentEmailKey(templateTypeKey);
 
   const updatedSentEmails = {
     ...(participant.sentEmails || {}),
@@ -368,7 +318,6 @@ export const sendSingleEmail = async (templateTypeKey, participant, retreat, ema
       await updateDoc(doc(db, 'registrations', participant.id), {
         [`sentEmails.${stateKey}`]: sentRecord
       });
-      logDatabaseOperation(0, 1, 0);
     } catch (err) {
       console.warn("Error saving email status to Firestore:", err);
     }
@@ -385,7 +334,7 @@ export const sendSingleEmail = async (templateTypeKey, participant, retreat, ema
 };
 
 // Batch email sender with parallel execution & error reporting
-export const sendBatchEmails = async (templateTypeKey, participants, retreat, emailSettings = {}, currentUser = null, onProgress = null) => {
+export const sendBatchEmails = async (templateTypeKey, participants, retreat, emailSettings = {}, onProgress = null) => {
   const results = {
     successes: [],
     failures: []
@@ -398,7 +347,7 @@ export const sendBatchEmails = async (templateTypeKey, participants, retreat, em
     }
 
     try {
-      const res = await sendSingleEmail(templateTypeKey, p, retreat, emailSettings, currentUser);
+      const res = await sendSingleEmail(templateTypeKey, p, retreat, emailSettings);
       results.successes.push({ participant: p, result: res });
     } catch (err) {
       results.failures.push({ participant: p, error: err.message });

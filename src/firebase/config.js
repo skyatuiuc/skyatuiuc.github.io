@@ -2,7 +2,6 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut as firebaseSignOut } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
 
 // Firebase Project Credentials for skyatuiuc-web
 const firebaseConfig = {
@@ -21,7 +20,6 @@ export const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseCon
 let app;
 let auth;
 let db;
-let storage;
 let googleProvider;
 
 if (isFirebaseConfigured) {
@@ -29,7 +27,6 @@ if (isFirebaseConfigured) {
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
     auth = getAuth(app);
     db = getFirestore(app);
-    storage = getStorage(app);
     googleProvider = new GoogleAuthProvider();
     googleProvider.setCustomParameters({
       prompt: 'select_account'
@@ -39,5 +36,5 @@ if (isFirebaseConfigured) {
   }
 }
 
-export { app, auth, db, storage, googleProvider, signInWithPopup, signInWithRedirect, getRedirectResult, firebaseSignOut };
+export { app, auth, db, googleProvider, signInWithPopup, signInWithRedirect, getRedirectResult, firebaseSignOut };
 

@@ -1,82 +1,48 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { db, isFirebaseConfigured } from '../firebase/config';
-import { doc, setDoc } from 'firebase/firestore';
-import { logDatabaseOperation } from '../services/telemetryService';
-import { ADMIN_EMAIL } from '../context/AuthContext';
-import { 
-  Users, 
-  Layers, 
-  Sparkles, 
-  RotateCcw, 
-  Search, 
-  Info, 
-  CheckCircle2, 
-  AlertCircle, 
-  Move, 
-  Calendar, 
-  Plus, 
-  Minus, 
+import React, { useState, useEffect, useMemo } from 'react';
+import { db } from '../firebase/config';
+import { doc, setDoc, deleteField } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
+import { useRoster } from '../context/RosterContext';
+import {
+  Users,
+  Layers,
+  Sparkles,
+  RotateCcw,
+  Search,
+  Info,
+  CheckCircle2,
+  AlertCircle,
+  Move,
+  Calendar,
+  Plus,
+  Minus,
   X,
   Tag,
   Filter
 } from 'lucide-react';
 import ParticipantDetailsModal from './ParticipantDetailsModal';
 import NametagDownloadModal from './NametagDownloadModal';
+import {
+  STATUS, STATUS_OPTIONS, getStatus, getDisplayName, getAppliedAtMs, getGroupId, getGroupName, groupIdFor,
+  getRoleCategory, ROLE_CATEGORY, isVolunteerEmail, matchesSearch
+} from '../models/applicant';
 
-// Normalize status into consistent category
-const normalizeStatusKey = (reg) => {
-  const raw = (reg.orientationStatus || reg.interviewStatus || reg.status || 'Uncontacted').trim();
-  const lower = raw.toLowerCase();
-  if (lower.includes('approved') || lower.includes('accept')) return 'Approved';
-  if (lower.includes('withdraw')) return 'Withdrawn';
-  if (lower.includes('progress')) return 'In Progress';
-  if (lower.includes('did not reply') || lower.includes('no reply')) return 'Did Not Reply';
-  if (lower.includes('pending')) return 'Pending';
-  if (lower.includes('uncontacted')) return 'Uncontacted';
-  return raw || 'Uncontacted';
+// Priority sort: volunteers, then approved, pending, did not reply, uncontacted, withdrawn;
+// within a rank, oldest application first.
+const STATUS_RANK = {
+  [STATUS.APPROVED]: 2,
+  [STATUS.PENDING]: 3,
+  [STATUS.DID_NOT_REPLY]: 4,
+  [STATUS.UNCONTACTED]: 5,
+  [STATUS.WITHDRAWN]: 6
 };
+const getMemberSortRank = (member) => (member.isVolunteer ? 1 : STATUS_RANK[member.status] || 7);
 
-// Priority Sort Rank:
-// 1. Volunteers appear first
-// 2. Then accepted / approved
-// 3. Then in progress
-// 4. Then pending
-// 5. Then did not reply
-// 6. Then uncontacted
-// 7. Then withdrawn
-const getMemberSortRank = (member) => {
-  if (member.isVolunteer) return 1;
-  const rawStatus = (member.orientationStatus || member.interviewStatus || member.status || '').toLowerCase().trim();
-  if (rawStatus.includes('approved') || rawStatus.includes('accept')) return 2;
-  if (rawStatus.includes('progress')) return 3;
-  if (rawStatus.includes('pending')) return 4;
-  if (rawStatus.includes('did not reply') || rawStatus.includes('no reply')) return 5;
-  if (rawStatus.includes('uncontacted')) return 6;
-  if (rawStatus.includes('withdraw')) return 7;
-  return 8;
-};
+const sortMembers = (members) => [...members].sort((a, b) =>
+  getMemberSortRank(a) - getMemberSortRank(b) || a.appliedAtMs - b.appliedAtMs || a.name.localeCompare(b.name)
+);
 
-// Sort members by rank, then application timestamp, then name
-const sortMembers = (members) => {
-  return [...members].sort((a, b) => {
-    const rankA = getMemberSortRank(a);
-    const rankB = getMemberSortRank(b);
-    if (rankA !== rankB) return rankA - rankB;
-
-    const timeA = new Date(a.submittedAt || a.registeredAt || 0).getTime();
-    const timeB = new Date(b.submittedAt || b.registeredAt || 0).getTime();
-    if (timeA && timeB && timeA !== timeB) {
-      return timeA - timeB;
-    }
-    return (a.name || '').localeCompare(b.name || '');
-  });
-};
-
-// Member chip color theming based on user specifications:
-// - Approved: Green
-// - Withdrawn: Red
-// - Volunteers: Current Yellow
-// - Pending / In Progress / Did Not Reply / Uncontacted: Blue
+// Member chip colours: Approved green, Withdrawn red, Volunteers yellow, everyone else blue
 const getMemberTheme = (member) => {
   if (member.isVolunteer) {
     return {
@@ -90,10 +56,7 @@ const getMemberTheme = (member) => {
       statusLabel: 'Volunteer'
     };
   }
-
-  const rawStatus = (member.orientationStatus || member.interviewStatus || member.status || '').toLowerCase().trim();
-
-  if (rawStatus.includes('withdraw')) {
+  if (member.status === STATUS.WITHDRAWN) {
     return {
       type: 'withdrawn',
       bg: '#FEE2E2',
@@ -105,8 +68,7 @@ const getMemberTheme = (member) => {
       statusLabel: 'Withdrawn'
     };
   }
-
-  if (rawStatus.includes('approved') || rawStatus.includes('accept')) {
+  if (member.status === STATUS.APPROVED) {
     return {
       type: 'approved',
       bg: '#DCFCE7',
@@ -118,14 +80,6 @@ const getMemberTheme = (member) => {
       statusLabel: 'Approved'
     };
   }
-
-  // Pending / In Progress / Did Not Reply / Uncontacted -> Blue
-  let label = 'Pending';
-  if (rawStatus.includes('progress')) label = 'In Progress';
-  else if (rawStatus.includes('did not reply') || rawStatus.includes('no reply')) label = 'Did Not Reply';
-  else if (rawStatus.includes('uncontacted')) label = 'Uncontacted';
-  else if (member.orientationStatus) label = member.orientationStatus;
-
   return {
     type: 'pending',
     bg: '#DBEAFE',
@@ -134,32 +88,29 @@ const getMemberTheme = (member) => {
     avatarColor: '#FFFFFF',
     textColor: '#1E40AF',
     hoverShadow: '0 4px 12px rgba(31, 116, 241, 0.3)',
-    statusLabel: label
+    statusLabel: member.status
   };
 };
 
-export default function GroupAssignmentTab({ 
-  retreats = [], 
-  registrations = [], 
-  setRegistrations,
-  authorizedEmails = [], 
-  onSaveRetreat,
-  selectedRetreatId = ''
-}) {
-  const activeRetreat = retreats.find(r => r.id === selectedRetreatId) || (retreats.length > 0 ? retreats[0] : null);
+// Auto-arrange "role" choices map onto the shared role categories (exact, not substring matches)
+const AUTO_ARRANGE_ROLE_CATEGORIES = {
+  undergraduate: [ROLE_CATEGORY.UNDERGRADUATE],
+  graduate: [ROLE_CATEGORY.GRADUATE],
+  faculty: [ROLE_CATEGORY.FACULTY, ROLE_CATEGORY.SCHOLAR]
+};
+
+export default function GroupAssignmentTab() {
+  const { authorizedEmails } = useAuth();
+  const { activeRetreat, registrations: retreatAllApplicants, updateRegistrations } = useRoster();
 
   // Number of groups N (min 1, max 20, default 4 or from retreat config)
-  const [numGroups, setNumGroups] = useState(() => {
-    return activeRetreat?.groupConfig?.numGroups || 4;
-  });
+  const [numGroups, setNumGroups] = useState(() => activeRetreat?.groupConfig?.numGroups || 4);
 
-  // Custom Group Names map: { 'group-1': 'Group 1', 'group-2': 'Group 2', ... }
-  const [groupNames, setGroupNames] = useState(() => {
-    return activeRetreat?.groupConfig?.groupNames || {};
-  });
+  // Custom Group Names map: { 'group-1': 'Lotus', ... } (draft while typing; saved on blur)
+  const [groupNames, setGroupNames] = useState(() => activeRetreat?.groupConfig?.groupNames || {});
 
   // Multi-Select Application Status Filter & Volunteers Visibility
-  const [selectedStatuses, setSelectedStatuses] = useState(() => new Set(['Approved']));
+  const [selectedStatuses, setSelectedStatuses] = useState(() => new Set([STATUS.APPROVED]));
   const [showVolunteers, setShowVolunteers] = useState(true);
 
   // Role-based Auto-Arrangement Settings
@@ -175,19 +126,11 @@ export default function GroupAssignmentTab({
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
   const [showNametagModal, setShowNametagModal] = useState(false);
 
-  // Sync retreat group config when activeRetreat changes
+  // Sync retreat group config when the active retreat (or its saved config) changes
   useEffect(() => {
-    if (activeRetreat && activeRetreat.id !== 'ALL') {
-      if (activeRetreat.groupConfig?.numGroups) {
-        setNumGroups(activeRetreat.groupConfig.numGroups);
-      }
-      if (activeRetreat.groupConfig?.groupNames) {
-        setGroupNames(activeRetreat.groupConfig.groupNames);
-      } else {
-        setGroupNames({});
-      }
-    }
-  }, [activeRetreat]);
+    setNumGroups(activeRetreat?.groupConfig?.numGroups || 4);
+    setGroupNames(activeRetreat?.groupConfig?.groupNames || {});
+  }, [activeRetreat?.id, activeRetreat?.groupConfig?.numGroups, activeRetreat?.groupConfig?.groupNames]);
 
   const showToast = (type, text) => {
     setToastMessage({ type, text });
@@ -196,73 +139,40 @@ export default function GroupAssignmentTab({
     }, 3500);
   };
 
-  // Helper: is volunteer
-  const isVolunteerEmail = useCallback((email) => {
-    if (!email) return false;
-    const clean = email.toLowerCase().trim();
-    if (clean === ADMIN_EMAIL.toLowerCase().trim()) return true;
-    return authorizedEmails.some(ae => {
-      const authEmail = (typeof ae === 'string' ? ae : ae?.email || '').toLowerCase().trim();
-      return authEmail === clean;
-    });
-  }, [authorizedEmails]);
-
-  // All applicants for active retreat (all statuses: approved, pending, uncontacted, waitlisted, etc.)
-  const retreatAllApplicants = useMemo(() => {
-    return registrations.filter(r => {
-      return selectedRetreatId === 'ALL' || 
-        retreats.length <= 1 ||
-        r.retreatId === activeRetreat?.id || 
-        (!r.retreatId && r.retreatTitle === activeRetreat?.title) ||
-        (r.retreatTitle && activeRetreat?.title && r.retreatTitle.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim());
-    });
-  }, [registrations, activeRetreat, selectedRetreatId, retreats]);
+  // Retreat view with this screen's (possibly unsaved) group count/names applied
+  const retreatView = useMemo(() => ({
+    ...activeRetreat,
+    groupConfig: { ...(activeRetreat?.groupConfig || {}), numGroups, groupNames }
+  }), [activeRetreat, numGroups, groupNames]);
 
   // Status counts across all retreat applicants
   const statusCounts = useMemo(() => {
-    const counts = {
-      'Approved': 0,
-      'Pending': 0,
-      'In Progress': 0,
-      'Did Not Reply': 0,
-      'Uncontacted': 0,
-      'Withdrawn': 0
-    };
+    const counts = Object.fromEntries(STATUS_OPTIONS.map(s => [s, 0]));
     let volCount = 0;
-
-    retreatAllApplicants.forEach(reg => {
-      const email = reg.email?.toLowerCase().trim() || '';
-      if (isVolunteerEmail(email)) {
-        volCount++;
-      }
-      const st = normalizeStatusKey(reg);
-      counts[st] = (counts[st] || 0) + 1;
+    retreatAllApplicants.forEach((reg) => {
+      if (isVolunteerEmail(reg.email, authorizedEmails)) volCount++;
+      counts[getStatus(reg)] += 1;
     });
-
     return { counts, volCount };
-  }, [retreatAllApplicants, isVolunteerEmail]);
+  }, [retreatAllApplicants, authorizedEmails]);
 
   // Status toggle handlers
   const handleToggleStatus = (statusName) => {
     setSelectedStatuses(prev => {
       const next = new Set(prev);
-      if (next.has(statusName)) {
-        next.delete(statusName);
-      } else {
-        next.add(statusName);
-      }
+      if (next.has(statusName)) next.delete(statusName);
+      else next.add(statusName);
       return next;
     });
   };
 
   const handleSelectAllStatuses = () => {
-    const all = new Set(['Approved', 'Pending', 'In Progress', 'Did Not Reply', 'Uncontacted', 'Withdrawn', ...Object.keys(statusCounts.counts)]);
-    setSelectedStatuses(all);
+    setSelectedStatuses(new Set(STATUS_OPTIONS));
     setShowVolunteers(true);
   };
 
   const handleSelectApprovedOnly = () => {
-    setSelectedStatuses(new Set(['Approved']));
+    setSelectedStatuses(new Set([STATUS.APPROVED]));
     setShowVolunteers(true);
   };
 
@@ -271,81 +181,36 @@ export default function GroupAssignmentTab({
     setShowVolunteers(false);
   };
 
-  // Manageable member list derived from retreat applicants filtered by selected statuses and volunteer toggle
-  const allManageableMembers = useMemo(() => {
-    const matchingApplicants = retreatAllApplicants.filter(reg => {
-      const email = reg.email?.toLowerCase().trim() || '';
-      const isVol = isVolunteerEmail(email);
-
-      // If volunteer and showVolunteers is checked, include
-      if (isVol && showVolunteers) return true;
-
-      // Otherwise, match application status
-      const st = normalizeStatusKey(reg);
-      return selectedStatuses.has(st);
-    });
-
-    return matchingApplicants.map(reg => {
-      const email = reg.email?.toLowerCase().trim() || '';
-      const isVol = isVolunteerEmail(email);
-
-      // Validate groupId against current numGroups
-      let assignedGroupId = reg.groupId || 'unassigned';
-      if (assignedGroupId !== 'unassigned') {
-        const gMatch = assignedGroupId.match(/^group-(\d+)$/);
-        if (gMatch) {
-          const gIndex = parseInt(gMatch[1], 10);
-          if (gIndex > numGroups || gIndex < 1) {
-            assignedGroupId = 'unassigned';
-          }
-        }
-      }
-
-      const groupLabel = assignedGroupId !== 'unassigned'
-        ? (groupNames[assignedGroupId] || `Group ${assignedGroupId.replace('group-', '')}`)
-        : '';
-
-      const normalizedSt = normalizeStatusKey(reg);
-
+  // Manageable members: retreat applicants matching the selected statuses (+ volunteers if shown)
+  const allManageableMembers = useMemo(() => retreatAllApplicants
+    .filter((reg) => {
+      if (isVolunteerEmail(reg.email, authorizedEmails) && showVolunteers) return true;
+      return selectedStatuses.has(getStatus(reg));
+    })
+    .map((reg) => {
+      const groupId = getGroupId(reg, retreatView);
       return {
         id: reg.id,
         regId: reg.id,
         email: reg.email,
-        name: `${reg.firstName || ''} ${reg.lastName || ''}`.trim() || reg.name || reg.email,
-        firstName: reg.firstName,
-        lastName: reg.lastName,
-        photoURL: reg.photoURL || null,
-        phone: reg.phone,
+        name: getDisplayName(reg),
+        photoURL: null,
         academicRole: reg.academicRole,
-        feeTier: reg.feeTier,
-        paymentStatus: reg.paymentStatus,
-        orientationStatus: reg.orientationStatus || reg.interviewStatus || reg.status || normalizedSt,
-        interviewStatus: reg.orientationStatus || reg.interviewStatus || reg.status || normalizedSt,
-        normalizedStatus: normalizedSt,
-        submittedAt: reg.submittedAt || reg.registeredAt,
-        foodAllergies: reg.foodAllergies,
-        healthConditions: reg.healthConditions,
-        volunteerNotes: reg.volunteerNotes || reg.orientationNotes || reg.interviewNotes,
-        attendance: reg.attendance || {},
-        isVolunteer: isVol,
-        groupId: assignedGroupId,
-        assignedGroup: groupLabel
+        status: getStatus(reg),
+        appliedAtMs: getAppliedAtMs(reg),
+        isVolunteer: isVolunteerEmail(reg.email, authorizedEmails),
+        groupId: groupId || 'unassigned',
+        assignedGroup: groupId ? getGroupName(groupId, retreatView) : '',
+        rawRecord: reg
       };
-    });
-  }, [retreatAllApplicants, isVolunteerEmail, selectedStatuses, showVolunteers, numGroups, groupNames]);
+    }), [retreatAllApplicants, authorizedEmails, selectedStatuses, showVolunteers, retreatView]);
 
-  // Filtered members based on search query, sorted by rank (volunteers first, then accepted, then in progress, etc.)
+  // Filtered members based on search query, sorted by rank
   const filteredMembers = useMemo(() => {
-    let list = allManageableMembers;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      list = list.filter(m => 
-        m.name.toLowerCase().includes(q) || 
-        m.email.toLowerCase().includes(q) ||
-        (m.academicRole && m.academicRole.toLowerCase().includes(q)) ||
-        (m.normalizedStatus && m.normalizedStatus.toLowerCase().includes(q))
-      );
-    }
+    const q = searchQuery.trim().toLowerCase();
+    const list = q
+      ? allManageableMembers.filter(m => matchesSearch(m.rawRecord, q) || m.status.toLowerCase().includes(q))
+      : allManageableMembers;
     return sortMembers(list);
   }, [allManageableMembers, searchQuery]);
 
@@ -353,182 +218,92 @@ export default function GroupAssignmentTab({
   const groupList = useMemo(() => {
     const list = [];
     for (let i = 1; i <= numGroups; i++) {
-      const gId = `group-${i}`;
-      const defaultName = `Group ${i}`;
-      const customName = groupNames[gId] || defaultName;
-      
-      const membersInGroup = sortMembers(filteredMembers.filter(m => m.groupId === gId));
-      const participantCount = membersInGroup.filter(m => !m.isVolunteer).length;
-      const volunteerCount = membersInGroup.filter(m => m.isVolunteer).length;
-
+      const gId = groupIdFor(i);
+      const membersInGroup = filteredMembers.filter(m => m.groupId === gId);
       list.push({
         id: gId,
         index: i,
-        name: customName,
+        name: groupNames[gId] ?? '',
+        label: getGroupName(gId, retreatView),
         members: membersInGroup,
-        participantCount,
-        volunteerCount,
+        participantCount: membersInGroup.filter(m => !m.isVolunteer).length,
+        volunteerCount: membersInGroup.filter(m => m.isVolunteer).length,
         totalCount: membersInGroup.length
       });
     }
     return list;
-  }, [numGroups, groupNames, filteredMembers]);
+  }, [numGroups, groupNames, filteredMembers, retreatView]);
 
-  // Unassigned bucket (sorted by rank: volunteers first, then accepted, then in progress, etc.)
-  const unassignedMembers = useMemo(() => {
-    const unassigned = filteredMembers.filter(m => {
-      if (!m.groupId || m.groupId === 'unassigned') return true;
-      const gMatch = m.groupId.match(/^group-(\d+)$/);
-      if (gMatch) {
-        const gNum = parseInt(gMatch[1], 10);
-        if (gNum > numGroups || gNum < 1) return true;
-      }
-      return false;
-    });
-    return sortMembers(unassigned);
-  }, [filteredMembers, numGroups]);
+  const unassignedMembers = useMemo(() => filteredMembers.filter(m => m.groupId === 'unassigned'), [filteredMembers]);
 
-  // Save Group Config to Retreat in Firestore
+  // Save group config to the retreat document
   const persistRetreatGroupConfig = async (newNumGroups, newGroupNames) => {
-    if (!activeRetreat || activeRetreat.id === 'ALL') return;
-    const updatedConfig = {
-      numGroups: newNumGroups !== undefined ? newNumGroups : numGroups,
-      groupNames: newGroupNames !== undefined ? newGroupNames : groupNames,
-      lastUpdated: new Date().toISOString()
-    };
-
-    if (onSaveRetreat) {
-      onSaveRetreat(activeRetreat.id, { groupConfig: updatedConfig });
-    } else if (isFirebaseConfigured && db) {
-      try {
-        await setDoc(doc(db, 'retreat_history', activeRetreat.id), { groupConfig: updatedConfig }, { merge: true });
-        logDatabaseOperation(0, 1, 0);
-      } catch (err) {
-        console.warn("Error saving group config to Firestore:", err);
-      }
+    if (!activeRetreat?.id || activeRetreat.isGeneral) return;
+    try {
+      await setDoc(doc(db, 'retreat_history', activeRetreat.id), {
+        groupConfig: {
+          numGroups: newNumGroups,
+          groupNames: newGroupNames,
+          lastUpdated: new Date().toISOString()
+        }
+      }, { merge: true });
+    } catch (err) {
+      console.warn('Error saving group config to Firestore:', err);
+      showToast('error', `Could not save group settings: ${err.code || err.message}`);
     }
   };
 
-  // Change Number of Groups N & Automatically unassign people in removed groups
+  // Set many registrations' group in one atomic batch
+  const saveGroupAssignments = async (groupIdById) => {
+    const updates = {};
+    Object.entries(groupIdById).forEach(([id, gId]) => {
+      updates[id] = { groupId: gId === 'unassigned' ? deleteField() : gId };
+    });
+    await updateRegistrations(updates);
+  };
+
+  // Change Number of Groups N & unassign people in removed groups
   const handleNumGroupsChange = async (nextN) => {
     const validN = Math.max(1, Math.min(20, nextN));
     if (validN === numGroups) return;
 
-    // Check if any applicant is in a removed group (groupId > validN)
-    const membersToUnassign = retreatAllApplicants.filter(r => {
-      const gMatch = r.groupId?.match(/^group-(\d+)$/);
-      if (gMatch) {
-        return parseInt(gMatch[1], 10) > validN;
+    const overflow = retreatAllApplicants.filter(r => (Number(String(r.groupId || '').replace('group-', '')) || 0) > validN);
+    try {
+      if (overflow.length > 0) {
+        await saveGroupAssignments(Object.fromEntries(overflow.map(r => [r.id, 'unassigned'])));
+        showToast('info', `Reduced to ${validN} groups. Unassigned ${overflow.length} members from removed groups.`);
       }
-      return false;
-    });
-
-    if (membersToUnassign.length > 0) {
-      const unassignIds = membersToUnassign.map(m => m.id);
-      const updatedRegs = registrations.map(reg => {
-        if (unassignIds.includes(reg.id)) {
-          return { ...reg, groupId: 'unassigned', assignedGroup: '' };
-        }
-        return reg;
-      });
-      setRegistrations(updatedRegs);
-      localStorage.setItem('sky_registrations', JSON.stringify(updatedRegs));
-
-      if (isFirebaseConfigured && db) {
-        try {
-          await Promise.all(
-            unassignIds.map(async (id) => {
-              await setDoc(doc(db, 'registrations', id), {
-                groupId: 'unassigned',
-                assignedGroup: '',
-                groupUpdatedAt: new Date().toISOString()
-              }, { merge: true });
-            })
-          );
-          logDatabaseOperation(0, unassignIds.length, 0);
-        } catch (err) {
-          console.warn("Error unassigning overflow members:", err);
-        }
-      }
-      showToast('info', `Reduced to ${validN} groups. Unassigned ${unassignIds.length} members from removed groups.`);
+      setNumGroups(validN);
+      await persistRetreatGroupConfig(validN, groupNames);
+    } catch (err) {
+      showToast('error', `Could not change group count: ${err.code || err.message}`);
     }
-
-    setNumGroups(validN);
-    persistRetreatGroupConfig(validN, groupNames);
   };
 
   // Move single member to a group or unassign
   const handleAssignMemberToGroup = async (member, targetGroupId) => {
     const isUnassigning = targetGroupId === 'unassigned';
-    const targetGroupName = isUnassigning ? '' : (groupNames[targetGroupId] || `Group ${targetGroupId.replace('group-', '')}`);
-
-    const updatedRegs = registrations.map(reg => {
-      if (reg.id === member.regId) {
-        return {
-          ...reg,
-          groupId: targetGroupId,
-          assignedGroup: targetGroupName
-        };
-      }
-      return reg;
-    });
-
-    setRegistrations(updatedRegs);
-    localStorage.setItem('sky_registrations', JSON.stringify(updatedRegs));
-
-    if (isFirebaseConfigured && db) {
-      try {
-        await setDoc(doc(db, 'registrations', member.regId), {
-          groupId: targetGroupId,
-          assignedGroup: targetGroupName,
-          groupUpdatedAt: new Date().toISOString()
-        }, { merge: true });
-        logDatabaseOperation(0, 1, 0);
-      } catch (err) {
-        console.warn("Firestore registration group update error:", err);
-      }
+    try {
+      await saveGroupAssignments({ [member.regId]: targetGroupId });
+      showToast('success', `Moved ${member.name} to ${isUnassigning ? 'Unassigned' : getGroupName(targetGroupId, retreatView)}`);
+    } catch (err) {
+      showToast('error', `Could not move ${member.name}: ${err.code || err.message}`);
     }
-
-    showToast('success', `Moved ${member.name} to ${isUnassigning ? 'Unassigned' : targetGroupName}`);
   };
 
-  // Auto-Arrange Participants / Selected Role into groups with FEWEST total participants
+  // Auto-Arrange selected members into the groups with the FEWEST total members, oldest applicants first
   const handleAutoArrange = async () => {
-    if (!activeRetreat) {
-      showToast('error', 'Please select an active retreat first.');
+    if (!activeRetreat || activeRetreat.isGeneral) {
+      showToast('error', 'Please select a scheduled retreat first.');
       return;
     }
 
-    if (numGroups < 1) {
-      showToast('error', 'Number of groups must be at least 1.');
-      return;
-    }
-
-    // 1. Identify members matching the selected role
-    const candidateMembers = allManageableMembers.filter(m => {
-      if (autoArrangeRole === 'volunteers') {
-        if (!m.isVolunteer) return false;
-      } else if (autoArrangeRole === 'participants') {
-        if (m.isVolunteer) return false;
-      } else if (autoArrangeRole === 'all') {
-        // all displayed members
-      } else {
-        // Academic role match
-        const role = (m.academicRole || '').toLowerCase();
-        if (!role.includes(autoArrangeRole.toLowerCase())) return false;
-      }
-
-      // If only unassigned option is selected
-      if (autoArrangeOnlyUnassigned) {
-        if (m.groupId && m.groupId !== 'unassigned') {
-          const gMatch = m.groupId.match(/^group-(\d+)$/);
-          if (gMatch) {
-            const gNum = parseInt(gMatch[1], 10);
-            if (gNum >= 1 && gNum <= numGroups) return false;
-          }
-        }
-      }
-
+    const roleCategories = AUTO_ARRANGE_ROLE_CATEGORIES[autoArrangeRole];
+    const candidateMembers = allManageableMembers.filter((m) => {
+      if (autoArrangeRole === 'volunteers' && !m.isVolunteer) return false;
+      if (autoArrangeRole === 'participants' && m.isVolunteer) return false;
+      if (roleCategories && !roleCategories.includes(getRoleCategory(m.rawRecord))) return false;
+      if (autoArrangeOnlyUnassigned && m.groupId !== 'unassigned') return false;
       return true;
     });
 
@@ -540,198 +315,67 @@ export default function GroupAssignmentTab({
 
     setIsAutoAssigning(true);
 
-    // 2. Count existing members in each group that are NOT being auto-arranged
-    // (e.g. Group 1 has 3 volunteers and Group 2 has 1 volunteer)
+    // Count members already placed that are NOT being re-arranged
     const candidateIds = new Set(candidateMembers.map(m => m.id));
     const groupMemberCounts = {};
-    for (let i = 1; i <= numGroups; i++) {
-      groupMemberCounts[`group-${i}`] = 0;
-    }
-
-    allManageableMembers.forEach(m => {
-      if (!candidateIds.has(m.id) && m.groupId && groupMemberCounts[m.groupId] !== undefined) {
-        groupMemberCounts[m.groupId]++;
-      }
+    for (let i = 1; i <= numGroups; i++) groupMemberCounts[groupIdFor(i)] = 0;
+    allManageableMembers.forEach((m) => {
+      if (!candidateIds.has(m.id) && groupMemberCounts[m.groupId] !== undefined) groupMemberCounts[m.groupId]++;
     });
 
-    // 3. Sort candidates sequentially by application timestamp (oldest submission first)
-    const sortedCandidates = [...candidateMembers].sort((a, b) => {
-      const timeA = new Date(a.submittedAt || a.registeredAt || 0).getTime();
-      const timeB = new Date(b.submittedAt || b.registeredAt || 0).getTime();
-      if (timeA && timeB && timeA !== timeB) {
-        return timeA - timeB;
-      }
-      return (a.name || '').localeCompare(b.name || '');
-    });
-
-    // 4. Sequentially insert each participant into the group with the FEWEST current total members
-    const updatedRegistrationsMap = new Map();
-    const batchUpdates = [];
-
+    const sortedCandidates = [...candidateMembers].sort((a, b) => a.appliedAtMs - b.appliedAtMs || a.name.localeCompare(b.name));
+    const assignments = {};
     sortedCandidates.forEach((p) => {
-      let minCount = Infinity;
-      let targetGroupId = 'group-1';
-
+      let targetGroupId = groupIdFor(1);
       for (let i = 1; i <= numGroups; i++) {
-        const gId = `group-${i}`;
-        const count = groupMemberCounts[gId] || 0;
-        if (count < minCount) {
-          minCount = count;
-          targetGroupId = gId;
-        }
+        if (groupMemberCounts[groupIdFor(i)] < groupMemberCounts[targetGroupId]) targetGroupId = groupIdFor(i);
       }
-
-      // Assign to target group and increment total count
       groupMemberCounts[targetGroupId]++;
-      const targetGroupName = groupNames[targetGroupId] || `Group ${targetGroupId.replace('group-', '')}`;
-
-      updatedRegistrationsMap.set(p.id, {
-        groupId: targetGroupId,
-        assignedGroup: targetGroupName
-      });
-
-      batchUpdates.push({
-        id: p.id,
-        groupId: targetGroupId,
-        assignedGroup: targetGroupName
-      });
+      assignments[p.id] = targetGroupId;
     });
 
-    // 5. Update local state immediately (optimistic UI)
-    const newRegistrations = registrations.map(reg => {
-      if (updatedRegistrationsMap.has(reg.id)) {
-        const update = updatedRegistrationsMap.get(reg.id);
-        return { ...reg, ...update };
-      }
-      return reg;
-    });
-
-    setRegistrations(newRegistrations);
-    localStorage.setItem('sky_registrations', JSON.stringify(newRegistrations));
-
-    // 6. Persist group config to retreat
-    persistRetreatGroupConfig(numGroups, groupNames);
-
-    // 7. Save batch updates to Firestore
-    if (isFirebaseConfigured && db) {
-      try {
-        let writeOps = 0;
-        await Promise.all(
-          batchUpdates.map(async (u) => {
-            await setDoc(doc(db, 'registrations', u.id), {
-              groupId: u.groupId,
-              assignedGroup: u.assignedGroup,
-              groupUpdatedAt: new Date().toISOString()
-            }, { merge: true });
-            writeOps++;
-          })
-        );
-        logDatabaseOperation(0, writeOps, 0);
-      } catch (err) {
-        console.warn("Firestore auto-arrange batch save error:", err);
-      }
+    try {
+      await saveGroupAssignments(assignments);
+      await persistRetreatGroupConfig(numGroups, groupNames);
+      const roleLabel = autoArrangeRole === 'participants' ? 'participants' : autoArrangeRole === 'volunteers' ? 'volunteers' : 'members';
+      showToast('success', `Balanced & arranged ${sortedCandidates.length} ${roleLabel} across ${numGroups} groups by fewest total participants!`);
+    } catch (err) {
+      showToast('error', `Auto-arrange failed (no changes saved): ${err.code || err.message}`);
+    } finally {
+      setIsAutoAssigning(false);
     }
-
-    setIsAutoAssigning(false);
-    const roleLabel = autoArrangeRole === 'participants' ? 'participants' : autoArrangeRole === 'volunteers' ? 'volunteers' : 'members';
-    showToast(
-      'success', 
-      `Balanced & arranged ${sortedCandidates.length} ${roleLabel} across ${numGroups} groups by fewest total participants!`
-    );
   };
 
-  // Clear a single group (unassign ALL members in this group atomically)
+  // Clear a single group (unassign all of its members in one batch)
   const handleClearGroup = async (groupId, groupTitle) => {
-    const membersInGroup = retreatAllApplicants.filter(r => r.groupId === groupId);
-    if (membersInGroup.length === 0) {
+    const memberIds = retreatAllApplicants.filter(r => r.groupId === groupId).map(r => r.id);
+    if (memberIds.length === 0) {
       showToast('info', 'Group is already empty.');
       return;
     }
-
-    if (!window.confirm(`Unassign all ${membersInGroup.length} members from ${groupTitle || groupId}?`)) {
-      return;
+    if (!window.confirm(`Unassign all ${memberIds.length} members from ${groupTitle || groupId}?`)) return;
+    try {
+      await saveGroupAssignments(Object.fromEntries(memberIds.map(id => [id, 'unassigned'])));
+      showToast('info', `Unassigned all ${memberIds.length} members from ${groupTitle || groupId}.`);
+    } catch (err) {
+      showToast('error', `Could not clear group: ${err.code || err.message}`);
     }
-
-    const memberIds = membersInGroup.map(m => m.id);
-    const updatedRegs = registrations.map(reg => {
-      if (memberIds.includes(reg.id)) {
-        return {
-          ...reg,
-          groupId: 'unassigned',
-          assignedGroup: ''
-        };
-      }
-      return reg;
-    });
-
-    setRegistrations(updatedRegs);
-    localStorage.setItem('sky_registrations', JSON.stringify(updatedRegs));
-
-    if (isFirebaseConfigured && db) {
-      try {
-        await Promise.all(
-          memberIds.map(async (id) => {
-            await setDoc(doc(db, 'registrations', id), {
-              groupId: 'unassigned',
-              assignedGroup: '',
-              groupUpdatedAt: new Date().toISOString()
-            }, { merge: true });
-          })
-        );
-        logDatabaseOperation(0, memberIds.length, 0);
-      } catch (err) {
-        console.warn("Firestore clear group error:", err);
-      }
-    }
-
-    showToast('info', `Unassigned all ${memberIds.length} members from ${groupTitle || groupId}.`);
   };
 
-  // Reset / Unassign ALL participants and volunteers in this retreat atomically
+  // Unassign everyone in this retreat in one batch
   const handleResetAll = async () => {
-    const assignedMembers = retreatAllApplicants.filter(r => r.groupId && r.groupId !== 'unassigned');
-    if (assignedMembers.length === 0) {
+    const assignedIds = retreatAllApplicants.filter(r => r.groupId).map(r => r.id);
+    if (assignedIds.length === 0) {
       showToast('info', 'No members are currently assigned.');
       return;
     }
-
-    if (!window.confirm(`Are you sure you want to unassign all ${assignedMembers.length} members for this retreat?`)) {
-      return;
+    if (!window.confirm(`Are you sure you want to unassign all ${assignedIds.length} members for this retreat?`)) return;
+    try {
+      await saveGroupAssignments(Object.fromEntries(assignedIds.map(id => [id, 'unassigned'])));
+      showToast('info', `Unassigned all ${assignedIds.length} members.`);
+    } catch (err) {
+      showToast('error', `Could not reset groups: ${err.code || err.message}`);
     }
-
-    const assignedIds = assignedMembers.map(m => m.id);
-    const updatedRegs = registrations.map(reg => {
-      if (assignedIds.includes(reg.id)) {
-        return {
-          ...reg,
-          groupId: 'unassigned',
-          assignedGroup: ''
-        };
-      }
-      return reg;
-    });
-
-    setRegistrations(updatedRegs);
-    localStorage.setItem('sky_registrations', JSON.stringify(updatedRegs));
-
-    if (isFirebaseConfigured && db) {
-      try {
-        await Promise.all(
-          assignedIds.map(async (id) => {
-            await setDoc(doc(db, 'registrations', id), {
-              groupId: 'unassigned',
-              assignedGroup: '',
-              groupUpdatedAt: new Date().toISOString()
-            }, { merge: true });
-          })
-        );
-        logDatabaseOperation(0, assignedIds.length, 0);
-      } catch (err) {
-        console.warn("Firestore reset all error:", err);
-      }
-    }
-
-    showToast('info', `Unassigned all ${assignedIds.length} members.`);
   };
 
   // HTML5 Drag and Drop Handlers
@@ -764,18 +408,22 @@ export default function GroupAssignmentTab({
     e.preventDefault();
     setActiveDropZone(null);
     if (!draggedChip) return;
-
     if (draggedChip.groupId !== targetGroupId) {
       handleAssignMemberToGroup(draggedChip, targetGroupId);
     }
     setDraggedChip(null);
   };
 
-  // Handle Changing Group Name inline
+  // Group names: edited locally while typing, saved once on blur / Enter
   const handleGroupNameChange = (gId, newName) => {
-    const updated = { ...groupNames, [gId]: newName };
-    setGroupNames(updated);
-    persistRetreatGroupConfig(numGroups, updated);
+    setGroupNames(prev => ({ ...prev, [gId]: newName }));
+  };
+
+  const handleGroupNameCommit = () => {
+    const cleaned = Object.fromEntries(Object.entries(groupNames).map(([k, v]) => [k, String(v).trim()]).filter(([, v]) => v));
+    const saved = activeRetreat?.groupConfig?.groupNames || {};
+    if (JSON.stringify(cleaned) === JSON.stringify(saved)) return;
+    persistRetreatGroupConfig(numGroups, cleaned);
   };
 
   // Clean, Concise Chip Renderer with Color Theming
@@ -1342,41 +990,6 @@ export default function GroupAssignmentTab({
             </span>
           </label>
 
-          {/* In Progress Pill (Blue) */}
-          <label 
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.45rem',
-              padding: '0.35rem 0.75rem',
-              borderRadius: 'var(--radius-full)',
-              background: selectedStatuses.has('In Progress') ? '#DBEAFE' : '#F8FAFC',
-              border: selectedStatuses.has('In Progress') ? '1.5px solid #93C5FD' : '1px solid var(--border-color)',
-              color: selectedStatuses.has('In Progress') ? '#1E40AF' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              userSelect: 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={selectedStatuses.has('In Progress')}
-              onChange={() => handleToggleStatus('In Progress')}
-              style={{ accentColor: '#1F74F1', cursor: 'pointer' }}
-            />
-            <span>In Progress</span>
-            <span style={{
-              background: selectedStatuses.has('In Progress') ? '#BFDBFE' : '#E2E8F0',
-              padding: '0.1rem 0.45rem',
-              borderRadius: 'var(--radius-full)',
-              fontSize: '0.72rem'
-            }}>
-              {statusCounts.counts['In Progress'] || 0}
-            </span>
-          </label>
-
           {/* Did Not Reply Pill (Blue) */}
           <label 
             style={{
@@ -1666,6 +1279,8 @@ export default function GroupAssignmentTab({
                       type="text"
                       value={group.name}
                       onChange={(e) => handleGroupNameChange(group.id, e.target.value)}
+                      onBlur={handleGroupNameCommit}
+                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                       placeholder={`Group ${group.index}`}
                       title="Click to edit group name"
                       style={{
@@ -1699,7 +1314,7 @@ export default function GroupAssignmentTab({
                         fontSize: '0.75rem',
                         fontWeight: 700
                       }}
-                      title={`Total participants in ${group.name}: ${group.members.length} (${group.participantCount} participants, ${group.volunteerCount} volunteers)`}
+                      title={`Total participants in ${group.label}: ${group.members.length} (${group.participantCount} participants, ${group.volunteerCount} volunteers)`}
                     >
                       <Users size={12} />
                       <span>{group.members.length}</span>
@@ -1709,7 +1324,7 @@ export default function GroupAssignmentTab({
                     {group.members.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => handleClearGroup(group.id, group.name)}
+                        onClick={() => handleClearGroup(group.id, group.label)}
                         style={{
                           background: '#FEF2F2',
                           border: '1px solid #FCA5A5',
@@ -1725,7 +1340,7 @@ export default function GroupAssignmentTab({
                           flexShrink: 0,
                           transition: 'all 0.15s ease'
                         }}
-                        title={`Unassign all ${group.members.length} members from ${group.name}`}
+                        title={`Unassign all ${group.members.length} members from ${group.label}`}
                       >
                         <RotateCcw size={11} /> Clear
                       </button>
@@ -1770,7 +1385,7 @@ export default function GroupAssignmentTab({
       {/* Participant Details Inspection Modal */}
       {inspectParticipant && (
         <ParticipantDetailsModal
-          participant={inspectParticipant}
+          participant={inspectParticipant.rawRecord}
           groupName={inspectParticipant.assignedGroup}
           isVolunteer={inspectParticipant.isVolunteer}
           onClose={() => setInspectParticipant(null)}

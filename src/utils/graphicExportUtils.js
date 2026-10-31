@@ -26,6 +26,14 @@ function calculateCrc32(uint8Arr, offset, length) {
 }
 
 /**
+ * Parse a stored pixel coordinate/size, falling back when missing or non-numeric
+ */
+export function parsePixel(val, fallback) {
+  const num = parseFloat(val);
+  return Number.isNaN(num) ? fallback : num;
+}
+
+/**
  * Converts any Hex, RGBA, or transparent color to a valid 8-digit #RRGGBBAA hex for QRCode
  */
 export function colorToQrHex(col, fallback = '#161942FF') {

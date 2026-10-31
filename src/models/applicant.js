@@ -21,6 +21,7 @@ export const SCHEMA_VERSION = 2;
 // Pseudo-retreat for applications submitted while no retreat was open
 export const GENERAL_RETREAT_ID = 'general';
 export const GENERAL_RETREAT_TITLE = 'General Interest List';
+export const GENERAL_RETREAT = Object.freeze({ id: GENERAL_RETREAT_ID, title: GENERAL_RETREAT_TITLE, isGeneral: true });
 
 // ---------- Identity ----------
 

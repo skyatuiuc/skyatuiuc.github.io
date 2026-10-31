@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { todayChicago } from './dateUtils';
 
 // ============================================================================
 // CONSTANTS & CONVERSIONS
@@ -88,31 +89,16 @@ export const PRINT_CONFIGURATIONS = [
 export function resolveParticipantDisplayName(participant, retreatRoster = []) {
   if (!participant) return 'Participant';
 
-  let cleanFirst = (participant.firstName || '').trim();
-  let cleanLast = (participant.lastName || '').trim();
+  const cleanFirst = (participant.firstName || '').trim();
+  const cleanLast = (participant.lastName || '').trim();
 
-  // If firstName is empty, try splitting fullName or name
-  if (!cleanFirst && (participant.fullName || participant.name)) {
-    const parts = (participant.fullName || participant.name).trim().split(/\s+/);
-    cleanFirst = parts[0] || '';
-    if (parts.length > 1) {
-      cleanLast = parts.slice(1).join(' ');
-    }
-  }
-
-  if (!cleanFirst) return cleanLast || participant.name || 'Participant';
+  if (!cleanFirst) return cleanLast || 'Participant';
   if (!cleanLast) return cleanFirst;
 
   const targetFirstLower = cleanFirst.toLowerCase();
 
   // Find all peers in the retreat roster with the same first name (case-insensitive)
-  const peers = retreatRoster.filter(p => {
-    let pFirst = (p.firstName || '').trim();
-    if (!pFirst && (p.fullName || p.name)) {
-      pFirst = (p.fullName || p.name).trim().split(/\s+/)[0] || '';
-    }
-    return pFirst.toLowerCase() === targetFirstLower;
-  });
+  const peers = retreatRoster.filter(p => (p.firstName || '').trim().toLowerCase() === targetFirstLower);
 
   // Rule 1: Unique first name within the retreat
   if (peers.length <= 1) {
@@ -122,11 +108,7 @@ export function resolveParticipantDisplayName(participant, retreatRoster = []) {
   // Count occurrences of last initials among peers with the same first name
   const initialCounts = {};
   peers.forEach(p => {
-    let pLast = (p.lastName || '').trim();
-    if (!pLast && (p.fullName || p.name)) {
-      const parts = (p.fullName || p.name).trim().split(/\s+/);
-      if (parts.length > 1) pLast = parts.slice(1).join(' ');
-    }
+    const pLast = (p.lastName || '').trim();
     const init = pLast ? pLast.charAt(0).toUpperCase() : '?';
     initialCounts[init] = (initialCounts[init] || 0) + 1;
   });
@@ -160,7 +142,7 @@ export function resolveParticipantTeamName(participant, groupNames = {}) {
   if (match) {
     return `Group ${match[1]}`;
   }
-  return participant.assignedGroup || gId;
+  return gId;
 }
 
 // ============================================================================
@@ -1079,7 +1061,7 @@ export async function generateNametagsPdf({
   onProgress({ step: 3, current: metrics.totalPages, total: metrics.totalPages, text: "Assembling final PDF file..." });
 
   const safeRetreat = (retreatTitle || 'Retreat').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const dateStr = new Date().toISOString().slice(0, 10);
+  const dateStr = todayChicago();
   const filename = `SKY_${safeRetreat}_${configType}_Nametags_${dateStr}.pdf`;
 
   const blob = pdf.output('blob');

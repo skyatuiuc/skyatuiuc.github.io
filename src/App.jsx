@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { RosterProvider } from './context/RosterContext';
 
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -49,6 +50,7 @@ function PageFallback() {
 export default function App() {
   return (
     <AuthProvider>
+      <RosterProvider>
       <Router>
         <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
           <Navbar />
@@ -104,6 +106,7 @@ export default function App() {
           <Footer />
         </div>
       </Router>
+      </RosterProvider>
     </AuthProvider>
   );
 }

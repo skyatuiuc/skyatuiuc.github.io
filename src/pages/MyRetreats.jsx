@@ -6,6 +6,8 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { INITIAL_RETREATS } from '../data/retreatData';
 import { Calendar, CheckCircle2, Clock, User, LogIn, ArrowRight, Sparkles } from 'lucide-react';
 import { loadCachedRetreats } from '../utils/retreatUtils';
+import { getStatus, getAttendance, STATUS, GENERAL_RETREAT } from '../models/applicant';
+import { getFeeTierLabel } from '../data/pricingData';
 
 export default function MyRetreats() {
   const { currentUser, loginWithGoogle } = useAuth();
@@ -37,16 +39,6 @@ export default function MyRetreats() {
 
     const userEmail = currentUser.email?.trim().toLowerCase();
     if (!userEmail) return;
-
-    let localRegs = [];
-    try {
-      const savedRegs = JSON.parse(localStorage.getItem('sky_registrations') || '[]');
-      localRegs = savedRegs.filter(r => r.email?.trim().toLowerCase() === userEmail);
-    } catch (e) {
-      console.warn("Local storage error:", e);
-    }
-
-    setUserRegistrations(localRegs);
 
     if (isFirebaseConfigured && db) {
       try {
@@ -141,15 +133,16 @@ export default function MyRetreats() {
                 
                 {userRegistrations.map((reg) => {
                   const retreatDetail = allRetreats.find(r => r.id === reg.retreatId) || {
-                    title: reg.retreatTitle || 'SKY Happiness Retreat',
+                    title: reg.retreatId === GENERAL_RETREAT.id ? 'SKY Happiness Retreat (next available)' : 'SKY Happiness Retreat',
                     startDate: '',
                     endDate: '',
-                    location: reg.retreatLocation || '',
+                    location: '',
                     teachers: ''
                   };
 
-                  const isApproved = (reg.orientationStatus || reg.interviewStatus || reg.status || '').includes('Approved');
-                  const isCompleted = reg.attendanceStatus === 'Completed' || reg.attendanceStatus === 'Graduated' || reg.completed === true;
+                  const status = getStatus(reg);
+                  const isApproved = status === STATUS.APPROVED;
+                  const isCompleted = getAttendance(reg).isComplete;
 
                   return (
                     <div key={reg.id} className="glass-card animate-fade-in" style={{
@@ -183,7 +176,7 @@ export default function MyRetreats() {
                             <span className="badge badge-sky" style={{ fontSize: '0.85rem', padding: '0.45rem 0.9rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                               <Sparkles size={16} /> Enrolled & Confirmed
                             </span>
-                          ) : (reg.orientationStatus === 'Withdrawn' || reg.interviewStatus === 'Withdrawn') ? (
+                          ) : status === STATUS.WITHDRAWN ? (
                             <span style={{ background: '#F1F5F9', color: 'var(--text-muted)', fontSize: '0.85rem', padding: '0.45rem 0.9rem', borderRadius: 'var(--radius-full)', fontWeight: 600, border: '1px solid var(--border-color)' }}>
                               Withdrawn
                             </span>
@@ -208,19 +201,19 @@ export default function MyRetreats() {
                       }}>
                         <div>
                           <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>UIUC ROLE / TIER</div>
-                          <div style={{ color: 'var(--text-main)', fontWeight: 600 }}>{reg.academicRole} ({reg.feeTier})</div>
+                          <div style={{ color: 'var(--text-main)', fontWeight: 600 }}>{reg.academicRole} ({getFeeTierLabel(reg.academicRole)})</div>
                         </div>
 
                         <div>
                           <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>ATTENDANCE STATUS</div>
                           <div style={{ color: 'var(--text-main)', fontWeight: 600 }}>
-                            {isCompleted ? '3 / 3 Sessions Completed' : reg.agreeToAll3Days === 'Yes' ? '3-Day Attendance Committed' : 'Pending Confirmation'}
+                            {isCompleted ? '3 / 3 Sessions Completed' : `${getAttendance(reg).attendedCount} / 3 Sessions Attended`}
                           </div>
                         </div>
 
                         <div>
                           <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>ORIENTATION STATUS</div>
-                          <div style={{ color: 'var(--text-main)', fontWeight: 600 }}>{reg.orientationStatus || reg.interviewStatus || 'Pending Orientation'}</div>
+                          <div style={{ color: 'var(--text-main)', fontWeight: 600 }}>{status}</div>
                         </div>
                       </div>
 

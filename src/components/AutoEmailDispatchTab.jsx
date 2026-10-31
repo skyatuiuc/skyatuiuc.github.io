@@ -1,22 +1,23 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db, isFirebaseConfigured } from '../firebase/config';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { logDatabaseOperation } from '../services/telemetryService';
-import { 
-  Mail, 
-  Send, 
-  Settings, 
-  Search, 
-  Calendar, 
-  CheckCircle2, 
-  AlertCircle, 
-  CreditCard, 
-  Info, 
-  Filter, 
-  Check, 
+import { doc, getDoc, setDoc, deleteField } from 'firebase/firestore';
+import { useAuth, ADMIN_EMAIL } from '../context/AuthContext';
+import { useRoster } from '../context/RosterContext';
+import { useApplicantFilters } from '../hooks/useApplicantFilters';
+import ApplicantFilterBar from './ApplicantFilterBar';
+import { getDisplayName, getStatus, getGroupId, getGroupName, STATUS } from '../models/applicant';
+import {
+  Mail,
+  Send,
+  Settings,
+  Calendar,
+  CheckCircle2,
+  AlertCircle,
+  CreditCard,
+  Info,
+  Check,
   AlertTriangle,
   RefreshCw,
-  X,
   Copy,
   ExternalLink
 } from 'lucide-react';
@@ -32,51 +33,12 @@ import EmailPreviewModal from './EmailPreviewModal';
 import EmailSettingsModal from './EmailSettingsModal';
 import ParticipantDetailsModal from './ParticipantDetailsModal';
 
-const getApplicantTimestamp = (reg) => {
-  if (!reg) return 0;
-  const raw = reg.appliedAt || reg.submittedAt || reg.createdAt || reg.registeredAt || reg.updatedAt || reg.timestamp;
-  if (!raw) return 0;
-  if (typeof raw === 'number') return raw;
-  if (raw instanceof Date) return raw.getTime();
-  if (typeof raw?.toDate === 'function') {
-    try {
-      return raw.toDate().getTime();
-    } catch {
-      // ignore
-    }
-  }
-  if (typeof raw?.seconds === 'number') {
-    return raw.seconds * 1000;
-  }
-  if (typeof raw === 'string') {
-    const parsed = Date.parse(raw);
-    return isNaN(parsed) ? 0 : parsed;
-  }
-  return 0;
-};
+// Admin tab: send templated emails (received / accepted / welcome / completion) to the active retreat
+const DISPATCH_FACETS = ['search', 'statuses', 'claim', 'payment', 'iahv', 'email', 'role', 'sort'];
 
-const getEffectivePaymentStatus = (reg) => {
-  if (!reg) return 'Exempt';
-  const feeInfo = parseFeeAndPayment(reg);
-  if (feeInfo.amount === 0 || reg.paymentExempt || reg.isExempt || reg.exempt || reg.feeExempt) {
-    return 'Exempt';
-  }
-  const rawStatus = (reg.paymentStatus || '').toLowerCase().trim();
-  const rawPaidFlag = reg.paid === true || reg.paid === 'true';
-  if (rawPaidFlag || rawStatus === 'paid' || rawStatus === 'completed' || rawStatus === 'waived' || rawStatus === 'exempt') {
-    return 'Paid';
-  }
-  return 'Unpaid';
-};
-
-export default function AutoEmailDispatchTab({ 
-  retreats = [], 
-  registrations = [], 
-  setRegistrations,
-  currentUser = null,
-  selectedRetreatId = ''
-}) {
-  const activeRetreat = retreats.find(r => r.id === selectedRetreatId) || (retreats.length > 0 ? retreats[0] : null);
+export default function AutoEmailDispatchTab() {
+  const { currentUser, authorizedEmails } = useAuth();
+  const { activeRetreat, registrations, updateRegistration } = useRoster();
 
   // Email Settings State
   const [emailSettings, setEmailSettings] = useState(() => {
@@ -111,14 +73,11 @@ export default function AutoEmailDispatchTab({
     };
   }, []);
 
-  // UI State: Full Volunteer Hub Filter & Sort Parity
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All'); // 'All' | 'Uncontacted' | 'Pending' | 'Approved' | 'Did Not Reply' | 'Withdrawn'
-  const [claimFilter, setClaimFilter] = useState('All');   // 'All' | 'My Claims' | 'Unclaimed' | 'Claimed by Others'
-  const [paymentFilter, setPaymentFilter] = useState('All'); // 'All' | 'Paid / Exempt' | 'Unpaid'
-  const [iahvFilter, setIahvFilter] = useState('All');     // 'All' | 'Registered' | 'Not Registered'
-  const [dispatchFilter, setDispatchFilter] = useState('ALL'); // 'ALL' | 'UNSENT_ACCEPTED' | 'UNSENT_WELCOME' | 'UNSENT_COMPLETION' | 'NEEDS_PAYPAL'
-  const [sortBy, setSortBy] = useState('oldest');          // 'oldest' | 'newest' | 'name' | 'lastContacted'
+  const userEmailLower = (currentUser?.email || '').toLowerCase().trim();
+  const { filters, setFilter, resetFilters, filtered: displayedApplicants, statusCounts, activeFilterCount } = useApplicantFilters(
+    registrations,
+    { userEmail: userEmailLower, retreat: activeRetreat, authorizedEmails }
+  );
 
   const [selectedApplicantIds, setSelectedApplicantIds] = useState(new Set());
   const [batchTemplateKey, setBatchTemplateKey] = useState('application_accepted');
@@ -131,8 +90,9 @@ export default function AutoEmailDispatchTab({
   const [inspectParticipant, setInspectParticipant] = useState(null);
   const [toastMessage, setToastMessage] = useState({ type: '', text: '' });
 
-  // PayPal Link saving indicators: { [participantId]: boolean }
+  // PayPal Link saving indicators: { [participantId]: boolean }, and unsaved edits per row
   const [savedPaypalLinks, setSavedPaypalLinks] = useState({});
+  const [paypalDrafts, setPaypalDrafts] = useState({});
 
   const showToast = (type, text) => {
     setToastMessage({ type, text });
@@ -141,8 +101,7 @@ export default function AutoEmailDispatchTab({
     }, 3500);
   };
 
-  const isSuperAdmin = Boolean(currentUser?.email && currentUser.email.toLowerCase().trim() === 'skyatuiuc@gmail.com');
-  const userEmailLower = (currentUser?.email || '').toLowerCase().trim();
+  const isSuperAdmin = userEmailLower === ADMIN_EMAIL.toLowerCase();
 
   // Save updated email settings (Super Admin only)
   const handleSaveSettings = (newSettings) => {
@@ -174,120 +133,6 @@ export default function AutoEmailDispatchTab({
     }
   };
 
-  // Filter retreat registrations
-  const retreatRegistrations = useMemo(() => {
-    return registrations.filter(r => {
-      if (selectedRetreatId === 'ALL' || retreats.length <= 1) return true;
-      const matchId = r.retreatId === activeRetreat?.id;
-      const matchTitle = (r.retreatTitle && activeRetreat?.title && r.retreatTitle.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim()) ||
-        (!r.retreatId && r.retreatTitle === activeRetreat?.title);
-      return matchId || matchTitle;
-    });
-  }, [registrations, activeRetreat, selectedRetreatId, retreats]);
-
-  // Filtered applicants based on full Volunteer Hub search, filters & sort
-  const displayedApplicants = useMemo(() => {
-    let list = retreatRegistrations.filter(reg => {
-      // 1. Search Query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const name = (reg.fullName || `${reg.firstName || ''} ${reg.lastName || ''}`.trim() || reg.name || '').toLowerCase();
-        const email = (reg.email || '').toLowerCase();
-        const phone = (reg.phone || '').toLowerCase();
-        const netId = (reg.netId || '').toLowerCase();
-        const role = (reg.academicRole || '').toLowerCase();
-
-        if (!name.includes(q) && !email.includes(q) && !phone.includes(q) && !netId.includes(q) && !role.includes(q)) {
-          return false;
-        }
-      }
-
-      // 2. Orientation Status Filter
-      const currentStatus = reg.orientationStatus || reg.interviewStatus || 
-        (reg.status === 'Approved' ? 'Approved' : 'Uncontacted');
-      if (statusFilter !== 'All' && currentStatus !== statusFilter) {
-        return false;
-      }
-
-      // 3. Claim Filter
-      const isClaimedByMe = reg.claimedBy && reg.claimedBy.toLowerCase() === userEmailLower;
-      const isUnclaimed = !reg.claimedBy;
-      const isClaimedByOther = reg.claimedBy && !isClaimedByMe;
-
-      if (claimFilter === 'My Claims' && !isClaimedByMe) return false;
-      if (claimFilter === 'Unclaimed' && !isUnclaimed) return false;
-      if (claimFilter === 'Claimed by Others' && !isClaimedByOther) return false;
-
-      // 4. Payment Filter
-      const payment = getEffectivePaymentStatus(reg);
-      if (paymentFilter === 'Paid / Exempt' && payment !== 'Paid' && payment !== 'Exempt') return false;
-      if (paymentFilter === 'Unpaid' && payment !== 'Unpaid') return false;
-
-      // 5. IAHV Registration Filter
-      const isIahv = Boolean(reg.iahvRegistered);
-      if (iahvFilter === 'Registered' && !isIahv) return false;
-      if (iahvFilter === 'Not Registered' && isIahv) return false;
-
-      // 6. Email Dispatch Filter
-      if (dispatchFilter === 'NEEDS_PAYPAL') {
-        if (!checkRequiresPayment(reg) || (reg.paypalLink || '').trim()) return false;
-      } else if (dispatchFilter === 'UNSENT_ACCEPTED') {
-        if (reg.sentEmails?.application_accepted?.sent) return false;
-      } else if (dispatchFilter === 'UNSENT_WELCOME') {
-        if (reg.sentEmails?.welcome?.sent) return false;
-      } else if (dispatchFilter === 'UNSENT_COMPLETION') {
-        if (reg.sentEmails?.completion?.sent) return false;
-      }
-
-      return true;
-    });
-
-    // Multi-criteria sorting matching Volunteer Hub
-    return list.sort((a, b) => {
-      if (sortBy === 'oldest') {
-        const timeA = getApplicantTimestamp(a);
-        const timeB = getApplicantTimestamp(b);
-        if (timeA && timeB) {
-          if (timeA !== timeB) return timeA - timeB;
-        } else if (timeA && !timeB) {
-          return -1;
-        } else if (!timeA && timeB) {
-          return 1;
-        }
-        return (a.id || '').localeCompare(b.id || '');
-      }
-      if (sortBy === 'newest') {
-        const timeA = getApplicantTimestamp(a);
-        const timeB = getApplicantTimestamp(b);
-        if (timeA && timeB) {
-          if (timeA !== timeB) return timeB - timeA;
-        } else if (timeA && !timeB) {
-          return -1;
-        } else if (!timeA && timeB) {
-          return 1;
-        }
-        return (b.id || '').localeCompare(a.id || '');
-      }
-      if (sortBy === 'name') {
-        const nameA = (a.fullName || `${a.firstName || ''} ${a.lastName || ''}`.trim() || a.name || a.email || '').toLowerCase();
-        const nameB = (b.fullName || `${b.firstName || ''} ${b.lastName || ''}`.trim() || b.name || b.email || '').toLowerCase();
-        return nameA.localeCompare(nameB);
-      }
-      if (sortBy === 'lastContacted') {
-        const parseDate = (d) => {
-          if (!d || d === 'Never') return 0;
-          const parsed = Date.parse(d);
-          return isNaN(parsed) ? 0 : parsed;
-        };
-        const dateA = parseDate(a.lastContactedDate);
-        const dateB = parseDate(b.lastContactedDate);
-        if (dateA !== dateB) return dateB - dateA;
-        return (a.id || '').localeCompare(b.id || '');
-      }
-      return 0;
-    });
-  }, [retreatRegistrations, searchQuery, statusFilter, claimFilter, paymentFilter, iahvFilter, dispatchFilter, sortBy, userEmailLower]);
-
   // Toggle single selection
   const handleToggleSelect = (id) => {
     const next = new Set(selectedApplicantIds);
@@ -308,121 +153,48 @@ export default function AutoEmailDispatchTab({
     }
   };
 
-  // Update participant paypalLink inline & persist
+  // PayPal link: edited locally, saved on blur / Enter
   const handlePaypalLinkChange = (participantId, link) => {
-    const updated = registrations.map(r => {
-      if (r.id === participantId) {
-        return { ...r, paypalLink: link };
-      }
-      return r;
-    });
-    setRegistrations(updated);
+    setPaypalDrafts(prev => ({ ...prev, [participantId]: link }));
   };
 
   const handleSavePaypalLink = async (participantId, link) => {
     const trimmed = (link || '').trim();
-    const updated = registrations.map(r => {
-      if (r.id === participantId) {
-        return { ...r, paypalLink: trimmed };
-      }
-      return r;
+    const current = (registrations.find(r => r.id === participantId)?.paypalLink || '').trim();
+    setPaypalDrafts(prev => {
+      const next = { ...prev };
+      delete next[participantId];
+      return next;
     });
-    setRegistrations(updated);
-    localStorage.setItem('sky_registrations', JSON.stringify(updated));
-
-    if (isFirebaseConfigured && db) {
-      try {
-        await setDoc(doc(db, 'registrations', participantId), {
-          paypalLink: trimmed,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-        logDatabaseOperation(0, 1, 0);
-      } catch (err) {
-        console.warn("Firestore PayPal link update error:", err);
-      }
+    if (trimmed === current) return;
+    try {
+      await updateRegistration(participantId, { paypalLink: trimmed });
+      setSavedPaypalLinks(prev => ({ ...prev, [participantId]: true }));
+      setTimeout(() => {
+        setSavedPaypalLinks(prev => ({ ...prev, [participantId]: false }));
+      }, 2000);
+    } catch (err) {
+      showToast('error', `PayPal link not saved: ${err.code || err.message}`);
     }
-
-    setSavedPaypalLinks(prev => ({ ...prev, [participantId]: true }));
-    setTimeout(() => {
-      setSavedPaypalLinks(prev => ({ ...prev, [participantId]: false }));
-    }, 2000);
   };
 
-  // Toggle Payment Status for paid / free tiers
+  // Toggle payment settlement for fee-paying roles
   const handleTogglePaymentStatus = async (participantId, isPaid) => {
-    const updated = registrations.map(r => {
-      if (r.id === participantId) {
-        return {
-          ...r,
-          isPaid,
-          paymentStatus: isPaid ? 'Paid' : 'Unpaid',
-          paidAt: isPaid ? new Date().toISOString() : null
-        };
-      }
-      return r;
-    });
-    setRegistrations(updated);
-    localStorage.setItem('sky_registrations', JSON.stringify(updated));
-
-    if (isFirebaseConfigured && db) {
-      try {
-        await setDoc(doc(db, 'registrations', participantId), {
-          isPaid,
-          paymentStatus: isPaid ? 'Paid' : 'Unpaid',
-          paidAt: isPaid ? new Date().toISOString() : null,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-        logDatabaseOperation(0, 1, 0);
-      } catch (err) {
-        console.warn("Firestore payment status update error:", err);
-      }
+    try {
+      await updateRegistration(participantId, isPaid
+        ? { paymentStatus: 'Paid', paidAt: new Date().toISOString() }
+        : { paymentStatus: deleteField(), paidAt: deleteField() });
+      showToast('success', `Payment status updated to ${isPaid ? 'Paid' : 'Unpaid'}`);
+    } catch (err) {
+      showToast('error', `Payment status not saved: ${err.code || err.message}`);
     }
-
-    showToast('success', `Payment status updated to ${isPaid ? 'Paid' : 'Unpaid'}`);
   };
 
-  // Send Single Email
+  // Send Single Email (emailService records the sent email on the registration)
   const handleSendSingle = async (templateKey, participant) => {
-    const senderEmail = currentUser?.email || 'skyatuiuc@gmail.com';
-    const result = await sendSingleEmail(templateKey, participant, activeRetreat, emailSettings, senderEmail);
-
-    // Update sentEmails timestamp on participant in state & DB
-    const stateKey = templateKey === 'application_accepted' ? 'application_accepted' : templateKey;
-    const nowIso = new Date().toISOString();
-
-    const updated = registrations.map(r => {
-      if (r.id === participant.id) {
-        const sentEmails = { ...(r.sentEmails || {}) };
-        sentEmails[stateKey] = {
-          sent: true,
-          sentAt: nowIso,
-          sentBy: senderEmail
-        };
-        return { ...r, sentEmails };
-      }
-      return r;
-    });
-
-    setRegistrations(updated);
-    localStorage.setItem('sky_registrations', JSON.stringify(updated));
-
-    if (isFirebaseConfigured && db) {
-      try {
-        await setDoc(doc(db, 'registrations', participant.id), {
-          [`sentEmails.${stateKey}`]: {
-            sent: true,
-            sentAt: nowIso,
-            sentBy: senderEmail
-          }
-        }, { merge: true });
-        logDatabaseOperation(0, 1, 0);
-      } catch (err) {
-        console.warn("Firestore sentEmails update error:", err);
-      }
-    }
-
-    const emailSubject = result?.subject || result?.payload?.subject || EMAIL_TEMPLATES[templateKey]?.subject || 'Notification';
-    showToast('success', `✓ Email "${emailSubject}" sent to ${participant.firstName || participant.name || participant.email}!`);
+    const result = await sendSingleEmail(templateKey, participant, activeRetreat, emailSettings);
+    const emailSubject = result?.subject || EMAIL_TEMPLATES[templateKey]?.subject || 'Notification';
+    showToast('success', `✓ Email "${emailSubject}" sent to ${getDisplayName(participant)}!`);
   };
 
   // Send Batch Emails
@@ -450,42 +222,15 @@ export default function AutoEmailDispatchTab({
     setIsBatchSending(true);
     setBatchProgress({ current: 0, total: targets.length, recipient: '' });
 
-    const senderEmail = currentUser?.email || 'skyatuiuc@gmail.com';
-    const stateKey = batchTemplateKey === 'application_accepted' ? 'application_accepted' : batchTemplateKey;
-    const nowIso = new Date().toISOString();
-
     const results = await sendBatchEmails(
-      batchTemplateKey, 
-      targets, 
-      activeRetreat, 
-      emailSettings, 
-      senderEmail,
+      batchTemplateKey,
+      targets,
+      activeRetreat,
+      emailSettings,
       (current, total, participant) => {
-        setBatchProgress({
-          current,
-          total,
-          recipient: participant.name || participant.email
-        });
+        setBatchProgress({ current, total, recipient: getDisplayName(participant) });
       }
     );
-
-    // Update state for successful recipients
-    const successfulIds = new Set(results.successes.map(s => s.participant.id));
-    const updated = registrations.map(r => {
-      if (successfulIds.has(r.id)) {
-        const sentEmails = { ...(r.sentEmails || {}) };
-        sentEmails[stateKey] = {
-          sent: true,
-          sentAt: nowIso,
-          sentBy: senderEmail
-        };
-        return { ...r, sentEmails };
-      }
-      return r;
-    });
-
-    setRegistrations(updated);
-    localStorage.setItem('sky_registrations', JSON.stringify(updated));
 
     setIsBatchSending(false);
     setBatchProgress(null);
@@ -780,142 +525,15 @@ export default function AutoEmailDispatchTab({
       {/* FILTER & BATCH ACTION TOOLBAR */}
       <div className="glass-card" style={{ padding: '1.25rem 1.5rem', background: '#FFFFFF', boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         
-        {/* Tier 1: Advanced Filter & Sort Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: '1rem', alignItems: 'center' }}>
-          
-          {/* Search Input */}
-          <div style={{ position: 'relative', gridColumn: 'span 2' }}>
-            <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)' }} />
-            <input
-              type="text"
-              placeholder="Search applicant name, email, phone, NetID, or role..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.65rem 1rem 0.65rem 2.4rem',
-                background: '#FFFFFF',
-                border: '1px solid rgba(35, 39, 95, 0.15)',
-                color: 'var(--text-main)',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: '0.875rem'
-              }}
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-
-          {/* Orientation Status Filter */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-              ORIENTATION STATUS
-            </label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={{ width: '100%', padding: '0.6rem 0.75rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.825rem', fontWeight: 600 }}
-            >
-              <option value="All">All Statuses</option>
-              <option value="Uncontacted">Uncontacted</option>
-              <option value="Pending">Pending</option>
-              <option value="Approved">Approved</option>
-              <option value="Did Not Reply">Did Not Reply</option>
-              <option value="Withdrawn">Withdrawn</option>
-            </select>
-          </div>
-
-          {/* Claim / Point of Contact Filter */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-              POINT OF CONTACT
-            </label>
-            <select
-              value={claimFilter}
-              onChange={(e) => setClaimFilter(e.target.value)}
-              style={{ width: '100%', padding: '0.6rem 0.75rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.825rem', fontWeight: 600 }}
-            >
-              <option value="All">All Claim States</option>
-              <option value="My Claims">Claimed by Me</option>
-              <option value="Unclaimed">Unclaimed</option>
-              <option value="Claimed by Others">Claimed by Others</option>
-            </select>
-          </div>
-
-          {/* Payment Status Filter */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-              PAYMENT STATUS
-            </label>
-            <select
-              value={paymentFilter}
-              onChange={(e) => setPaymentFilter(e.target.value)}
-              style={{ width: '100%', padding: '0.6rem 0.75rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.825rem', fontWeight: 600 }}
-            >
-              <option value="All">All Payment States</option>
-              <option value="Paid / Exempt">Paid / Exempt ($0)</option>
-              <option value="Unpaid">Unpaid</option>
-            </select>
-          </div>
-
-          {/* IAHV Registration Filter */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-              IAHV REGISTRATION
-            </label>
-            <select
-              value={iahvFilter}
-              onChange={(e) => setIahvFilter(e.target.value)}
-              style={{ width: '100%', padding: '0.6rem 0.75rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.825rem', fontWeight: 600 }}
-            >
-              <option value="All">All IAHV States</option>
-              <option value="Registered">Registered</option>
-              <option value="Not Registered">Not Registered</option>
-            </select>
-          </div>
-
-          {/* Email Dispatch Filter */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-              EMAIL DISPATCH
-            </label>
-            <select
-              value={dispatchFilter}
-              onChange={(e) => setDispatchFilter(e.target.value)}
-              style={{ width: '100%', padding: '0.6rem 0.75rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.825rem', fontWeight: 600 }}
-            >
-              <option value="ALL">All Applicants</option>
-              <option value="NEEDS_PAYPAL">Missing PayPal Link</option>
-              <option value="UNSENT_ACCEPTED">Unsent Acceptance</option>
-              <option value="UNSENT_WELCOME">Unsent Welcome</option>
-              <option value="UNSENT_COMPLETION">Unsent Completion</option>
-            </select>
-          </div>
-
-          {/* Sort By Filter */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-              SORT BY
-            </label>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              style={{ width: '100%', padding: '0.6rem 0.75rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.825rem', fontWeight: 600 }}
-            >
-              <option value="oldest">Submission Date (Oldest First)</option>
-              <option value="newest">Submission Date (Newest First)</option>
-              <option value="name">Applicant Name (A-Z)</option>
-              <option value="lastContacted">Last Contacted Date</option>
-            </select>
-          </div>
-
-        </div>
+        <ApplicantFilterBar
+          facets={DISPATCH_FACETS}
+          filters={filters}
+          setFilter={setFilter}
+          resetFilters={resetFilters}
+          statusCounts={statusCounts}
+          activeFilterCount={activeFilterCount}
+          retreat={activeRetreat}
+        />
 
         {/* Tier 2: Summary Count, Copy Emails & Batch Actions Bar */}
         <div style={{
@@ -931,7 +549,7 @@ export default function AutoEmailDispatchTab({
           {/* Showing Count & Copy Emails */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
             <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-main)' }}>
-              Showing <span style={{ color: 'var(--sky-blue)' }}>{displayedApplicants.length}</span> of {retreatRegistrations.length} applicant records
+              Showing <span style={{ color: 'var(--sky-blue)' }}>{displayedApplicants.length}</span> of {registrations.length} applicant records
             </div>
 
             <button
@@ -1054,8 +672,8 @@ export default function AutoEmailDispatchTab({
             {/* Applicant Rows */}
             {displayedApplicants.map(applicant => {
               const isSelected = selectedApplicantIds.has(applicant.id);
-              const initial = (applicant.firstName?.[0] || applicant.name?.[0] || 'U').toUpperCase();
-              const isApproved = (applicant.orientationStatus || applicant.interviewStatus || applicant.status || '').toLowerCase().includes('approved');
+              const initial = (applicant.firstName?.[0] || applicant.email?.[0] || 'U').toUpperCase();
+              const isApproved = getStatus(applicant) === STATUS.APPROVED;
               const feeInfo = parseFeeAndPayment(applicant);
               const isPaypalSaved = savedPaypalLinks[applicant.id];
 
@@ -1123,7 +741,7 @@ export default function AutoEmailDispatchTab({
                           title="Click to view full application dossier"
                         >
                           <span style={{ textDecoration: 'underline dotted rgba(35, 39, 95, 0.4)' }}>
-                            {applicant.firstName ? `${applicant.firstName} ${applicant.lastName || ''}`.trim() : (applicant.name || applicant.email)}
+                            {getDisplayName(applicant)}
                           </span>
                           <Info size={12} color="var(--text-muted)" />
                         </button>
@@ -1147,7 +765,7 @@ export default function AutoEmailDispatchTab({
                         fontWeight: 700
                       }}
                     >
-                      {applicant.orientationStatus || applicant.interviewStatus || applicant.status || 'Pending'}
+                      {getStatus(applicant)}
                     </span>
                   </div>
 
@@ -1194,7 +812,7 @@ export default function AutoEmailDispatchTab({
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                         <input
                           type="text"
-                          value={applicant.paypalLink || ''}
+                          value={paypalDrafts[applicant.id] ?? applicant.paypalLink ?? ''}
                           onChange={(e) => handlePaypalLinkChange(applicant.id, e.target.value)}
                           onBlur={(e) => handleSavePaypalLink(applicant.id, e.target.value)}
                           onKeyDown={(e) => {
@@ -1267,7 +885,7 @@ export default function AutoEmailDispatchTab({
               No applicants found matching this filter
             </div>
             <div style={{ fontSize: '0.85rem' }}>
-              {searchQuery ? 'Try clearing your search query filter above.' : 'Applicants for the selected retreat will appear here.'}
+              {activeFilterCount > 0 ? 'Try clearing the filters above.' : 'Applicants for the selected retreat will appear here.'}
             </div>
           </div>
         )}
@@ -1300,7 +918,7 @@ export default function AutoEmailDispatchTab({
       {inspectParticipant && (
         <ParticipantDetailsModal
           participant={inspectParticipant}
-          groupName={inspectParticipant.assignedGroup}
+          groupName={getGroupName(getGroupId(inspectParticipant, activeRetreat), activeRetreat)}
           isVolunteer={false}
           onClose={() => setInspectParticipant(null)}
         />

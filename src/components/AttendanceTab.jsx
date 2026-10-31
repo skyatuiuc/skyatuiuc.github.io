@@ -1,95 +1,53 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  CheckSquare, 
-  Square, 
-  Calendar, 
-  Users, 
-  Layers, 
-  Search, 
-  Clock, 
+import {
+  CheckSquare,
+  Square,
+  Calendar,
+  Users,
+  Layers,
+  Search,
+  Clock,
   Info,
   Filter,
   CheckCircle2,
   AlertCircle,
   X
 } from 'lucide-react';
-import { db, isFirebaseConfigured } from '../firebase/config';
-import { doc, updateDoc, setDoc } from 'firebase/firestore';
-import { ADMIN_EMAIL } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
+import { useRoster } from '../context/RosterContext';
 import ParticipantDetailsModal from './ParticipantDetailsModal';
+import {
+  getDisplayName, getStatus, STATUS, getGroupId, getGroupName, groupIdFor, isVolunteerEmail, matchesSearch, RETREAT_DAYS
+} from '../models/applicant';
+import { todayChicago, addDaysToKey } from '../utils/dateUtils';
 
-// Normalize group ID to canonical format (e.g. 'group-1', 'group-2') or custom name resolution
-const normalizeGroupId = (val, groupNames = {}) => {
-  if (!val) return 'unassigned';
-  const str = String(val).trim();
-  if (!str || str.toLowerCase() === 'unassigned') return 'unassigned';
+const DAY_LABELS = ['Day 1', 'Day 2', 'Day 3'];
+const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-  // Check if it's already 'group-X'
-  const match = str.match(/^group-(\d+)$/i);
-  if (match) return `group-${match[1]}`;
+// Volunteer tab: check participants (approved applicants + volunteers registered for the active
+// retreat) in and out for each of the three retreat days.
+export default function AttendanceTab() {
+  const { currentUser, authorizedEmails } = useAuth();
+  const { activeRetreat, registrations, updateRegistration } = useRoster();
 
-  // Check if it's just a number: '2' or 2
-  if (/^\d+$/.test(str)) return `group-${str}`;
-
-  // Check if it matches 'Group 2'
-  const match2 = str.match(/^group\s*(\d+)$/i);
-  if (match2) return `group-${match2[1]}`;
-
-  // Check if it matches any custom name in groupNames
-  const foundEntry = Object.entries(groupNames).find(([_, name]) => 
-    name && name.toLowerCase().trim() === str.toLowerCase()
-  );
-  if (foundEntry) return foundEntry[0];
-
-  return str;
-};
-
-export default function AttendanceTab({
-  activeRetreat,
-  registrations = [],
-  authorizedEmails = [],
-  currentUser
-}) {
-  // 1. Calculate the 3 retreat day dates & smart auto-default based on today
+  // 1. The 3 retreat days (club-local calendar dates)
   const retreatDays = useMemo(() => {
-    if (!activeRetreat?.startDate) {
-      return [
-        { dayIndex: 1, key: 'day1', label: 'Day 1', dateStr: '', shortDate: '' },
-        { dayIndex: 2, key: 'day2', label: 'Day 2', dateStr: '', shortDate: '' },
-        { dayIndex: 3, key: 'day3', label: 'Day 3', dateStr: '', shortDate: '' }
-      ];
-    }
-
-    try {
-      const [startYear, startMonth, startDay] = activeRetreat.startDate.split('-').map(Number);
-      const d1 = new Date(startYear, startMonth - 1, startDay);
-      const d2 = new Date(d1); d2.setDate(d1.getDate() + 1);
-      const d3 = new Date(d1); d3.setDate(d1.getDate() + 2);
-
-      const formatDate = (d) => d.toISOString().split('T')[0];
-      const formatShort = (d) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-
-      return [
-        { dayIndex: 1, key: 'day1', label: 'Day 1', dateStr: formatDate(d1), shortDate: formatShort(d1) },
-        { dayIndex: 2, key: 'day2', label: 'Day 2', dateStr: formatDate(d2), shortDate: formatShort(d2) },
-        { dayIndex: 3, key: 'day3', label: 'Day 3', dateStr: formatDate(d3), shortDate: formatShort(d3) }
-      ];
-    } catch {
-      return [
-        { dayIndex: 1, key: 'day1', label: 'Day 1', dateStr: '', shortDate: '' },
-        { dayIndex: 2, key: 'day2', label: 'Day 2', dateStr: '', shortDate: '' },
-        { dayIndex: 3, key: 'day3', label: 'Day 3', dateStr: '', shortDate: '' }
-      ];
-    }
+    const start = DATE_KEY_RE.test(activeRetreat?.startDate || '') ? activeRetreat.startDate : '';
+    return RETREAT_DAYS.map((key, i) => {
+      const dateStr = start ? addDaysToKey(start, i) : '';
+      const shortDate = dateStr
+        ? new Date(`${dateStr}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+        : '';
+      return { dayIndex: i + 1, key, label: DAY_LABELS[i], dateStr, shortDate };
+    });
   }, [activeRetreat?.startDate]);
 
-  // Determine initial selected day (closest to today)
+  // Default to today's retreat day (in Champaign time), else the first/last day
   const initialDayIndex = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const match = retreatDays.find(d => d.dateStr === todayStr);
+    const today = todayChicago();
+    const match = retreatDays.find(d => d.dateStr === today);
     if (match) return match.dayIndex;
-    if (retreatDays[0]?.dateStr && todayStr < retreatDays[0].dateStr) return 1;
-    if (retreatDays[2]?.dateStr && todayStr > retreatDays[2].dateStr) return 3;
+    if (retreatDays[2]?.dateStr && today > retreatDays[2].dateStr) return 3;
     return 1;
   }, [retreatDays]);
 
@@ -107,358 +65,89 @@ export default function AttendanceTab({
   const [searchQuery, setSearchQuery] = useState('');
   const [inspectParticipant, setInspectParticipant] = useState(null);
 
-  // Group config from retreat metadata
-  const retreatGroupConfig = useMemo(() => activeRetreat?.groupConfig || {}, [activeRetreat?.groupConfig]);
-  const numConfiguredGroups = Number(retreatGroupConfig.numGroups) || 4;
-  const retreatGroupNames = useMemo(() => retreatGroupConfig.groupNames || {}, [retreatGroupConfig.groupNames]);
+  const numConfiguredGroups = Number(activeRetreat?.groupConfig?.numGroups) || 4;
+  const retreatGroupNames = useMemo(() => {
+    const names = {};
+    for (let n = 1; n <= numConfiguredGroups; n += 1) names[groupIdFor(n)] = getGroupName(groupIdFor(n), activeRetreat);
+    return names;
+  }, [numConfiguredGroups, activeRetreat]);
 
-  // Helper: check if email is an authorized volunteer
-  const isVolunteerEmail = React.useCallback((email) => {
-    if (!email) return false;
-    const clean = email.toLowerCase().trim();
-    if (clean === ADMIN_EMAIL.toLowerCase().trim()) return true;
-    return authorizedEmails.some(ae => {
-      const authEmail = (typeof ae === 'string' ? ae : ae?.email || '').toLowerCase().trim();
-      return authEmail === clean;
-    });
-  }, [authorizedEmails]);
-
-  // Find user's assigned group from registrations, groupConfig, or authorizedEmails
+  // The signed-in volunteer's own group (from their registration for this retreat)
   const userEmail = (currentUser?.email || '').trim().toLowerCase();
-  
   const userAssignedGroupId = useMemo(() => {
-    if (!userEmail) return 'group-1';
-
-    // 1. Check registrations specifically for the active retreat
-    const retreatReg = registrations.find(r => {
-      const rEmail = (r.email || '').trim().toLowerCase();
-      if (rEmail !== userEmail) return false;
-      if (!activeRetreat?.id) return true;
-      return (
-        r.retreatId === activeRetreat.id ||
-        r.selectedRetreat === activeRetreat.id ||
-        (!r.retreatId && activeRetreat.id === 'general') ||
-        (!r.retreatId && r.retreatTitle === activeRetreat?.title) ||
-        (r.retreatTitle && activeRetreat?.title && r.retreatTitle.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim()) ||
-        (r.selectedRetreat && activeRetreat?.title && r.selectedRetreat.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim())
-      );
-    });
-
-    if (retreatReg?.groupId && retreatReg.groupId !== 'unassigned') {
-      const norm = normalizeGroupId(retreatReg.groupId, retreatGroupNames);
-      if (norm !== 'unassigned') return norm;
-    }
-    if (retreatReg?.assignedGroup && retreatReg.assignedGroup !== 'unassigned') {
-      const norm = normalizeGroupId(retreatReg.assignedGroup, retreatGroupNames);
-      if (norm !== 'unassigned') return norm;
-    }
-
-    // 2. Check any registration matching user's email with a valid groupId
-    const anyReg = registrations.find(r => {
-      const rEmail = (r.email || '').trim().toLowerCase();
-      return rEmail === userEmail && (
-        (r.groupId && r.groupId !== 'unassigned') ||
-        (r.assignedGroup && r.assignedGroup !== 'unassigned')
-      );
-    });
-    if (anyReg) {
-      const g = anyReg.groupId || anyReg.assignedGroup;
-      const norm = normalizeGroupId(g, retreatGroupNames);
-      if (norm !== 'unassigned') return norm;
-    }
-
-    // 3. Check direct assignments in retreat groupConfig
-    const assignments = retreatGroupConfig.assignments || {};
-    const directAssignment = assignments[userEmail] || (retreatReg?.id && assignments[retreatReg.id]);
-    if (directAssignment && directAssignment !== 'unassigned') {
-      const norm = normalizeGroupId(directAssignment, retreatGroupNames);
-      if (norm !== 'unassigned') return norm;
-    }
-
-    // 4. Check volunteer assignment list in retreat groupConfig
-    const volAssignments = retreatGroupConfig.volunteerAssignments || {};
-    const directVol = Object.entries(volAssignments).find(([_, vList]) => 
-      Array.isArray(vList) && vList.some(vEmail => (typeof vEmail === 'string' ? vEmail : vEmail?.email || '').toLowerCase().trim() === userEmail)
-    );
-    if (directVol && directVol[0]) {
-      const norm = normalizeGroupId(directVol[0], retreatGroupNames);
-      if (norm !== 'unassigned') return norm;
-    }
-
-    // 5. Check volunteer record in authorizedEmails
-    const authRecord = authorizedEmails.find(a => {
-      const e = (typeof a === 'string' ? a : a?.email || '').trim().toLowerCase();
-      return e === userEmail;
-    });
-    if (authRecord && typeof authRecord === 'object' && (authRecord.assignedGroup || authRecord.groupId)) {
-      const g = authRecord.assignedGroup || authRecord.groupId;
-      if (g && g !== 'unassigned') {
-        const norm = normalizeGroupId(g, retreatGroupNames);
-        if (norm !== 'unassigned') return norm;
-      }
-    }
-
-    // 6. Check currentUser properties directly
-    if (currentUser?.groupId && currentUser.groupId !== 'unassigned') {
-      const norm = normalizeGroupId(currentUser.groupId, retreatGroupNames);
-      if (norm !== 'unassigned') return norm;
-    }
-    if (currentUser?.assignedGroup && currentUser.assignedGroup !== 'unassigned') {
-      const norm = normalizeGroupId(currentUser.assignedGroup, retreatGroupNames);
-      if (norm !== 'unassigned') return norm;
-    }
-
-    // Default fallback to group-1 if volunteer has no assigned group
-    return 'group-1';
-  }, [retreatGroupConfig, authorizedEmails, userEmail, registrations, activeRetreat, retreatGroupNames, currentUser]);
+    const myReg = registrations.find(r => (r.email || '').toLowerCase() === userEmail);
+    return getGroupId(myReg, activeRetreat) || 'group-1';
+  }, [registrations, userEmail, activeRetreat]);
 
   // Selected group under My Group view (defaults to volunteer's assigned group, but allows quick switching)
   const [selectedMyGroup, setSelectedMyGroup] = useState(userAssignedGroupId);
   useEffect(() => {
-    if (userAssignedGroupId) {
-      setSelectedMyGroup(userAssignedGroupId);
-    }
+    setSelectedMyGroup(userAssignedGroupId);
   }, [userAssignedGroupId]);
 
-  // 3. Filter approved registrations & volunteers for this active retreat
-  const retreatApprovedParticipants = useMemo(() => {
-    if (!activeRetreat?.id) return [];
-    
-    return registrations.filter(r => {
-      const retreatMatches = 
-        r.retreatId === activeRetreat.id ||
-        r.selectedRetreat === activeRetreat.id ||
-        (!r.retreatId && activeRetreat.id === 'general') ||
-        (!r.retreatId && r.retreatTitle === activeRetreat?.title) ||
-        (r.retreatTitle && activeRetreat?.title && r.retreatTitle.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim()) ||
-        (r.selectedRetreat && activeRetreat?.title && r.selectedRetreat.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim());
+  // 3. Approved participants and volunteers registered for this retreat
+  const retreatApprovedParticipants = useMemo(() => registrations.filter(r =>
+    getStatus(r) === STATUS.APPROVED || isVolunteerEmail(r.email, authorizedEmails)
+  ), [registrations, authorizedEmails]);
 
-      const isApproved = r.orientationStatus === 'Approved' || r.interviewStatus === 'Approved' || r.status === 'Approved';
-      const isVol = isVolunteerEmail(r.email) || Boolean(r.isVolunteer);
-      return retreatMatches && (isApproved || isVol);
-    });
-  }, [registrations, activeRetreat, isVolunteerEmail]);
+  // Volunteers without a registration for this retreat cannot be tracked here (see plan Q6)
+  const unregisteredVolunteerCount = useMemo(() => authorizedEmails.filter(email =>
+    !registrations.some(r => (r.email || '').toLowerCase() === email)
+  ).length, [authorizedEmails, registrations]);
 
-  // 4. Group members roster list based on active view and group mappings
+  // 4. Roster for the active view
   const displayRoster = useMemo(() => {
-    const groupAssignments = retreatGroupConfig.assignments || {};
-
-    const list = retreatApprovedParticipants.map(r => {
-      // Determine participant group assignment
-      const rawGId = r.groupId || groupAssignments[r.id] || groupAssignments[r.email] || 'unassigned';
-      const assignedGId = normalizeGroupId(rawGId, retreatGroupNames);
-      const assignedGName = retreatGroupNames[assignedGId] || (assignedGId === 'unassigned' ? 'Unassigned' : `Group ${assignedGId.replace('group-', '')}`);
-      const isVol = isVolunteerEmail(r.email) || Boolean(r.isVolunteer);
-
+    const members = retreatApprovedParticipants.map((r) => {
+      const groupId = getGroupId(r, activeRetreat);
       return {
         id: r.id,
-        name: r.fullName || `${r.firstName || ''} ${r.lastName || ''}`.trim() || r.email,
-        firstName: r.firstName || '',
-        lastName: r.lastName || '',
+        name: getDisplayName(r),
         email: r.email,
-        phone: r.phone || '',
-        academicRole: r.academicRole || (isVol ? 'Volunteer Mentor' : ''),
-        feeTier: r.feeTier || (isVol ? 'Staff / Mentor' : ''),
-        feeAmount: r.feeAmount ?? (isVol ? 0 : undefined),
-        isPaid: r.isPaid ?? (isVol ? true : false),
+        academicRole: r.academicRole || '',
         attendance: r.attendance || {},
-        groupId: assignedGId,
-        assignedGroup: assignedGName,
-        isVolunteer: isVol,
+        groupId: groupId || 'unassigned',
+        assignedGroup: getGroupName(groupId, activeRetreat),
+        isVolunteer: isVolunteerEmail(r.email, authorizedEmails),
         rawRecord: r
       };
     });
 
-    // Also include assigned volunteers in the group view if not already in list
-    const volAssignments = retreatGroupConfig.volunteerAssignments || {};
-    const volunteerMembers = [];
-
-    authorizedEmails.forEach(vol => {
-      const vEmail = (typeof vol === 'string' ? vol : vol?.email || '').trim().toLowerCase();
-      if (!vEmail) return;
-
-      // Check if this volunteer is already in list
-      const isAlreadyIn = list.some(m => (m.email || '').toLowerCase().trim() === vEmail);
-      if (isAlreadyIn) return;
-
-      // Find if they have any registration record
-      const volReg = registrations.find(r => {
-        const rEmail = (r.email || '').trim().toLowerCase();
-        if (rEmail !== vEmail) return false;
-        if (!activeRetreat?.id) return true;
-        return (
-          r.retreatId === activeRetreat.id ||
-          r.selectedRetreat === activeRetreat.id ||
-          (!r.retreatId && activeRetreat.id === 'general') ||
-          (!r.retreatId && r.retreatTitle === activeRetreat?.title) ||
-          (r.retreatTitle && activeRetreat?.title && r.retreatTitle.toLowerCase().trim() === activeRetreat.title.toLowerCase().trim())
-        );
-      }) || registrations.find(r => (r.email || '').trim().toLowerCase() === vEmail);
-
-      // Determine which group this volunteer belongs to
-      let volGId = 'unassigned';
-      if (volReg?.groupId && volReg.groupId !== 'unassigned') {
-        volGId = normalizeGroupId(volReg.groupId, retreatGroupNames);
-      } else if (groupAssignments[vEmail]) {
-        volGId = normalizeGroupId(groupAssignments[vEmail], retreatGroupNames);
-      } else if (volReg?.id && groupAssignments[volReg.id]) {
-        volGId = normalizeGroupId(groupAssignments[volReg.id], retreatGroupNames);
-      } else {
-        Object.entries(volAssignments).forEach(([gId, vList]) => {
-          if (Array.isArray(vList) && vList.some(email => (typeof email === 'string' ? email : email?.email || '').toLowerCase().trim() === vEmail)) {
-            volGId = normalizeGroupId(gId, retreatGroupNames);
-          }
-        });
-      }
-
-      if (volGId === 'unassigned' && typeof vol === 'object' && (vol.assignedGroup || vol.groupId)) {
-        volGId = normalizeGroupId(vol.assignedGroup || vol.groupId, retreatGroupNames);
-      }
-
-      const volGName = retreatGroupNames[volGId] || (volGId === 'unassigned' ? 'Unassigned' : `Group ${volGId.replace('group-', '')}`);
-      const volName = volReg?.fullName || (volReg ? `${volReg.firstName || ''} ${volReg.lastName || ''}`.trim() : '') || (typeof vol === 'object' ? (vol.name || vol.displayName) : '') || vEmail.split('@')[0];
-
-      volunteerMembers.push({
-        id: `vol-${volReg?.id || (typeof vol === 'object' && vol.id) || vEmail}`,
-        name: volName,
-        firstName: volReg?.firstName || volName.split(' ')[0] || vEmail.split('@')[0],
-        lastName: volReg?.lastName || volName.split(' ')[1] || '',
-        email: vEmail,
-        phone: volReg?.phone || (typeof vol === 'object' ? vol.phone : '') || '',
-        academicRole: volReg?.academicRole || 'Volunteer Mentor',
-        feeTier: volReg?.feeTier || 'Staff / Mentor',
-        feeAmount: 0,
-        isPaid: true,
-        attendance: volReg?.attendance || (typeof vol === 'object' ? vol.attendance : {}) || {},
-        groupId: volGId,
-        assignedGroup: volGName,
-        isVolunteer: true,
-        photoURL: (typeof vol === 'object' ? vol.photoURL : null) || null,
-        rawRecord: volReg || (typeof vol === 'object' ? vol : { email: vEmail })
-      });
-    });
-
-    const combinedList = [...list, ...volunteerMembers];
-
-    // Filter by Active View
-    let filtered = combinedList;
+    let filtered = members;
     if (activeView === 'my_group') {
-      const activeGroupTarget = selectedMyGroup || userAssignedGroupId;
-      filtered = combinedList.filter(m => m.groupId === activeGroupTarget);
+      const target = selectedMyGroup || userAssignedGroupId;
+      filtered = members.filter(m => m.groupId === target);
     } else if (activeView === 'everyone' && everyoneGroupFilter !== 'ALL') {
-      filtered = combinedList.filter(m => m.groupId === everyoneGroupFilter);
+      filtered = members.filter(m => m.groupId === everyoneGroupFilter);
     }
 
-    // Filter by search query
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(m => 
-        m.name.toLowerCase().includes(q) ||
-        m.email.toLowerCase().includes(q) ||
-        (m.academicRole && m.academicRole.toLowerCase().includes(q))
-      );
+      filtered = filtered.filter(m => matchesSearch(m.rawRecord, searchQuery));
     }
 
-    // Sort: Volunteers first, then alphabetically by first name
-    return filtered.sort((a, b) => {
-      if (a.isVolunteer && !b.isVolunteer) return -1;
-      if (!a.isVolunteer && b.isVolunteer) return 1;
-      return a.name.localeCompare(b.name);
-    });
-  }, [
-    retreatApprovedParticipants, 
-    authorizedEmails, 
-    registrations,
-    activeRetreat,
-    retreatGroupConfig, 
-    retreatGroupNames, 
-    activeView, 
-    userAssignedGroupId, 
-    selectedMyGroup,
-    everyoneGroupFilter, 
-    searchQuery,
-    isVolunteerEmail
-  ]);
+    // Volunteers first, then alphabetical
+    return filtered.sort((a, b) => (Number(b.isVolunteer) - Number(a.isVolunteer)) || a.name.localeCompare(b.name));
+  }, [retreatApprovedParticipants, activeRetreat, authorizedEmails, activeView, selectedMyGroup, userAssignedGroupId, everyoneGroupFilter, searchQuery]);
 
-  // 5. Toggle Attendance Action
+  // 5. Toggle attendance: only this day's flag is written (dot path), so two volunteers checking
+  // people in at the same time never overwrite each other's marks.
   const [toastMessage, setToastMessage] = useState(null);
 
   const handleToggleAttendance = async (member) => {
-    const currentAtt = Boolean(member.attendance?.[activeDayKey]);
-    const nextAtt = !currentAtt;
-
-    // Optimistically update locally
-    const updatedAttendance = {
-      ...(member.attendance || {}),
-      [activeDayKey]: nextAtt,
-      lastUpdated: new Date().toISOString(),
-      updatedBy: currentUser?.email || 'facilitator'
-    };
-
-    // Calculate total days attended
-    const attendedCount = ['day1', 'day2', 'day3'].reduce((acc, k) => {
-      const val = k === activeDayKey ? nextAtt : Boolean(member.attendance?.[k]);
-      return acc + (val ? 1 : 0);
-    }, 0);
-
-    const isGraduated = attendedCount === 3;
-
+    const nextAtt = !member.attendance?.[activeDayKey];
     try {
-      if (member.id && !member.id.startsWith('vol-')) {
-        // Save participant attendance in registrations
-        if (isFirebaseConfigured && db) {
-          const regDocRef = doc(db, 'registrations', member.id);
-          await updateDoc(regDocRef, {
-            attendance: updatedAttendance,
-            attendedDaysCount: attendedCount,
-            attendanceStatus: isGraduated ? 'Completed' : attendedCount > 0 ? 'In Progress' : 'Registered',
-            completed: isGraduated
-          });
-        }
-      } else if (member.isVolunteer) {
-        // Save volunteer attendance in authorized_volunteers
-        if (isFirebaseConfigured && db) {
-          const volEmail = (member.email || '').toLowerCase().trim();
-          if (volEmail) {
-            const volDocRef = doc(db, 'authorized_volunteers', volEmail);
-            try {
-              await updateDoc(volDocRef, {
-                attendance: updatedAttendance
-              });
-            } catch {
-              await setDoc(volDocRef, { email: volEmail, attendance: updatedAttendance }, { merge: true });
-            }
-          }
-        }
-      }
-
-      // Update local storage backup
-      try {
-        const savedRegs = JSON.parse(localStorage.getItem('sky_registrations') || '[]');
-        const idx = savedRegs.findIndex(r => r.id === member.id || r.email === member.email);
-        if (idx !== -1) {
-          savedRegs[idx].attendance = updatedAttendance;
-          savedRegs[idx].attendedDaysCount = attendedCount;
-          savedRegs[idx].attendanceStatus = isGraduated ? 'Completed' : attendedCount > 0 ? 'In Progress' : 'Registered';
-          savedRegs[idx].completed = isGraduated;
-          localStorage.setItem('sky_registrations', JSON.stringify(savedRegs));
-        }
-      } catch (err) {
-        console.warn("Local storage attendance update error:", err);
-      }
-
+      await updateRegistration(member.id, {
+        [`attendance.${activeDayKey}`]: nextAtt,
+        'attendance.updatedBy': currentUser?.email || '',
+        'attendance.lastUpdated': new Date().toISOString()
+      });
       setToastMessage({
         type: 'success',
         text: `${member.name}: ${activeDayObj.label} marked as ${nextAtt ? 'Present (✓)' : 'Absent (—)'}`
       });
-
       setTimeout(() => setToastMessage(null), 3000);
     } catch (err) {
-      console.error("Attendance toggle error:", err);
-      setToastMessage({
-        type: 'error',
-        text: `Failed to save attendance: ${err.message}`
-      });
+      console.error('Attendance toggle error:', err);
+      setToastMessage({ type: 'error', text: `Failed to save attendance: ${err.code || err.message}` });
       setTimeout(() => setToastMessage(null), 4000);
     }
   };
@@ -557,6 +246,12 @@ export default function AttendanceTab({
           </div>
 
         </div>
+
+        {unregisteredVolunteerCount > 0 && (
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Info size={14} /> {unregisteredVolunteerCount} authorized volunteer{unregisteredVolunteerCount === 1 ? ' has' : 's have'} no registration for this retreat, so their attendance isn&apos;t tracked here.
+          </div>
+        )}
 
         {/* =========================================================================
             3 DAY TABS: DAY 1, DAY 2, DAY 3 (SMART AUTO-DEFAULT CLOSEST DATE)
@@ -987,7 +682,7 @@ export default function AttendanceTab({
       {/* Participant Details Inspection Modal */}
       {inspectParticipant && (
         <ParticipantDetailsModal
-          participant={inspectParticipant}
+          participant={inspectParticipant.rawRecord}
           groupName={inspectParticipant.assignedGroup}
           isVolunteer={inspectParticipant.isVolunteer}
           onClose={() => setInspectParticipant(null)}

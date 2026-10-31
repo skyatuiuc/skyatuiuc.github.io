@@ -7,6 +7,7 @@ import { Calendar, MapPin, Users, HeartPulse, Brain, Award, ChevronDown, ArrowRi
 import HeroGallery from '../components/HeroGallery';
 
 import { loadCachedRetreats } from '../utils/retreatUtils';
+import { todayChicago } from '../utils/dateUtils';
 
 export default function Home() {
   const [activeFaq, setActiveFaq] = useState(null);
@@ -29,7 +30,7 @@ export default function Home() {
   }, []);
 
   // Frontend Dynamic Categorization based on current date
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = todayChicago();
   const upcomingRetreats = retreats
     .filter(r => r.endDate >= todayStr)
     .sort((a, b) => a.startDate.localeCompare(b.startDate));

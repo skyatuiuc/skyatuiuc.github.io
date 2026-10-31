@@ -10,6 +10,8 @@ import { recordCampaignConversion } from '../services/campaignAnalyticsService';
 import confetti from 'canvas-confetti';
 import RetreatDetailsCard from '../components/RetreatDetailsCard';
 import { loadCachedRetreats } from '../utils/retreatUtils';
+import { todayChicago } from '../utils/dateUtils';
+import { getStatus, STATUS_STYLES, GENERAL_RETREAT_ID, registrationId } from '../models/applicant';
 
 export default function Register() {
   const { retreatId: paramRetreatId } = useParams();
@@ -23,10 +25,11 @@ export default function Register() {
     return saved ? JSON.parse(saved) : INITIAL_RETREATS;
   });
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = todayChicago();
   const upcomingRetreatsList = allRetreats
     .filter(r => r.endDate >= todayStr)
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const upcomingRetreatIds = upcomingRetreatsList.map(r => r.id);
 
   const [selectedRetreatId, setSelectedRetreatId] = useState(paramRetreatId || '');
 
@@ -47,6 +50,7 @@ export default function Register() {
   });
 
   const [existingApp, setExistingApp] = useState(null);
+  const [retreatsLoaded, setRetreatsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -75,20 +79,33 @@ export default function Register() {
   // Sync retreats from Firestore with local caching (0 reads on repeated visits)
   useEffect(() => {
     if (isFirebaseConfigured && db) {
-      loadCachedRetreats(db).then((fetched) => {
-        if (fetched && fetched.length > 0) {
-          setAllRetreats(fetched);
+      loadCachedRetreats(db).then(async (fetched) => {
+        let list = fetched || [];
+        // A shared /register/:id link may point at a retreat created after this browser cached the list
+        if (paramRetreatId && !list.some(r => r.id === paramRetreatId)) {
+          list = await loadCachedRetreats(db, { forceRefresh: true });
         }
+        if (list && list.length > 0) {
+          setAllRetreats(list);
+        }
+        setRetreatsLoaded(true);
       });
+    } else {
+      setRetreatsLoaded(true);
     }
-  }, []);
+  }, [paramRetreatId]);
 
   // Set default selected retreat
+  // Once the retreat list is fresh, replace a missing or closed selection with the next upcoming retreat
+  // (the "link not open" notice below explains the switch; the details card shows what is selected)
   useEffect(() => {
-    if (!selectedRetreatId && upcomingRetreatsList.length > 0) {
-      setSelectedRetreatId(upcomingRetreatsList[0].id);
+    if (upcomingRetreatIds.length === 0) return;
+    if (!selectedRetreatId || (retreatsLoaded && !upcomingRetreatIds.includes(selectedRetreatId))) {
+      setSelectedRetreatId(upcomingRetreatIds[0]);
     }
-  }, [upcomingRetreatsList, selectedRetreatId]);
+  }, [upcomingRetreatIds, selectedRetreatId, retreatsLoaded]);
+
+  const linkRetreatClosed = retreatsLoaded && Boolean(paramRetreatId) && !upcomingRetreatIds.includes(paramRetreatId);
 
   // Autofill current user info & check existing app
   useEffect(() => {
@@ -112,33 +129,6 @@ export default function Register() {
     const userEmail = currentUser.email?.trim().toLowerCase();
     if (!userEmail) return;
 
-    // Check localStorage first
-    try {
-      const savedRegs = JSON.parse(localStorage.getItem('sky_registrations') || '[]');
-      const found = savedRegs.find(r => r.email?.trim().toLowerCase() === userEmail && (!selectedRetreatId || r.retreatId === selectedRetreatId));
-      if (found) {
-        setExistingApp(found);
-        setFormData({
-          firstName: found.firstName || '',
-          lastName: found.lastName || '',
-          email: found.email || '',
-          phone: found.phone || '',
-          isOver18: found.isOver18 || '',
-          academicRole: found.academicRole || '',
-          completedSkyBefore: found.completedSkyBefore || '',
-          agreeToAll3Days: found.agreeToAll3Days || 'Yes',
-          healthConditions: found.healthConditions || [],
-          otherHealthConditions: found.otherHealthConditions || '',
-          foodAllergies: found.foodAllergies || '',
-          referralSource: found.referralSource || ''
-        });
-      } else {
-        setExistingApp(null);
-      }
-    } catch (e) {
-      console.warn("Local storage check error:", e);
-    }
-
     // Check Firestore
     if (isFirebaseConfigured && db) {
       try {
@@ -147,9 +137,11 @@ export default function Register() {
         const unsubscribe = onSnapshot(q, (snapshot) => {
           const apps = [];
           snapshot.forEach((d) => apps.push({ id: d.id, ...d.data() }));
-          const currentApp = apps.find(r => !selectedRetreatId || r.retreatId === selectedRetreatId) || apps[0];
+          // Only an application for *this* retreat locks the form; past retreats never do
+          const targetRetreatId = selectedRetreatId || (upcomingRetreatIds.length === 0 ? GENERAL_RETREAT_ID : '');
+          const currentApp = targetRetreatId ? apps.find(r => r.retreatId === targetRetreatId) : null;
+          setExistingApp(currentApp || null);
           if (currentApp) {
-            setExistingApp(currentApp);
             setFormData({
               firstName: currentApp.firstName || '',
               lastName: currentApp.lastName || '',
@@ -158,7 +150,7 @@ export default function Register() {
               isOver18: currentApp.isOver18 || '',
               academicRole: currentApp.academicRole || '',
               completedSkyBefore: currentApp.completedSkyBefore || '',
-              agreeToAll3Days: currentApp.agreeToAll3Days || 'Yes',
+              agreeToAll3Days: 'Yes',
               healthConditions: currentApp.healthConditions || [],
               otherHealthConditions: currentApp.otherHealthConditions || '',
               foodAllergies: currentApp.foodAllergies || '',
@@ -171,7 +163,7 @@ export default function Register() {
         console.warn("Firestore registration check error:", e);
       }
     }
-  }, [currentUser, selectedRetreatId]);
+  }, [currentUser, selectedRetreatId, upcomingRetreatIds.length]);
 
   const healthOptions = [
     "None",
@@ -283,50 +275,38 @@ export default function Register() {
     setLoading(true);
 
     try {
-      const activeRetreat = upcomingRetreatsList.find(r => r.id === selectedRetreatId) || upcomingRetreatsList[0] || {
-        id: 'general',
-        title: 'SKY Happiness Retreat',
-        startDate: todayStr,
-        endDate: todayStr,
-        location: 'UIUC Campus'
-      };
+      // Never silently switch retreats: submit only to the retreat shown on screen
+      let retreatId;
+      if (upcomingRetreatsList.length === 0) {
+        retreatId = GENERAL_RETREAT_ID;
+      } else if (upcomingRetreatIds.includes(selectedRetreatId)) {
+        retreatId = selectedRetreatId;
+      } else {
+        setError('The retreat in this link is no longer open for applications. Please choose an upcoming retreat above.');
+        setLoading(false);
+        return;
+      }
 
       const userEmail = formData.email.trim().toLowerCase();
-      const retreatId = activeRetreat.id;
-      const deterministicId = `${userEmail}_${retreatId}`;
+      const deterministicId = registrationId(userEmail, retreatId);
 
       const registrationPayload = {
-        id: deterministicId,
-        retreatId: retreatId,
-        retreatTitle: activeRetreat.title,
+        retreatId,
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
-        fullName: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
         email: userEmail,
         phone: formData.phone.trim(),
         isOver18: formData.isOver18,
         academicRole: formData.academicRole,
         completedSkyBefore: formData.completedSkyBefore,
-        agreeToAll3Days: formData.agreeToAll3Days,
         healthConditions: formData.healthConditions,
         otherHealthConditions: formData.otherHealthConditions.trim(),
         foodAllergies: formData.foodAllergies.trim(),
         referralSource: formData.referralSource.trim(),
         status: 'Uncontacted',
-        orientationStatus: 'Uncontacted',
-        interviewStatus: 'Uncontacted',
         appliedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
-
-      // Save locally
-      try {
-        const saved = JSON.parse(localStorage.getItem('sky_registrations') || '[]');
-        const updated = [...saved.filter(r => r.email !== registrationPayload.email || r.retreatId !== registrationPayload.retreatId), registrationPayload];
-        localStorage.setItem('sky_registrations', JSON.stringify(updated));
-      } catch (err) {
-        console.warn("Local storage write error:", err);
-      }
 
       // Save to Firestore with deterministic ID ({email}_{retreatId})
       if (isFirebaseConfigured && db) {
@@ -485,19 +465,15 @@ export default function Register() {
                   </div>
 
                   {(() => {
-                    const rawStatus = existingApp.orientationStatus || existingApp.interviewStatus || existingApp.status || 'Uncontacted';
-                    const appStatus = rawStatus.toLowerCase().includes('approved') ? 'Approved'
-                      : rawStatus.toLowerCase().includes('did not reply') ? 'Did Not Reply'
-                      : rawStatus.toLowerCase().includes('pending') ? 'Pending'
-                      : rawStatus.toLowerCase().includes('withdraw') ? 'Withdrawn'
-                      : 'Uncontacted';
-                    
+                    const appStatus = getStatus(existingApp);
+                    const statusStyle = STATUS_STYLES[appStatus];
+
                     return (
                       <span className="badge" style={{
                         fontSize: '0.85rem',
                         padding: '0.4rem 0.85rem',
-                        background: appStatus === 'Approved' ? '#DCFCE7' : appStatus === 'Did Not Reply' ? '#FFEDD5' : appStatus === 'Pending' ? '#FEF3C7' : appStatus === 'Withdrawn' ? '#F3E8FF' : '#F1F5F9',
-                        color: appStatus === 'Approved' ? '#166534' : appStatus === 'Did Not Reply' ? '#C2410C' : appStatus === 'Pending' ? '#B45309' : appStatus === 'Withdrawn' ? '#7E22CE' : '#475569',
+                        background: statusStyle.bg,
+                        color: statusStyle.color,
                         border: '1px solid rgba(35, 39, 95, 0.1)'
                       }}>
                         Orientation Status: {appStatus}
@@ -525,6 +501,12 @@ export default function Register() {
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.5rem', letterSpacing: '0.03em' }}>
                 SELECT UPCOMING RETREAT YOU ARE APPLYING FOR *
               </label>
+
+              {linkRetreatClosed && (
+                <div style={{ marginBottom: '0.6rem', padding: '0.6rem 0.85rem', background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 'var(--radius-sm)', color: '#9A3412', fontSize: '0.85rem', fontWeight: 600 }}>
+                  The retreat in this link isn&apos;t open for applications. {upcomingRetreatsList.length > 0 ? 'Please check the retreat selected below.' : ''}
+                </div>
+              )}
 
               {upcomingRetreatsList.length > 0 ? (
                 <select 

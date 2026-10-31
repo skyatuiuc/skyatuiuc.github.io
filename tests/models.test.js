@@ -62,3 +62,27 @@ describe('applicant model', () => {
     expect([b, a].sort(compareByAppliedAt)[0]).toBe(a);
   });
 });
+
+import { registrationsToCsv, escapeCsvCell } from '../src/utils/exportUtils';
+
+describe('CSV export', () => {
+  it('escapes quotes and neutralises formula injection', () => {
+    expect(escapeCsvCell('say "hi"')).toBe('"say ""hi"""');
+    expect(escapeCsvCell('=HYPERLINK("x")')).toBe('"\'=HYPERLINK(""x"")"');
+    expect(escapeCsvCell(['a', 'b'])).toBe('"a; b"');
+  });
+  it('exports real fields through the model', () => {
+    const retreat = { groupConfig: { numGroups: 3, groupNames: {} } };
+    const csv = registrationsToCsv([{
+      firstName: 'Ada', lastName: 'L', email: 'ada@x.edu', academicRole: 'UIUC Faculty / Staff', status: 'Approved',
+      paymentStatus: 'Paid', groupId: 'group-2', attendance: { day1: true, day2: true, day3: true }, notes: 'note', appliedAt: '2026-09-01T00:00:00Z'
+    }], retreat, ['ada@x.edu']);
+    const [header, row] = csv.split('\n');
+    expect(header).toContain('"Volunteer Notes"');
+    expect(row).toContain('"Ada L"');
+    expect(row).toContain('"Paid"');
+    expect(row).toContain('"Group 2"');
+    expect(row).toContain('"Completed"');
+    expect(row).toContain('"note"');
+  });
+});

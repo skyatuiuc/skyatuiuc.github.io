@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Award, Layers, Mail, Phone, DollarSign, Clock, X } from 'lucide-react';
-import { parseFeeAndPayment } from '../services/emailService';
+import { getDisplayName, getStatus, getPayment, STATUS } from '../models/applicant';
 
 export default function ParticipantDetailsModal({ participant, onClose, groupName, isVolunteer = false }) {
   // Handle ESC key to close & lock body scroll
@@ -22,10 +22,11 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
 
   if (!participant) return null;
 
-  const fullName = participant.name || `${participant.firstName || ''} ${participant.lastName || ''}`.trim() || participant.email || 'Anonymous Participant';
+  const fullName = getDisplayName(participant);
   const initial = (fullName[0] || 'U').toUpperCase();
   const photoUrl = participant.photoURL || participant.photoUrl || null;
-  const isApproved = participant.orientationStatus === 'Approved' || participant.interviewStatus === 'Approved' || participant.status === 'Approved';
+  const status = getStatus(participant);
+  const isApproved = status === STATUS.APPROVED;
 
   const formatDateTime = (isoStr) => {
     if (!isoStr) return 'N/A';
@@ -179,7 +180,7 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
                 Assigned Group
               </div>
               <div style={{ fontSize: '0.95rem', color: 'var(--text-main)', fontWeight: 700 }}>
-                {groupName || participant.assignedGroup || (participant.groupId ? participant.groupId.toUpperCase() : 'Unassigned')}
+                {groupName || 'Unassigned'}
               </div>
             </div>
           </div>
@@ -188,7 +189,7 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
             color: isApproved ? '#166534' : '#B45309',
             border: isApproved ? '1px solid #86EFAC' : '1px solid #FCD34D'
           }}>
-            {participant.orientationStatus || participant.interviewStatus || participant.status || 'Approved'}
+            {status}
           </span>
         </div>
 
@@ -218,10 +219,10 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
               <DollarSign size={13} /> Fee & Payment Status
             </div>
             {(() => {
-              const feeInfo = parseFeeAndPayment(participant);
+              const feeInfo = getPayment(participant);
               return (
                 <div style={{ color: 'var(--text-main)', fontSize: '0.85rem', fontWeight: 600 }}>
-                  {feeInfo.amount === 0 ? 'Free ($0 Tuition)' : feeInfo.formattedFee} • <span style={{ color: feeInfo.isPaid ? '#16A34A' : '#C2410C' }}>{feeInfo.amount === 0 ? 'Fully Funded' : feeInfo.isPaid ? 'Paid' : 'Unpaid'}</span>
+                  {feeInfo.amount === 0 ? 'Free ($0 Tuition)' : feeInfo.formattedFee} • <span style={{ color: feeInfo.isSettled ? '#16A34A' : '#C2410C' }}>{feeInfo.amount === 0 ? 'Fully Funded' : feeInfo.isSettled ? 'Paid' : 'Unpaid'}</span>
                 </div>
               );
             })()}
@@ -232,7 +233,7 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
               <Clock size={13} /> Application Time
             </div>
             <div style={{ color: 'var(--text-main)', fontSize: '0.85rem', fontWeight: 600 }}>
-              {formatDateTime(participant.appliedAt || participant.submittedAt || participant.registeredAt || participant.createdAt)}
+              {formatDateTime(participant.appliedAt)}
             </div>
           </div>
 
@@ -268,7 +269,7 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
         </div>
 
         {/* Additional Participant Notes & Health details if present */}
-        {(participant.foodAllergies || participant.healthConditions || participant.volunteerNotes || participant.orientationNotes || participant.interviewNotes) && (
+        {(participant.foodAllergies || participant.healthConditions || participant.notes) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.82rem' }}>
             {participant.foodAllergies && participant.foodAllergies !== 'None' && (
               <div style={{ background: 'var(--sky-flower-light)', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(232, 74, 39, 0.25)', color: '#C2410C' }}>
@@ -281,9 +282,9 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
                 {participant.otherHealthConditions ? ` (${participant.otherHealthConditions})` : ''}
               </div>
             )}
-            {(participant.volunteerNotes || participant.orientationNotes || participant.interviewNotes) && (
+            {participant.notes && (
               <div style={{ background: '#F8FAFC', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-                <strong>Volunteer Notes:</strong> {participant.volunteerNotes || participant.orientationNotes || participant.interviewNotes}
+                <strong>Volunteer Notes:</strong> {participant.notes}
               </div>
             )}
           </div>
