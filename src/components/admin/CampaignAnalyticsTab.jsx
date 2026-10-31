@@ -18,25 +18,38 @@ export default function CampaignAnalyticsTab() {
   const [hoveredCampDay, setHoveredCampDay] = useState(null);
   const [compareMetric, setCompareMetric] = useState('scans'); // 'scans' | 'conversions'
 
-  // Fetch campaign analytics for date range (1-2 reads per month)
+  // Fetch campaign analytics for the date range from the relay's Sheet (the only source of truth)
+  const [loadState, setLoadState] = useState({ loading: true, error: '' });
+  const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => {
     let isMounted = true;
-    const fetchAnalytics = async () => {
-      const data = await getCampaignAnalyticsForDateRange(campStartDate, campEndDate);
-      if (isMounted) {
+    setLoadState({ loading: true, error: '' });
+    getCampaignAnalyticsForDateRange(campStartDate, campEndDate)
+      .then((data) => {
+        if (!isMounted) return;
         setCampDailyMetrics(data.dailyMetrics);
         setCampTagTotals(data.tagTotals);
         setCampGrandScans(data.grandTotalScans);
         setCampGrandConversions(data.grandTotalConversions);
-      }
-    };
-    fetchAnalytics();
+        setLoadState({ loading: false, error: '' });
+      })
+      .catch((err) => {
+        console.warn('Campaign analytics load failed:', err);
+        if (isMounted) setLoadState({ loading: false, error: err.message || 'unknown error' });
+      });
     return () => { isMounted = false; };
-  }, [campStartDate, campEndDate]);
+  }, [campStartDate, campEndDate, reloadKey]);
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      
+      {loadState.error && (
+        <div className="notice notice-error" role="alert" data-testid="analytics-error">
+          <span style={{ flex: 1 }}>Couldn&apos;t load campaign analytics ({loadState.error}). The numbers below are not current.</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReloadKey(k => k + 1)}>Retry</button>
+        </div>
+      )}
+      {loadState.loading && <div className="notice notice-info">Loading campaign analytics…</div>}
+
       {/* Top Metric Overview Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
         <div className="glass-card" style={{ padding: '1.5rem', background: '#FFFFFF', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>

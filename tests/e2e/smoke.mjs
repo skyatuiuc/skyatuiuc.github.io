@@ -120,7 +120,9 @@ Object.assign(process.env, {
   VITE_FIREBASE_API_KEY: 'demo-api-key',
   VITE_FIREBASE_PROJECT_ID: PROJECT_ID,
   VITE_FIREBASE_AUTH_DOMAIN: 'localhost',
-  VITE_FIREBASE_APP_ID: 'demo-app'
+  VITE_FIREBASE_APP_ID: 'demo-app',
+  // Campaign beacons target a non-existent relay (and are intercepted anyway): never production
+  VITE_CAMPAIGN_WEBHOOK_URL: 'https://script.google.com/macros/s/E2E-FAKE-RELAY/exec'
 });
 const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'error' });
 await server.listen();
@@ -133,6 +135,8 @@ const { migrateRegistration } = await server.ssrLoadModule('/src/models/migrateR
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox', '--disable-back-forward-cache'] });
 const page = await browser.newPage();
 await page.setViewport({ width: 1400, height: 1000 });
+// The scan tracker ignores bots (including "HeadlessChrome"), so present a normal desktop Chrome
+await page.setUserAgent((await browser.userAgent()).replace('HeadlessChrome', 'Chrome'));
 // The production CSP (index.html) rightly blocks connections to the local emulators
 await page.setBypassCSP(true);
 const pageErrors = [];
@@ -149,14 +153,20 @@ await page.setRequestInterception(true);
 // mirrors the real one's quota/send/scan responses, and record what was sent.
 const relayLog = [];
 let relayRemaining = 2;
-page.on('request', (req) => {
+let relayAnalyticsFails = false;
+page.on('request', async (req) => {
   if (!/script\.google\.com|googleusercontent\.com\/macros/.test(req.url())) return req.continue();
   if (req.method() !== 'POST') return req.abort();
   let body = {};
-  try { body = JSON.parse(req.postData() || '{}'); } catch { /* beacon */ }
+  try {
+    // sendBeacon bodies are Blobs, which postData() does not expose
+    body = JSON.parse(req.postData() ?? (await req.fetchPostData()) ?? '{}');
+  } catch { /* unreadable body */ }
   relayLog.push(body);
   let res = { status: 'success' };
-  if (body.action === 'get_email_quota') {
+  if (body.action === 'get_campaign_analytics') {
+    res = relayAnalyticsFails ? { status: 'error', message: 'Sheet unavailable' } : { status: 'success', dailyMetrics: [], tagTotals: [{ tag: 'e2etag', totalScans: 3, totalConversions: 1 }], grandTotalScans: 3, grandTotalConversions: 1 };
+  } else if (body.action === 'get_email_quota') {
     res = { status: 'success', limit: 100, used: 100 - relayRemaining, remaining: relayRemaining, nextFreeAt: null };
   } else if (body.action === 'send_email') {
     if (relayRemaining <= 0) res = { status: 'error', code: 'quota_exhausted', message: 'Daily email limit reached (100 per 24 hours).' };
@@ -279,6 +289,20 @@ try {
     await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded' });
     await clickByText('button', 'Auto Email Dispatch');
     await waitForText(`of ${retreatRegs.length} applicant records`);
+  });
+
+  await step('Campaign analytics: relay data, explicit error with Retry (U20)', async () => {
+    await page.goto(`${BASE}/admin/analytics`, { waitUntil: 'domcontentloaded' });
+    await sleep(1500);
+    check('analytics loads from the relay without an error', !(await page.$('[data-testid="analytics-error"]')) && (await bodyText()).includes('e2etag'));
+    relayAnalyticsFails = true;
+    await page.goto(`${BASE}/admin/analytics`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="analytics-error"]', { timeout: 8000 });
+    check('a failed analytics query is shown as an error (no local fallback)', true);
+    relayAnalyticsFails = false;
+    await clickByText('[data-testid="analytics-error"] button', 'Retry');
+    await sleep(1500);
+    check('Retry recovers', !(await page.$('[data-testid="analytics-error"]')));
   });
 
   await step('Retreat Management: counts, duplicate, date check (U19)', async () => {
@@ -550,6 +574,14 @@ try {
 
   const newbie = 'newbie@illinois.edu';
   await signOut();
+  await step('Public campaign link records a scan and redirects to Register', async () => {
+    const before = relayLog.filter(b => b.action === 'record_campaign_scan').length;
+    await page.goto(`${BASE}/e2etag`, { waitUntil: 'domcontentloaded' });
+    await sleep(1500);
+    const scans = relayLog.filter(b => b.action === 'record_campaign_scan');
+    check('scan beacon sent to the relay with the tag', scans.length === before + 1 && scans.at(-1).tag === 'e2etag');
+    check('visitor lands on Register with the source', page.url().includes('/register') && page.url().includes('src=e2etag'), page.url());
+  });
   await signInAs(newbie);
   await step('New applicant submits a v2 application', async () => {
     await page.goto(`${BASE}/register/${upcoming.id}`, { waitUntil: 'domcontentloaded' });
@@ -587,6 +619,7 @@ try {
     await sleep(2500);
     const created = await readOne('registrations', `${newbie}_${upcoming.id}`);
     check('application created', Boolean(created), (await bodyText()).match(/Please[^\n]*/)?.[0] || '');
+    check('application from a campaign visitor records a conversion', relayLog.some(b => b.action === 'record_campaign_conversion' && b.tag === 'e2etag'));
     if (created) {
       const keys = Object.keys(created);
       check('application uses only v2 keys', keys.every(k => !['fullName', 'orientationStatus', 'interviewStatus', 'retreatTitle', 'agreeToAll3Days', 'id'].includes(k)), keys.join(','));

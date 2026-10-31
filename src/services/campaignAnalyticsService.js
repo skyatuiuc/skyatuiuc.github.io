@@ -2,8 +2,9 @@
  * CAMPAIGN ANALYTICS SERVICE
  * 
  * Secure, zero-Firestore-quota campaign tracking engine for SKY at UIUC.
- * Routes high-throughput anonymous QR/Shortlink scans and referral conversions
- * through Google Apps Script & Google Sheets with rate-limiting and local storage fallback.
+ * Routes anonymous QR/shortlink scans and referral conversions through the Google Apps Script
+ * relay into a Google Sheet. There is deliberately no per-browser fallback: the Sheet is the only
+ * source of truth, and a failed analytics query is shown as an error, never as local counts.
  */
 
 import { auth } from '../firebase/config';
@@ -12,32 +13,12 @@ import { auth } from '../firebase/config';
 const DEFAULT_CAMPAIGN_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyHJFonGIbqaZfADEed5QgzodmE65hTDLYp_iY-Tn_Nemg9k-eAUQV4s5mYMMRV3zDT/exec';
 
 export function getCampaignWebhookUrl() {
-  // 1. Check environment variables
+  // Build-time override only (scans come from anonymous visitors, who cannot read Firestore settings)
   const envUrl = import.meta.env?.VITE_CAMPAIGN_WEBHOOK_URL || 
                  import.meta.env?.VITE_EMAIL_WEBHOOK_URL || 
                  import.meta.env?.VITE_APPS_SCRIPT_URL;
   if (envUrl && envUrl.startsWith('https://script.google.com/macros/s/') && !envUrl.includes('EXAMPLE')) {
     return envUrl;
-  }
-
-  // 2. Check saved settings in LocalStorage (configured via Volunteer / Admin Email Settings Modal)
-  try {
-    const customCampUrl = localStorage.getItem('sky_campaign_webhook_url');
-    if (customCampUrl && customCampUrl.startsWith('https://script.google.com/macros/s/') && !customCampUrl.includes('EXAMPLE')) {
-      return customCampUrl;
-    }
-
-    const emailSettingsStr = localStorage.getItem('sky_email_settings');
-    if (emailSettingsStr) {
-      const emailSettings = JSON.parse(emailSettingsStr);
-      if (emailSettings?.webhookUrl && 
-          emailSettings.webhookUrl.startsWith('https://script.google.com/macros/s/') && 
-          !emailSettings.webhookUrl.includes('EXAMPLE')) {
-        return emailSettings.webhookUrl;
-      }
-    }
-  } catch {
-    // Ignore parse error
   }
 
   return DEFAULT_CAMPAIGN_WEBHOOK_URL;
@@ -90,8 +71,6 @@ export async function recordCampaignScan(rawTag) {
   sessionStorage.setItem(lastScanKey, nowMs.toString());
 
   const now = new Date();
-  const yearMonth = now.toISOString().substring(0, 7); // "YYYY-MM"
-  const dayKey = now.toISOString().substring(8, 10);    // "DD"
   const webhookUrl = getCampaignWebhookUrl();
 
   // 3. Dispatch fire-and-forget background beacon to Google Apps Script
@@ -120,29 +99,6 @@ export async function recordCampaignScan(rawTag) {
       console.warn("GAS campaign scan dispatch warning:", err);
     }
   }
-
-  // 4. Update LocalStorage fallback for offline / instant responsiveness
-  try {
-    const localStr = localStorage.getItem('sky_campaign_analytics_local') || '{}';
-    const localData = JSON.parse(localStr);
-    if (!localData[yearMonth]) localData[yearMonth] = { tags: {} };
-    if (!localData[yearMonth].tags[tag]) {
-      localData[yearMonth].tags[tag] = {
-        tag,
-        totalScans: 0,
-        totalConversions: 0,
-        days: {}
-      };
-    }
-    const t = localData[yearMonth].tags[tag];
-    t.totalScans = (t.totalScans || 0) + 1;
-    t.lastScannedAt = now.toISOString();
-    if (!t.days[dayKey]) t.days[dayKey] = { scans: 0, conversions: 0 };
-    t.days[dayKey].scans = (t.days[dayKey].scans || 0) + 1;
-    localStorage.setItem('sky_campaign_analytics_local', JSON.stringify(localData));
-  } catch (e) {
-    console.warn("Local storage campaign scan fallback error:", e);
-  }
 }
 
 /**
@@ -157,8 +113,6 @@ export async function recordCampaignConversion(rawTag) {
   if (!tag) return;
 
   const now = new Date();
-  const yearMonth = now.toISOString().substring(0, 7); // "YYYY-MM"
-  const dayKey = now.toISOString().substring(8, 10);    // "DD"
   const webhookUrl = getCampaignWebhookUrl();
 
   // 1. Dispatch conversion notification to Google Apps Script
@@ -187,192 +141,39 @@ export async function recordCampaignConversion(rawTag) {
       console.warn("GAS campaign conversion dispatch warning:", err);
     }
   }
-
-  // 2. Persist in local storage fallback
-  try {
-    const localStr = localStorage.getItem('sky_campaign_analytics_local') || '{}';
-    const localData = JSON.parse(localStr);
-    if (!localData[yearMonth]) localData[yearMonth] = { tags: {} };
-    if (!localData[yearMonth].tags[tag]) {
-      localData[yearMonth].tags[tag] = {
-        tag,
-        totalScans: 0,
-        totalConversions: 0,
-        days: {}
-      };
-    }
-    const t = localData[yearMonth].tags[tag];
-    t.totalConversions = (t.totalConversions || 0) + 1;
-    if (!t.days[dayKey]) t.days[dayKey] = { scans: 0, conversions: 0 };
-    t.days[dayKey].conversions = (t.days[dayKey].conversions || 0) + 1;
-    localStorage.setItem('sky_campaign_analytics_local', JSON.stringify(localData));
-  } catch (e) {
-    console.warn("Local storage campaign conversion fallback error:", e);
-  }
 }
 
 /**
- * Fetch Campaign Analytics for a specific Date Range (YYYY-MM-DD to YYYY-MM-DD).
- * Queries Google Apps Script with LocalStorage cache fallback.
- * 
- * @param {string} startDateStr - "YYYY-MM-DD"
- * @param {string} endDateStr - "YYYY-MM-DD"
+ * Fetch campaign analytics for a date range (YYYY-MM-DD to YYYY-MM-DD) from the relay's Sheet.
+ * Volunteers only (the relay verifies the caller's ID token). Throws on any failure.
  */
 export async function getCampaignAnalyticsForDateRange(startDateStr, endDateStr) {
-  const start = new Date(startDateStr);
-  const end = new Date(endDateStr);
-
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+  if (Number.isNaN(Date.parse(startDateStr)) || Number.isNaN(Date.parse(endDateStr))) {
     return { dailyMetrics: [], tagTotals: [], grandTotalScans: 0, grandTotalConversions: 0 };
   }
 
-  const webhookUrl = getCampaignWebhookUrl();
-
-  // 1. Try querying Google Apps Script Engine
-  if (webhookUrl) {
+  let idToken = '';
+  if (auth?.currentUser) {
     try {
-      let idToken = '';
-      if (auth && auth.currentUser) {
-        try {
-          idToken = await auth.currentUser.getIdToken();
-        } catch (tokenErr) {
-          console.warn("Could not fetch ID token for campaign analytics:", tokenErr);
-        }
-      }
-
-      const resp = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'get_campaign_analytics',
-          idToken,
-          startDate: startDateStr,
-          endDate: endDateStr
-        })
-      });
-
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data && (data.status === 'success' || Array.isArray(data.dailyMetrics))) {
-          // Cache successful payload
-          try {
-            localStorage.setItem('sky_campaign_analytics_cached', JSON.stringify({
-              timestamp: Date.now(),
-              startDate: startDateStr,
-              endDate: endDateStr,
-              data
-            }));
-          } catch {
-            // Ignore storage quota error
-          }
-
-          return {
-            dailyMetrics: data.dailyMetrics || [],
-            tagTotals: data.tagTotals || [],
-            grandTotalScans: data.grandTotalScans || 0,
-            grandTotalConversions: data.grandTotalConversions || 0
-          };
-        } else {
-          console.warn("GAS campaign analytics responded with non-success status:", data);
-        }
-      } else {
-        console.warn("GAS campaign analytics HTTP error:", resp.status, resp.statusText);
-      }
-    } catch (err) {
-      console.warn("Google Apps Script campaign fetch error, switching to fallback:", err);
+      idToken = await auth.currentUser.getIdToken();
+    } catch (tokenErr) {
+      console.warn("Could not fetch ID token for campaign analytics:", tokenErr);
     }
   }
 
-  // 2. Fallback: Aggregate from Local Storage
-  const localStr = localStorage.getItem('sky_campaign_analytics_local') || '{}';
-  let localData = {};
-  try {
-    localData = JSON.parse(localStr);
-  } catch {
-    localData = {};
-  }
-
-  // Calculate required YYYY-MM buckets
-  const yearMonths = [];
-  let current = new Date(start.getFullYear(), start.getMonth(), 1);
-  const endLimit = new Date(end.getFullYear(), end.getMonth(), 1);
-
-  while (current <= endLimit) {
-    const ym = current.toISOString().substring(0, 7);
-    yearMonths.push(ym);
-    current.setMonth(current.getMonth() + 1);
-  }
-
-  const dailyMetricsMap = {};
-  const tagTotalsMap = {};
-
-  const dateCursor = new Date(start);
-  while (dateCursor <= end) {
-    const dateKey = dateCursor.toISOString().split('T')[0];
-    dailyMetricsMap[dateKey] = {
-      date: dateKey,
-      scans: 0,
-      conversions: 0,
-      channels: {}
-    };
-    dateCursor.setDate(dateCursor.getDate() + 1);
-  }
-
-  let grandTotalScans = 0;
-  let grandTotalConversions = 0;
-
-  yearMonths.forEach((ym) => {
-    const bucket = localData[ym];
-    if (!bucket || !bucket.tags) return;
-
-    Object.entries(bucket.tags).forEach(([tag, tagData]) => {
-      if (!tagTotalsMap[tag]) {
-        tagTotalsMap[tag] = {
-          tag,
-          totalScans: 0,
-          totalConversions: 0,
-          lastScannedAt: tagData.lastScannedAt || ''
-        };
-      }
-      const tagRecord = tagTotalsMap[tag];
-
-      if (tagData.days) {
-        Object.entries(tagData.days).forEach(([dayKey, dayData]) => {
-          const fullDateKey = `${ym}-${dayKey.padStart(2, '0')}`;
-          const scans = Number(dayData.scans) || 0;
-          const conversions = Number(dayData.conversions) || 0;
-
-          if (dailyMetricsMap[fullDateKey]) {
-            dailyMetricsMap[fullDateKey].scans += scans;
-            dailyMetricsMap[fullDateKey].conversions += conversions;
-
-            if (!dailyMetricsMap[fullDateKey].channels[tag]) {
-              dailyMetricsMap[fullDateKey].channels[tag] = { scans: 0, conversions: 0 };
-            }
-            dailyMetricsMap[fullDateKey].channels[tag].scans += scans;
-            dailyMetricsMap[fullDateKey].channels[tag].conversions += conversions;
-          }
-
-          tagRecord.totalScans += scans;
-          tagRecord.totalConversions += conversions;
-          grandTotalScans += scans;
-          grandTotalConversions += conversions;
-
-          if (tagData.lastScannedAt && (!tagRecord.lastScannedAt || tagData.lastScannedAt > tagRecord.lastScannedAt)) {
-            tagRecord.lastScannedAt = tagData.lastScannedAt;
-          }
-        });
-      }
-    });
+  const resp = await fetch(getCampaignWebhookUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'get_campaign_analytics', idToken, startDate: startDateStr, endDate: endDateStr })
   });
-
-  const dailyMetrics = Object.values(dailyMetricsMap).sort((a, b) => a.date.localeCompare(b.date));
-  const tagTotals = Object.values(tagTotalsMap).sort((a, b) => b.totalScans - a.totalScans);
+  if (!resp.ok) throw new Error(`Analytics relay HTTP ${resp.status}`);
+  const data = await resp.json();
+  if (!data || data.status !== 'success') throw new Error(data?.message || 'Analytics relay rejected the request.');
 
   return {
-    dailyMetrics,
-    tagTotals,
-    grandTotalScans,
-    grandTotalConversions
+    dailyMetrics: data.dailyMetrics || [],
+    tagTotals: data.tagTotals || [],
+    grandTotalScans: data.grandTotalScans || 0,
+    grandTotalConversions: data.grandTotalConversions || 0
   };
 }
