@@ -48,10 +48,12 @@ export function RosterProvider({ children }) {
   }, [enabled]);
 
   // Resolve the active retreat: the requested one if it still exists, otherwise the nearest upcoming
+  // (the general interest list when no retreat has been scheduled yet)
   const activeRetreatId = useMemo(() => {
     if (requestedRetreatId === GENERAL_RETREAT_ID) return GENERAL_RETREAT_ID;
-    return getDefaultActiveRetreatId(retreats, requestedRetreatId) || '';
-  }, [retreats, requestedRetreatId]);
+    if (!retreatsLoaded) return '';
+    return getDefaultActiveRetreatId(retreats, requestedRetreatId) || GENERAL_RETREAT_ID;
+  }, [retreats, retreatsLoaded, requestedRetreatId]);
 
   const setActiveRetreatId = useCallback((id) => {
     setRequestedRetreatId(id);
