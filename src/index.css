@@ -640,3 +640,21 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
 @media (max-width: 640px) {
   .attendance-toggle { min-height: 44px; min-width: 112px; justify-content: center; }
 }
+
+/* Group member chips: select + move without drag-and-drop (U14) */
+.chip-select { margin: 0; width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
+.chip-move {
+  border: none;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.1rem 0.2rem;
+  cursor: pointer;
+  max-width: 82px;
+}
+.bulk-bar { position: sticky; top: 66px; z-index: 50; background: rgba(255, 255, 255, 0.97); }
+@media (max-width: 640px) {
+  .chip-select { width: 20px; height: 20px; }
+  .chip-move { font-size: 0.8rem; padding: 0.3rem; }
+}

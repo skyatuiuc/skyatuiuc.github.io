@@ -126,6 +126,9 @@ export default function GroupAssignmentTab() {
   const [inspectParticipant, setInspectParticipant] = useState(null);
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
   const [showNametagModal, setShowNametagModal] = useState(false);
+  // Touch/keyboard alternative to drag-and-drop: select members, then assign them in one batch
+  const [selectedMemberIds, setSelectedMemberIds] = useState(() => new Set());
+  const [bulkTargetGroupId, setBulkTargetGroupId] = useState('');
 
   // Sync retreat group config when the active retreat (or its saved config) changes
   useEffect(() => {
@@ -251,6 +254,36 @@ export default function GroupAssignmentTab() {
       toast.error(`Could not move ${member.name}: ${err.code || err.message}`);
     }
   };
+
+  // A selection never carries over to another retreat
+  useEffect(() => { setSelectedMemberIds(new Set()); }, [activeRetreat?.id]);
+
+  const toggleMemberSelected = (memberId) => setSelectedMemberIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(memberId)) next.delete(memberId);
+    else next.add(memberId);
+    return next;
+  });
+
+  const handleAssignSelected = async () => {
+    if (!bulkTargetGroupId || selectedMemberIds.size === 0) return;
+    const ids = [...selectedMemberIds];
+    try {
+      await saveGroupAssignments(Object.fromEntries(ids.map(id => [id, bulkTargetGroupId])));
+      toast.success(`Moved ${ids.length} member${ids.length === 1 ? '' : 's'} to ${bulkTargetGroupId === 'unassigned' ? 'Unassigned' : getGroupName(bulkTargetGroupId, retreatView)}`);
+      setSelectedMemberIds(new Set());
+    } catch (err) {
+      toast.error(`Could not move members: ${err.code || err.message}`);
+    }
+  };
+
+  const groupTargetOptions = useMemo(() => [
+    ['unassigned', 'Unassigned'],
+    ...Array.from({ length: numGroups }, (_, i) => {
+      const gId = groupIdFor(i + 1);
+      return [gId, getGroupName(gId, retreatView)];
+    })
+  ], [numGroups, retreatView]);
 
   // Auto-Arrange selected members into the groups with the FEWEST total members, oldest applicants first
   const handleAutoArrange = async () => {
@@ -413,6 +446,7 @@ export default function GroupAssignmentTab() {
           transition: 'all 0.15s ease',
           maxWidth: '100%'
         }}
+        data-member-id={member.id}
         onMouseEnter={(e) => {
           e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)';
           e.currentTarget.style.boxShadow = theme.hoverShadow;
@@ -457,6 +491,15 @@ export default function GroupAssignmentTab() {
           </div>
         )}
 
+        <input
+          type="checkbox"
+          className="chip-select"
+          aria-label={`Select ${member.name}`}
+          checked={selectedMemberIds.has(member.id)}
+          onChange={() => toggleMemberSelected(member.id)}
+          onClick={(e) => e.stopPropagation()}
+        />
+
         {/* Member Name */}
         <span 
           style={{
@@ -491,6 +534,21 @@ export default function GroupAssignmentTab() {
         >
           {theme.statusLabel}
         </span>
+
+        {/* Move without dragging (touch & keyboard) */}
+        <select
+          className="chip-move"
+          aria-label={`Move ${member.name} to a group`}
+          value=""
+          onChange={(e) => { if (e.target.value) handleAssignMemberToGroup(member, e.target.value); }}
+          onClick={(e) => e.stopPropagation()}
+          style={{ color: theme.textColor }}
+        >
+          <option value="">Move…</option>
+          {groupTargetOptions.filter(([gId]) => gId !== member.groupId).map(([gId, label]) => (
+            <option key={gId} value={gId}>{label}</option>
+          ))}
+        </select>
 
         {/* Details Inspection Info Button */}
         <button
@@ -758,6 +816,19 @@ export default function GroupAssignmentTab() {
       >
         <button type="button" className="select-compact" onClick={() => setFilter('statuses', [])}>All statuses</button>
       </ApplicantFilterBar>
+
+      {selectedMemberIds.size > 0 && (
+        <div className="card row bulk-bar" role="region" aria-label="Selected members">
+          <strong className="text-main">{selectedMemberIds.size} selected</strong>
+          <label htmlFor="bulk-target-group" className="muted text-sm">Assign to</label>
+          <select id="bulk-target-group" className="select-compact" value={bulkTargetGroupId} onChange={(e) => setBulkTargetGroupId(e.target.value)}>
+            <option value="">Choose a group…</option>
+            {groupTargetOptions.map(([gId, label]) => <option key={gId} value={gId}>{label}</option>)}
+          </select>
+          <button id="bulk-assign" type="button" className="btn btn-primary btn-sm" disabled={!bulkTargetGroupId} onClick={handleAssignSelected}>Assign</button>
+          <button type="button" className="btn-link text-sm" onClick={() => setSelectedMemberIds(new Set())}>Clear selection</button>
+        </div>
+      )}
 
       <div className="row-between">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.82rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>

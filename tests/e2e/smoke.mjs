@@ -273,6 +273,24 @@ try {
     check('no assignedGroup written', after.every(r => !('assignedGroup' in r)));
   });
 
+  await step('Groups without drag: move one member, then bulk-assign two (U14)', async () => {
+    await page.goto(`${BASE}/admin/groups`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-member-id] select.chip-move');
+    const ids = await page.$$eval('[data-member-id]', els => els.slice(0, 3).map(e => e.getAttribute('data-member-id')));
+    await page.select(`[data-member-id="${ids[0]}"] select.chip-move`, 'group-3');
+    await sleep(1200);
+    check('single move writes the chosen group', (await readOne('registrations', ids[0]))?.groupId === 'group-3');
+    // DOM clicks: the sticky bulk bar appears after the first selection and may overlay a chip
+    await page.$eval(`[data-member-id="${ids[1]}"] input.chip-select`, el => el.click());
+    await page.$eval(`[data-member-id="${ids[2]}"] input.chip-select`, el => el.click());
+    await page.waitForSelector('#bulk-target-group');
+    await page.select('#bulk-target-group', 'group-1');
+    await page.$eval('#bulk-assign', el => el.click());
+    await sleep(1200);
+    const [a, b] = await Promise.all([readOne('registrations', ids[1]), readOne('registrations', ids[2])]);
+    check('bulk assign moves every selected member', a?.groupId === 'group-1' && b?.groupId === 'group-1', `${a?.groupId},${b?.groupId}`);
+  });
+
   await step('Applicant panel opens from Groups with the retreat record', async () => {
     await page.goto(`${BASE}/admin/groups`, { waitUntil: 'domcontentloaded' });
     await sleep(800);
