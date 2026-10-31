@@ -12,7 +12,7 @@ export default function Navbar() {
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
 
-  const isActive = (path) => location.pathname === path;
+  const isActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   // Close dropdown on outside click
   useEffect(() => {

@@ -1,9 +1,10 @@
-import React, { useState, lazy, Suspense } from 'react';
-import { Link } from 'react-router-dom';
+import React, { lazy, Suspense } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRoster } from '../context/RosterContext';
 import TabBar from '../components/TabBar';
 import RetreatSelector from '../components/RetreatSelector';
+import { usePortalUrlState } from '../hooks/usePortalUrlState';
 import VolunteersTab from '../components/admin/VolunteersTab';
 import RetreatsTab from '../components/admin/RetreatsTab';
 import { UserPlus, Calendar, Users, Mail, FileText, Tag, BarChart3, Database, HeartHandshake, ArrowRight } from 'lucide-react';
@@ -23,18 +24,19 @@ const TabFallback = () => (
 export default function Admin() {
   const { currentUser, authorizedEmails } = useAuth();
   const { retreats } = useRoster();
-  const [activeTab, setActiveTab] = useState('volunteers');
-
   const tabs = [
     { id: 'volunteers', label: `Volunteer Access (${authorizedEmails.length})`, Icon: UserPlus },
     { id: 'retreats', label: `Retreat Management (${retreats.length})`, Icon: Calendar, accent: 'var(--sky-sun)', color: '#B45309' },
     { id: 'groups', label: 'Group Assignments', Icon: Users },
     { id: 'emails', label: 'Auto Email Dispatch', Icon: Mail },
-    { id: 'flyer_templates', label: 'Flyer Templates', Icon: FileText, accent: 'var(--illini-orange)', color: '#C2410C' },
-    { id: 'nametag_templates', label: 'Nametag Templates', Icon: Tag, accent: '#0284C7', color: '#0284C7' },
-    { id: 'campaign_analytics', label: 'Campaign Scan Analytics', Icon: BarChart3, accent: 'var(--sky-sun)', color: '#B45309' },
+    { id: 'flyer-templates', label: 'Flyer Templates', Icon: FileText, accent: 'var(--illini-orange)', color: '#C2410C' },
+    { id: 'nametag-templates', label: 'Nametag Templates', Icon: Tag, accent: '#0284C7', color: '#0284C7' },
+    { id: 'analytics', label: 'Campaign Scan Analytics', Icon: BarChart3, accent: 'var(--sky-sun)', color: '#B45309' },
     { id: 'data', label: 'Data, Usage & Backups', Icon: Database, accent: '#10B981', color: '#166534' }
   ];
+  const { activeTab, setActiveTab } = usePortalUrlState('/admin', tabs.map(t => t.id));
+  const location = useLocation();
+
 
   return (
     <div style={{ padding: '3.5rem 0 6rem 0' }}>
@@ -49,7 +51,7 @@ export default function Admin() {
             </p>
           </div>
 
-          <Link to="/volunteer" className="btn btn-primary" style={{ padding: '0.8rem 1.35rem', whiteSpace: 'nowrap' }}>
+          <Link to={`/volunteer${location.search}`} className="btn btn-primary" style={{ padding: '0.8rem 1.35rem', whiteSpace: 'nowrap' }}>
             <HeartHandshake size={18} /> Open Volunteer Portal <ArrowRight size={16} />
           </Link>
         </div>
@@ -64,9 +66,9 @@ export default function Admin() {
         <Suspense fallback={<TabFallback />}>
           {activeTab === 'groups' && <GroupAssignmentTab />}
           {activeTab === 'emails' && <AutoEmailDispatchTab />}
-          {activeTab === 'flyer_templates' && <FlyerTemplateStudioTab />}
-          {activeTab === 'nametag_templates' && <NametagTemplateTab />}
-          {activeTab === 'campaign_analytics' && <CampaignAnalyticsTab />}
+          {activeTab === 'flyer-templates' && <FlyerTemplateStudioTab />}
+          {activeTab === 'nametag-templates' && <NametagTemplateTab />}
+          {activeTab === 'analytics' && <CampaignAnalyticsTab />}
           {activeTab === 'data' && <DataTab />}
         </Suspense>
 

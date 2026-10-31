@@ -1,8 +1,9 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { lazy, Suspense } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useRoster } from '../context/RosterContext';
 import TabBar from '../components/TabBar';
 import RetreatSelector from '../components/RetreatSelector';
+import { usePortalUrlState } from '../hooks/usePortalUrlState';
 import OrientationTab from '../components/volunteer/OrientationTab';
 import { AlertTriangle, UserCheck, CheckSquare, QrCode } from 'lucide-react';
 
@@ -12,13 +13,13 @@ const FlyerOutreachTab = lazy(() => import('../components/volunteer/FlyerOutreac
 export default function Volunteer() {
   const { currentUser, isAdmin } = useAuth();
   const { syncError, registrations } = useRoster();
-  const [activeTab, setActiveTab] = useState('orientations');
 
   const tabs = [
-    { id: 'orientations', label: `Orientation Workbench (${registrations.length})`, Icon: UserCheck },
+    { id: 'orientation', label: `Orientation Workbench (${registrations.length})`, Icon: UserCheck },
     { id: 'attendance', label: 'Retreat Attendance', Icon: CheckSquare, accent: '#10B981', color: '#10B981' },
     { id: 'flyers', label: 'Flyer & QR Studio', Icon: QrCode, accent: 'var(--sky-sun)', color: '#B45309' }
   ];
+  const { activeTab, setActiveTab } = usePortalUrlState('/volunteer', tabs.map(t => t.id));
 
   return (
     <div style={{ padding: '3rem 0 6rem 0' }}>
@@ -55,7 +56,7 @@ export default function Volunteer() {
 
         <TabBar tabs={tabs} activeTab={activeTab} onChange={setActiveTab} style={{ marginBottom: '2rem' }} />
 
-        {activeTab === 'orientations' && <OrientationTab />}
+        {activeTab === 'orientation' && <OrientationTab />}
         <Suspense fallback={<div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>}>
           {activeTab === 'attendance' && <AttendanceTab />}
           {activeTab === 'flyers' && <FlyerOutreachTab />}

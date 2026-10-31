@@ -17,8 +17,6 @@ import { User, UserPlus, ChevronRight, Trash2, Copy, Download, ArrowRightCircle 
 
 const ROSTER_FACETS = ['search', 'statuses', 'claim', 'payment', 'iahv', 'role', 'people', 'sort'];
 
-const thStyle = { padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeight: 700 };
-const tdStyle = { padding: '0.75rem 1rem' };
 
 export default function OrientationTab() {
   const { currentUser, isAdmin } = useAuth();
@@ -168,21 +166,21 @@ export default function OrientationTab() {
 
       <div className="glass-card" style={{ padding: 0, overflow: 'hidden', background: '#FFFFFF', boxShadow: 'var(--shadow-md)' }}>
         {filtered.length === 0 ? (
-          <div style={{ padding: '3.5rem 1rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          <div className="empty-state">
             No applicant records found matching the selected filters.
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+            <table className="data-table">
               <thead>
-                <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--border-color)' }}>
-                  <th style={thStyle}>APPLICANT</th>
-                  <th style={thStyle}>ORIENTATION STATUS</th>
-                  <th style={thStyle}>POINT OF CONTACT</th>
-                  <th style={thStyle}>PAYMENT</th>
-                  <th style={thStyle}>IAHV REG</th>
-                  <th style={thStyle}>LAST CONTACT</th>
-                  <th style={{ ...thStyle, textAlign: 'right' }}>ACTIONS</th>
+                <tr>
+                  <th>APPLICANT</th>
+                  <th>ORIENTATION STATUS</th>
+                  <th>POINT OF CONTACT</th>
+                  <th>PAYMENT</th>
+                  <th>IAHV REG</th>
+                  <th>LAST CONTACT</th>
+                  <th style={{ textAlign: 'right' }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
@@ -197,13 +195,12 @@ export default function OrientationTab() {
                       onClick={() => setSelectedId(reg.id)}
                       className="roster-row-hover"
                       style={{
-                        borderBottom: '1px solid rgba(35, 39, 95, 0.06)',
                         cursor: 'pointer',
                         background: isClaimedByMe ? 'var(--sky-blue-subtle)' : 'transparent',
                         transition: 'background 0.15s ease'
                       }}
                     >
-                      <td style={tdStyle}>
+                      <td>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
                           <span style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.9rem' }}>{getDisplayName(reg)}</span>
                           {appliedMs > 0 && (
@@ -218,11 +215,11 @@ export default function OrientationTab() {
                         </div>
                       </td>
 
-                      <td style={tdStyle}>
+                      <td>
                         <StatusBadge registration={reg} />
                       </td>
 
-                      <td style={tdStyle}>
+                      <td>
                         {reg.claimedBy ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                             <span className="badge badge-sky" style={{ fontSize: '0.72rem', gap: '0.3rem' }}>
@@ -241,21 +238,21 @@ export default function OrientationTab() {
                         )}
                       </td>
 
-                      <td style={tdStyle}>
+                      <td>
                         {payment === PAYMENT.PAID && <span style={{ color: '#16A34A', fontWeight: 600, fontSize: '0.8rem' }}>✓ Paid</span>}
                         {payment === PAYMENT.EXEMPT && <span style={{ color: 'var(--sky-blue)', fontWeight: 600, fontSize: '0.8rem' }}>✓ $0 Exempt</span>}
                         {payment === PAYMENT.UNPAID && <span style={{ color: '#B45309', fontWeight: 600, fontSize: '0.8rem' }}>⚠️ Unpaid</span>}
                       </td>
 
-                      <td style={tdStyle}>
+                      <td>
                         {reg.iahvRegistered
                           ? <span style={{ color: 'var(--sky-blue)', fontWeight: 600, fontSize: '0.8rem' }}>✓ IAHV Reg</span>
                           : <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No</span>}
                       </td>
 
-                      <td style={{ ...tdStyle, color: 'var(--text-muted)', fontSize: '0.8rem' }}>{reg.lastContactedDate || 'Never'}</td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{reg.lastContactedDate || 'Never'}</td>
 
-                      <td style={{ ...tdStyle, textAlign: 'right' }}>
+                      <td style={{ textAlign: 'right' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem' }}>
                           <button onClick={(e) => { e.stopPropagation(); setSelectedId(reg.id); }} className="btn btn-primary btn-sm" style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', gap: '0.3rem' }}>
                             Orientation Dossier <ChevronRight size={14} />

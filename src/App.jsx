@@ -78,7 +78,7 @@ export default function App() {
 
                 {/* Guarded Volunteer Portal (Lazy) */}
                 <Route 
-                  path="/volunteer" 
+                  path="/volunteer/:tab?" 
                   element={
                     <ProtectedRoute requireAdmin={false}>
                       <Volunteer />
@@ -88,7 +88,7 @@ export default function App() {
 
                 {/* Guarded Super Admin Hub (Lazy) */}
                 <Route 
-                  path="/admin" 
+                  path="/admin/:tab?" 
                   element={
                     <ProtectedRoute requireAdmin={true}>
                       <Admin />

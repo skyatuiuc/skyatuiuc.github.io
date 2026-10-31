@@ -37,18 +37,6 @@ const SELECT_FACETS = {
   sort: { label: 'Sort', options: [['oldest', 'Oldest applicants first'], ['newest', 'Newest first'], ['name', 'Name (A-Z)'], ['status', 'Status'], ['lastContacted', 'Recently contacted']] }
 };
 
-const selectStyle = {
-  padding: '0.5rem 0.65rem',
-  background: '#FFFFFF',
-  border: '1px solid var(--border-color)',
-  borderRadius: 'var(--radius-sm)',
-  color: 'var(--text-main)',
-  fontSize: '0.82rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-  minWidth: 0
-};
-
 export default function ApplicantFilterBar({
   facets,
   filters,
@@ -76,39 +64,30 @@ export default function ApplicantFilterBar({
   };
 
   return (
-    <div style={{
-      background: '#FFFFFF',
-      border: '1px solid var(--border-color)',
-      borderRadius: 'var(--radius-md)',
-      padding: '1rem 1.15rem',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0.85rem',
-      boxShadow: 'var(--shadow-sm)'
-    }}>
-      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+    <div className="card filter-bar">
+      <div className="row">
         {has('search') && (
-          <div style={{ position: 'relative', flex: '1 1 240px' }}>
-            <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '0.7rem', top: '50%', transform: 'translateY(-50%)' }} />
+          <div className="search-field">
+            <Search size={16} />
             <input
               type="search"
               placeholder="Search name, email, phone, role…"
               value={filters.search}
               onChange={(e) => setFilter('search', e.target.value)}
               aria-label="Search applicants"
-              style={{ ...selectStyle, width: '100%', padding: '0.55rem 0.75rem 0.55rem 2.1rem', fontWeight: 500, cursor: 'text' }}
+              className="select-compact"
             />
           </div>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginLeft: 'auto', flexWrap: 'wrap' }}>
+        <div className="row ml-auto">
           {typeof resultCount === 'number' && (
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+            <span className="text-sm text-secondary fw-bold">
               Showing {resultCount}{typeof totalCount === 'number' ? ` of ${totalCount}` : ''}
             </span>
           )}
           {activeFilterCount > 0 && (
-            <button type="button" onClick={resetFilters} style={{ ...selectStyle, display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#B91C1C' }}>
+            <button type="button" onClick={resetFilters} className="select-compact row" style={{ gap: '0.3rem', color: '#B91C1C' }}>
               <X size={14} /> Clear {activeFilterCount} filter{activeFilterCount === 1 ? '' : 's'}
             </button>
           )}
@@ -126,14 +105,14 @@ export default function ApplicantFilterBar({
       )}
 
       {facets.some(f => selectFacets[f]) && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.55rem' }}>
+        <div className="filter-bar-selects">
           {facets.filter(f => selectFacets[f]).map((facet) => (
             <select
               key={facet}
               aria-label={selectFacets[facet].label}
               value={filters[facet]}
               onChange={(e) => setFilter(facet, e.target.value)}
-              style={selectStyle}
+              className="select-compact"
             >
               {selectFacets[facet].options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>

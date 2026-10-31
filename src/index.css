@@ -569,3 +569,37 @@ input:focus, select:focus, textarea:focus {
   .modal-overlay { padding: 0; align-items: flex-end; }
   .modal-dialog { border-radius: var(--radius-lg) var(--radius-lg) 0 0; max-height: 92vh; padding: 1.15rem; }
 }
+
+/* Layout utilities */
+.row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.stack { display: flex; flex-direction: column; gap: 1.5rem; }
+.stack-sm { display: flex; flex-direction: column; gap: 0.75rem; }
+.ml-auto { margin-left: auto; }
+.text-sm { font-size: 0.85rem; }
+.text-xs { font-size: 0.75rem; }
+.fw-bold { font-weight: 700; }
+.text-main { color: var(--text-main); }
+.text-secondary { color: var(--text-secondary); }
+.empty-state { padding: 3.5rem 1rem; text-align: center; color: var(--text-secondary); }
+
+/* Filter bar */
+.filter-bar { display: flex; flex-direction: column; gap: 0.85rem; }
+.filter-bar-selects { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.55rem; }
+.search-field { position: relative; flex: 1 1 240px; }
+.search-field svg { position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.search-field input { width: 100%; padding: 0.55rem 0.75rem 0.55rem 2.1rem; font-weight: 500; cursor: text; }
+
+/* Portal tab strip */
+.tab-bar { display: flex; gap: 0.5rem; border-bottom: 1px solid var(--border-color); margin-bottom: 2rem; overflow-x: auto; padding-bottom: 0.35rem; -webkit-overflow-scrolling: touch; }
+.tab-bar-tab {
+  padding: 0.8rem 1.25rem; background: none; border: none; border-bottom: 3px solid transparent;
+  color: var(--text-secondary); font-weight: 700; font-size: 0.9rem; white-space: nowrap; flex-shrink: 0;
+  cursor: pointer; display: flex; align-items: center; gap: 0.5rem; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  transition: var(--transition-fast); text-decoration: none;
+}
+.tab-bar-tab[aria-selected="true"] { background: #FFFFFF; }
+
+/* Active retreat bar */
+.retreat-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; padding: 0.85rem 1.25rem; margin-bottom: 1.5rem; }
+.retreat-bar-label { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }

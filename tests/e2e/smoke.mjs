@@ -122,13 +122,18 @@ await server.listen();
 // App modules (extensionless imports) are loaded through Vite, exactly as the browser sees them
 const { migrateRegistration } = await server.ssrLoadModule('/src/models/migrateRegistration.js');
 
-const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
+// Back/forward cache would keep earlier test pages (and their Firestore channels to the HTTP/1.1
+// emulator) alive until Chrome's 6-connections-per-host limit stalls new pages. Production Firestore
+// is HTTP/2, so this is an emulator-only artefact.
+const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox', '--disable-back-forward-cache'] });
 const page = await browser.newPage();
 await page.setViewport({ width: 1400, height: 1000 });
 // The production CSP (index.html) rightly blocks connections to the local emulators
 await page.setBypassCSP(true);
 const pageErrors = [];
 page.on('pageerror', (err) => pageErrors.push(err.message));
+const consoleTail = [];
+page.on('console', (msg) => { consoleTail.push(`${msg.type()}: ${msg.text().slice(0, 200)}`); if (consoleTail.length > 12) consoleTail.shift(); });
 page.on('console', (msg) => {
   if (msg.type() === 'error' && !/favicon|Failed to load resource|ERR_FAILED|cleardot/.test(msg.text())) pageErrors.push(msg.text());
 });
@@ -184,7 +189,9 @@ const step = async (name, fn) => {
     const errs = errorsSince(before);
     check(`${name} (no page errors)`, errs.length === 0, errs.slice(0, 3).join(' | '));
   } catch (err) {
-    check(name, false, err.message.split('\n')[0]);
+    const where = await page.evaluate(() => `${location.pathname}${location.search} retreat=${document.querySelector("#active-retreat-select")?.value || "-"} :: ${(document.body.innerText.match(/Showing[^\n]*|of \d+ applicant[^\n]*|\d+ applications|Firestore denied[^\n]*|Live roster[^\n]*|Loading…/g) || []).join(" | ")}`).catch(() => '?');
+    check(name, false, `${err.message.split('\n')[0]} [at ${where}]`);
+    if (process.env.E2E_DEBUG) console.log(consoleTail.join('\n'));
   }
 };
 
@@ -361,6 +368,20 @@ try {
     check('skipped applicant left on the general list', after.some(r => r.id === `${DUP}_general`));
     check('general list now holds only the skipped applicant', after.filter(r => r.retreatId === 'general').length === 1);
     await page.evaluate((id) => localStorage.setItem('sky_active_retreat_id', id), pastRetreat.id);
+  });
+
+  await step('URL state: deep link to a tab + retreat, tab clicks update the URL', async () => {
+    await page.goto(`${BASE}/admin/groups?retreat=${pastRetreat.id}`, { waitUntil: 'domcontentloaded' });
+    await waitForText('Print Nametag Sheets');
+    check('deep link opens the Groups tab', true);
+    check('?retreat= selects that retreat', (await page.$eval('#active-retreat-select', el => el.value)) === pastRetreat.id);
+    await clickByText('button', 'Auto Email Dispatch');
+    await sleep(500);
+    check('tab click updates the path and keeps ?retreat=', page.url().includes('/admin/emails?retreat=' + encodeURIComponent(pastRetreat.id)), page.url());
+    await page.goto(`${BASE}/admin/not-a-tab`, { waitUntil: 'domcontentloaded' });
+    await waitForText('Authorize New Volunteer');
+    check('unknown tab falls back to the default tab', true);
+    check('retreat added to the URL from the stored selection', page.url().includes('retreat='), page.url());
   });
 
   // ------------------------------------------------ non-admin volunteer
