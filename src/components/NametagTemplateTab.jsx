@@ -18,97 +18,14 @@ import {
   getNametagTemplates
 } from '../services/nametagChunkService';
 import { drawFittedTextOnCanvas } from '../utils/nametagPdfUtils';
+import NametagTextBoxControls from './nametag/NametagTextBoxControls';
+import { loadImageFile } from '../utils/imageUtils';
 import { useToast } from './ui/ToastProvider';
+
+// Fallbacks used when a text box's number inputs are cleared
+const FIRST_NAME_BOX_DEFAULTS = Object.freeze({ height: 100, fontSize: 48, fontSliderMax: 300, fontInputMax: 500, shadowColor: 'rgba(0,0,0,0.3)' });
+const TEAM_NAME_BOX_DEFAULTS = Object.freeze({ height: 80, fontSize: 44, fontSliderMax: 200, fontInputMax: 300, shadowColor: 'rgba(0,0,0,0.25)' });
 import { useConfirm } from './ui/ConfirmProvider';
-
-// Helper: ColorPicker with Alpha
-function ColorPickerWithAlpha({ label, value, onChange }) {
-  const parseColor = (val) => {
-    if (!val || val === 'transparent') return { hex: '#000000', alpha: 0 };
-    if (val.startsWith('rgba') || val.startsWith('rgb')) {
-      const match = val.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/);
-      if (match) {
-        const r = parseInt(match[1], 10).toString(16).padStart(2, '0');
-        const g = parseInt(match[2], 10).toString(16).padStart(2, '0');
-        const b = parseInt(match[3], 10).toString(16).padStart(2, '0');
-        const a = match[4] !== undefined ? parseFloat(match[4]) : 1;
-        return { hex: `#${r}${g}${b}`, alpha: a };
-      }
-    }
-    if (val.startsWith('#')) {
-      if (val.length === 9) {
-        const hex = val.substring(0, 7);
-        const aHex = val.substring(7, 9);
-        const alpha = parseInt(aHex, 16) / 255;
-        return { hex, alpha };
-      }
-      return { hex: val.substring(0, 7), alpha: 1 };
-    }
-    return { hex: '#161942', alpha: 1 };
-  };
-
-  const { hex, alpha } = parseColor(value);
-
-  const hexToRgba = (h, a) => {
-    if (a === 0) return 'transparent';
-    if (a === 1) return h;
-    const r = parseInt(h.substring(1, 3), 16);
-    const g = parseInt(h.substring(3, 5), 16);
-    const b = parseInt(h.substring(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${Math.round(a * 100) / 100})`;
-  };
-
-  const handleHexChange = (newHex) => {
-    onChange(hexToRgba(newHex, alpha === 0 ? 1 : alpha));
-  };
-
-  const handleAlphaChange = (newAlpha) => {
-    onChange(hexToRgba(hex, newAlpha));
-  };
-
-  return (
-    <div style={{ width: '100%', boxSizing: 'border-box' }}>
-      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem', fontWeight: 700 }}>
-        {label}
-      </label>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', background: '#F8FAFC', padding: '0.45rem 0.6rem', borderRadius: '4px', border: '1px solid var(--border-color)', width: '100%', boxSizing: 'border-box' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <input
-            type="color"
-            value={hex}
-            onChange={(e) => handleHexChange(e.target.value)}
-            style={{ width: '28px', height: '28px', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: 0, background: 'none' }}
-          />
-          <input
-            type="text"
-            value={hex.toUpperCase()}
-            onChange={(e) => {
-              const val = e.target.value;
-              if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) handleHexChange(val);
-            }}
-            style={{ flex: 1, padding: '0.2rem 0.4rem', fontSize: '0.78rem', fontFamily: 'monospace', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-main)', background: '#FFFFFF' }}
-          />
-          <div style={{ width: '22px', height: '22px', borderRadius: '3px', border: '1px solid var(--border-color)', background: value }} />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-          <span style={{ minWidth: '45px' }}>Opacity:</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={alpha}
-            onChange={(e) => handleAlphaChange(parseFloat(e.target.value))}
-            style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--sky-blue)' }}
-          />
-          <span style={{ minWidth: '32px', textAlign: 'right', fontFamily: 'monospace' }}>
-            {Math.round(alpha * 100)}%
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function NametagTemplateTab() {
   const toast = useToast();
@@ -192,62 +109,51 @@ export default function NametagTemplateTab() {
   }, [fetchTemplates]);
 
   // 2. Handle Image Upload & Aspect Ratio Locking
-  const handleImageUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please upload a valid image file (PNG, JPG, or WebP).');
+  const handleImageUpload = async (e) => {
+    let loaded;
+    try {
+      loaded = await loadImageFile(e.target.files?.[0]);
+    } catch (err) {
+      if (e.target.files?.[0]) toast.error(err.message);
       return;
     }
+    const { dataUrl, image: img } = loaded;
+    const w = loaded.width || 1800;
+    const h = loaded.height || 1200;
+    const ratio = parseFloat((w / h).toFixed(4));
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result;
-      if (!dataUrl) return;
+    setNaturalWidth(w);
+    setNaturalHeight(h);
+    setAspectRatio(ratio);
+    setImageBase64(dataUrl);
+    cachedBgImageRef.current = img;
 
-      const img = new Image();
-      img.onload = () => {
-        const w = img.naturalWidth || 1800;
-        const h = img.naturalHeight || 1200;
-        const ratio = parseFloat((w / h).toFixed(4));
+    // Default 3.0 in footprint, aspect ratio locked
+    const defW = 3.0;
+    const defH = parseFloat((defW / ratio).toFixed(3));
+    setFootprintWidth(defW);
+    setFootprintHeight(defH);
 
-        setNaturalWidth(w);
-        setNaturalHeight(h);
-        setAspectRatio(ratio);
-        setImageBase64(dataUrl);
-        cachedBgImageRef.current = img;
+    // Intelligently center text boxes within new image bounds
+    setFirstNameBox(prev => ({
+      ...prev,
+      centerX: Math.round(w / 2),
+      centerY: Math.round(h * 0.42),
+      width: Math.round(w * 0.78),
+      height: Math.round(h * 0.30),
+      maxFontSize: Math.round(h * 0.08)
+    }));
 
-        // Default 3.0 in footprint, aspect ratio locked
-        const defW = 3.0;
-        const defH = parseFloat((defW / ratio).toFixed(3));
-        setFootprintWidth(defW);
-        setFootprintHeight(defH);
+    setTeamNameBox(prev => ({
+      ...prev,
+      centerX: Math.round(w / 2),
+      centerY: Math.round(h * 0.72),
+      width: Math.round(w * 0.70),
+      height: Math.round(h * 0.18),
+      maxFontSize: Math.round(h * 0.045)
+    }));
 
-        // Intelligently center text boxes within new image bounds
-        setFirstNameBox(prev => ({
-          ...prev,
-          centerX: Math.round(w / 2),
-          centerY: Math.round(h * 0.42),
-          width: Math.round(w * 0.78),
-          height: Math.round(h * 0.30),
-          maxFontSize: Math.round(h * 0.08)
-        }));
-
-        setTeamNameBox(prev => ({
-          ...prev,
-          centerX: Math.round(w / 2),
-          centerY: Math.round(h * 0.72),
-          width: Math.round(w * 0.70),
-          height: Math.round(h * 0.18),
-          maxFontSize: Math.round(h * 0.045)
-        }));
-
-        toast.success(`Image loaded (${w}×${h}px, Aspect Ratio ${ratio}:1)`);
-      };
-      img.src = dataUrl;
-    };
-    reader.readAsDataURL(file);
+    toast.success(`Image loaded (${w}×${h}px, Aspect Ratio ${ratio}:1)`);
   };
 
   // 3. Aspect Ratio Locked Footprint Handlers
@@ -803,491 +709,31 @@ export default function NametagTemplateTab() {
             </div>
           </div>
 
-          {/* TEXT BOX 1: FIRST NAME CONFIGURATION */}
-          <fieldset style={{
-            border: '1.5px solid rgba(2, 132, 199, 0.3)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '1rem',
-            background: '#FFFFFF'
-          }}>
-            <legend style={{ padding: '0 0.5rem', fontSize: '0.82rem', fontWeight: 800, color: '#0284C7', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <Type size={14} /> Text Box 1: Participant First Name
-            </legend>
+          <NametagTextBoxControls
+            title="Text Box 1: Participant First Name"
+            Icon={Type}
+            accent="#0284C7"
+            borderColor="rgba(2, 132, 199, 0.3)"
+            colorLabel="FIRST NAME COLOR"
+            box={firstNameBox}
+            setBox={setFirstNameBox}
+            naturalWidth={naturalWidth}
+            naturalHeight={naturalHeight}
+            defaults={FIRST_NAME_BOX_DEFAULTS}
+          />
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-
-              {/* Sliders & Direct Inputs: Center Coordinates */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    <span>CENTER X</span>
-                    <span>{firstNameBox.centerX || 0} px</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="range"
-                      min="0"
-                      max={naturalWidth}
-                      value={Number(firstNameBox.centerX) || 0}
-                      onChange={(e) => setFirstNameBox({ ...firstNameBox, centerX: parseInt(e.target.value, 10) || 0 })}
-                      style={{ flex: 1, accentColor: '#0284C7' }}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      max={naturalWidth}
-                      value={firstNameBox.centerX ?? ''}
-                      onChange={(e) => setFirstNameBox({ ...firstNameBox, centerX: e.target.value })}
-                      onBlur={() => {
-                        const val = parseInt(firstNameBox.centerX, 10);
-                        setFirstNameBox({ ...firstNameBox, centerX: isNaN(val) ? Math.round(naturalWidth / 2) : Math.max(0, Math.min(naturalWidth, val)) });
-                      }}
-                      style={{ width: '72px', padding: '0.25rem 0.35rem', background: '#FFFFFF', border: '1px solid var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', textAlign: 'center', fontSize: '0.8rem', fontFamily: 'monospace' }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    <span>CENTER Y</span>
-                    <span>{firstNameBox.centerY || 0} px</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="range"
-                      min="0"
-                      max={naturalHeight}
-                      value={Number(firstNameBox.centerY) || 0}
-                      onChange={(e) => setFirstNameBox({ ...firstNameBox, centerY: parseInt(e.target.value, 10) || 0 })}
-                      style={{ flex: 1, accentColor: '#0284C7' }}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      max={naturalHeight}
-                      value={firstNameBox.centerY ?? ''}
-                      onChange={(e) => setFirstNameBox({ ...firstNameBox, centerY: e.target.value })}
-                      onBlur={() => {
-                        const val = parseInt(firstNameBox.centerY, 10);
-                        setFirstNameBox({ ...firstNameBox, centerY: isNaN(val) ? Math.round(naturalHeight / 2) : Math.max(0, Math.min(naturalHeight, val)) });
-                      }}
-                      style={{ width: '72px', padding: '0.25rem 0.35rem', background: '#FFFFFF', border: '1px solid var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', textAlign: 'center', fontSize: '0.8rem', fontFamily: 'monospace' }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Sliders & Direct Inputs: Bounding Box Width & Height */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    <span>BOX WIDTH</span>
-                    <span>{firstNameBox.width || 0} px</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="range"
-                      min="20"
-                      max={naturalWidth}
-                      value={Number(firstNameBox.width) || 20}
-                      onChange={(e) => setFirstNameBox({ ...firstNameBox, width: parseInt(e.target.value, 10) || 20 })}
-                      style={{ flex: 1, accentColor: '#0284C7' }}
-                    />
-                    <input
-                      type="number"
-                      min="10"
-                      max={naturalWidth}
-                      value={firstNameBox.width ?? ''}
-                      onChange={(e) => setFirstNameBox({ ...firstNameBox, width: e.target.value })}
-                      onBlur={() => {
-                        const val = parseInt(firstNameBox.width, 10);
-                        setFirstNameBox({ ...firstNameBox, width: isNaN(val) ? 200 : Math.max(10, Math.min(naturalWidth, val)) });
-                      }}
-                      style={{ width: '72px', padding: '0.25rem 0.35rem', background: '#FFFFFF', border: '1px solid var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', textAlign: 'center', fontSize: '0.8rem', fontFamily: 'monospace' }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    <span>BOX HEIGHT</span>
-                    <span>{firstNameBox.height || 0} px</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="range"
-                      min="20"
-                      max={naturalHeight}
-                      value={Number(firstNameBox.height) || 20}
-                      onChange={(e) => setFirstNameBox({ ...firstNameBox, height: parseInt(e.target.value, 10) || 20 })}
-                      style={{ flex: 1, accentColor: '#0284C7' }}
-                    />
-                    <input
-                      type="number"
-                      min="10"
-                      max={naturalHeight}
-                      value={firstNameBox.height ?? ''}
-                      onChange={(e) => setFirstNameBox({ ...firstNameBox, height: e.target.value })}
-                      onBlur={() => {
-                        const val = parseInt(firstNameBox.height, 10);
-                        setFirstNameBox({ ...firstNameBox, height: isNaN(val) ? 100 : Math.max(10, Math.min(naturalHeight, val)) });
-                      }}
-                      style={{ width: '72px', padding: '0.25rem 0.35rem', background: '#FFFFFF', border: '1px solid var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', textAlign: 'center', fontSize: '0.8rem', fontFamily: 'monospace' }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Max Font Size & Family */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    <span>MAX FONT SIZE</span>
-                    <span>{firstNameBox.maxFontSize || 0} px</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="range"
-                      min="10"
-                      max="300"
-                      value={Number(firstNameBox.maxFontSize) || 10}
-                      onChange={(e) => setFirstNameBox({ ...firstNameBox, maxFontSize: parseInt(e.target.value, 10) || 10 })}
-                      style={{ flex: 1, accentColor: '#0284C7' }}
-                    />
-                    <input
-                      type="number"
-                      min="8"
-                      max="500"
-                      value={firstNameBox.maxFontSize ?? ''}
-                      onChange={(e) => setFirstNameBox({ ...firstNameBox, maxFontSize: e.target.value })}
-                      onBlur={() => {
-                        const val = parseInt(firstNameBox.maxFontSize, 10);
-                        setFirstNameBox({ ...firstNameBox, maxFontSize: isNaN(val) ? 48 : Math.max(8, val) });
-                      }}
-                      style={{ width: '72px', padding: '0.25rem 0.35rem', background: '#FFFFFF', border: '1px solid var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', textAlign: 'center', fontSize: '0.8rem', fontFamily: 'monospace' }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    FONT FAMILY
-                  </label>
-                  <select
-                    value={firstNameBox.fontFamily}
-                    onChange={(e) => setFirstNameBox({ ...firstNameBox, fontFamily: e.target.value })}
-                    style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.8rem', background: '#FFFFFF' }}
-                  >
-                    <option value="'Source Sans 3', sans-serif">Source Sans 3 (Standard)</option>
-                    <option value="'Inter', sans-serif">Inter Sans</option>
-                    <option value="'Montserrat', sans-serif">Montserrat Bold</option>
-                    <option value="'Roboto', sans-serif">Roboto</option>
-                    <option value="'Merriweather', serif">Merriweather Serif</option>
-                    <option value="'Courier New', monospace">Courier Monospace</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Text Align, Bold & Color */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', alignItems: 'center' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    TEXT ALIGNMENT
-                  </label>
-                  <select
-                    value={firstNameBox.textAlign || 'center'}
-                    onChange={(e) => setFirstNameBox({ ...firstNameBox, textAlign: e.target.value })}
-                    style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.8rem', background: '#FFFFFF' }}
-                  >
-                    <option value="center">Center</option>
-                    <option value="left">Left</option>
-                    <option value="right">Right</option>
-                  </select>
-                </div>
-
-                <div style={{ paddingTop: '1.1rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={firstNameBox.bold !== false}
-                      onChange={(e) => setFirstNameBox({ ...firstNameBox, bold: e.target.checked })}
-                    />
-                    Bold Weight
-                  </label>
-                </div>
-              </div>
-
-              {/* Color Picker */}
-              <ColorPickerWithAlpha
-                label="FIRST NAME COLOR"
-                value={firstNameBox.color}
-                onChange={(c) => setFirstNameBox({ ...firstNameBox, color: c })}
-              />
-
-              {/* Shadow Toggle */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: 'var(--text-main)', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={firstNameBox.hasShadow || false}
-                    onChange={(e) => setFirstNameBox({ ...firstNameBox, hasShadow: e.target.checked })}
-                  />
-                  Enable Drop Shadow
-                </label>
-                {firstNameBox.hasShadow && (
-                  <ColorPickerWithAlpha
-                    label="SHADOW COLOR"
-                    value={firstNameBox.shadowColor || 'rgba(0,0,0,0.3)'}
-                    onChange={(c) => setFirstNameBox({ ...firstNameBox, shadowColor: c })}
-                  />
-                )}
-              </div>
-
-            </div>
-          </fieldset>
-
-          {/* TEXT BOX 2: TEAM NAME CONFIGURATION */}
-          <fieldset style={{
-            border: '1.5px solid rgba(217, 119, 6, 0.3)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '1rem',
-            background: '#FFFFFF'
-          }}>
-            <legend style={{ padding: '0 0.5rem', fontSize: '0.82rem', fontWeight: 800, color: '#D97706', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <Layers size={14} /> Text Box 2: Team / Group Name
-            </legend>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-
-              {/* Sliders & Direct Inputs: Center Coordinates */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    <span>CENTER X</span>
-                    <span>{teamNameBox.centerX || 0} px</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="range"
-                      min="0"
-                      max={naturalWidth}
-                      value={Number(teamNameBox.centerX) || 0}
-                      onChange={(e) => setTeamNameBox({ ...teamNameBox, centerX: parseInt(e.target.value, 10) || 0 })}
-                      style={{ flex: 1, accentColor: '#D97706' }}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      max={naturalWidth}
-                      value={teamNameBox.centerX ?? ''}
-                      onChange={(e) => setTeamNameBox({ ...teamNameBox, centerX: e.target.value })}
-                      onBlur={() => {
-                        const val = parseInt(teamNameBox.centerX, 10);
-                        setTeamNameBox({ ...teamNameBox, centerX: isNaN(val) ? Math.round(naturalWidth / 2) : Math.max(0, Math.min(naturalWidth, val)) });
-                      }}
-                      style={{ width: '72px', padding: '0.25rem 0.35rem', background: '#FFFFFF', border: '1px solid var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', textAlign: 'center', fontSize: '0.8rem', fontFamily: 'monospace' }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    <span>CENTER Y</span>
-                    <span>{teamNameBox.centerY || 0} px</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="range"
-                      min="0"
-                      max={naturalHeight}
-                      value={Number(teamNameBox.centerY) || 0}
-                      onChange={(e) => setTeamNameBox({ ...teamNameBox, centerY: parseInt(e.target.value, 10) || 0 })}
-                      style={{ flex: 1, accentColor: '#D97706' }}
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      max={naturalHeight}
-                      value={teamNameBox.centerY ?? ''}
-                      onChange={(e) => setTeamNameBox({ ...teamNameBox, centerY: e.target.value })}
-                      onBlur={() => {
-                        const val = parseInt(teamNameBox.centerY, 10);
-                        setTeamNameBox({ ...teamNameBox, centerY: isNaN(val) ? Math.round(naturalHeight / 2) : Math.max(0, Math.min(naturalHeight, val)) });
-                      }}
-                      style={{ width: '72px', padding: '0.25rem 0.35rem', background: '#FFFFFF', border: '1px solid var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', textAlign: 'center', fontSize: '0.8rem', fontFamily: 'monospace' }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Sliders & Direct Inputs: Bounding Box Width & Height */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    <span>BOX WIDTH</span>
-                    <span>{teamNameBox.width || 0} px</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="range"
-                      min="20"
-                      max={naturalWidth}
-                      value={Number(teamNameBox.width) || 20}
-                      onChange={(e) => setTeamNameBox({ ...teamNameBox, width: parseInt(e.target.value, 10) || 20 })}
-                      style={{ flex: 1, accentColor: '#D97706' }}
-                    />
-                    <input
-                      type="number"
-                      min="10"
-                      max={naturalWidth}
-                      value={teamNameBox.width ?? ''}
-                      onChange={(e) => setTeamNameBox({ ...teamNameBox, width: e.target.value })}
-                      onBlur={() => {
-                        const val = parseInt(teamNameBox.width, 10);
-                        setTeamNameBox({ ...teamNameBox, width: isNaN(val) ? 200 : Math.max(10, Math.min(naturalWidth, val)) });
-                      }}
-                      style={{ width: '72px', padding: '0.25rem 0.35rem', background: '#FFFFFF', border: '1px solid var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', textAlign: 'center', fontSize: '0.8rem', fontFamily: 'monospace' }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    <span>BOX HEIGHT</span>
-                    <span>{teamNameBox.height || 0} px</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="range"
-                      min="20"
-                      max={naturalHeight}
-                      value={Number(teamNameBox.height) || 20}
-                      onChange={(e) => setTeamNameBox({ ...teamNameBox, height: parseInt(e.target.value, 10) || 20 })}
-                      style={{ flex: 1, accentColor: '#D97706' }}
-                    />
-                    <input
-                      type="number"
-                      min="10"
-                      max={naturalHeight}
-                      value={teamNameBox.height ?? ''}
-                      onChange={(e) => setTeamNameBox({ ...teamNameBox, height: e.target.value })}
-                      onBlur={() => {
-                        const val = parseInt(teamNameBox.height, 10);
-                        setTeamNameBox({ ...teamNameBox, height: isNaN(val) ? 80 : Math.max(10, Math.min(naturalHeight, val)) });
-                      }}
-                      style={{ width: '72px', padding: '0.25rem 0.35rem', background: '#FFFFFF', border: '1px solid var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', textAlign: 'center', fontSize: '0.8rem', fontFamily: 'monospace' }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Max Font Size & Family */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    <span>MAX FONT SIZE</span>
-                    <span>{teamNameBox.maxFontSize || 0} px</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="range"
-                      min="10"
-                      max="200"
-                      value={Number(teamNameBox.maxFontSize) || 10}
-                      onChange={(e) => setTeamNameBox({ ...teamNameBox, maxFontSize: parseInt(e.target.value, 10) || 10 })}
-                      style={{ flex: 1, accentColor: '#D97706' }}
-                    />
-                    <input
-                      type="number"
-                      min="8"
-                      max="300"
-                      value={teamNameBox.maxFontSize ?? ''}
-                      onChange={(e) => setTeamNameBox({ ...teamNameBox, maxFontSize: e.target.value })}
-                      onBlur={() => {
-                        const val = parseInt(teamNameBox.maxFontSize, 10);
-                        setTeamNameBox({ ...teamNameBox, maxFontSize: isNaN(val) ? 44 : Math.max(8, val) });
-                      }}
-                      style={{ width: '72px', padding: '0.25rem 0.35rem', background: '#FFFFFF', border: '1px solid var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', textAlign: 'center', fontSize: '0.8rem', fontFamily: 'monospace' }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    FONT FAMILY
-                  </label>
-                  <select
-                    value={teamNameBox.fontFamily}
-                    onChange={(e) => setTeamNameBox({ ...teamNameBox, fontFamily: e.target.value })}
-                    style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.8rem', background: '#FFFFFF' }}
-                  >
-                    <option value="'Source Sans 3', sans-serif">Source Sans 3 (Standard)</option>
-                    <option value="'Inter', sans-serif">Inter Sans</option>
-                    <option value="'Montserrat', sans-serif">Montserrat Bold</option>
-                    <option value="'Roboto', sans-serif">Roboto</option>
-                    <option value="'Merriweather', serif">Merriweather Serif</option>
-                    <option value="'Courier New', monospace">Courier Monospace</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Text Align, Bold & Color */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', alignItems: 'center' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                    TEXT ALIGNMENT
-                  </label>
-                  <select
-                    value={teamNameBox.textAlign || 'center'}
-                    onChange={(e) => setTeamNameBox({ ...teamNameBox, textAlign: e.target.value })}
-                    style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.8rem', background: '#FFFFFF' }}
-                  >
-                    <option value="center">Center</option>
-                    <option value="left">Left</option>
-                    <option value="right">Right</option>
-                  </select>
-                </div>
-
-                <div style={{ paddingTop: '1.1rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={teamNameBox.bold !== false}
-                      onChange={(e) => setTeamNameBox({ ...teamNameBox, bold: e.target.checked })}
-                    />
-                    Bold Weight
-                  </label>
-                </div>
-              </div>
-
-              {/* Color Picker */}
-              <ColorPickerWithAlpha
-                label="TEAM NAME COLOR"
-                value={teamNameBox.color}
-                onChange={(c) => setTeamNameBox({ ...teamNameBox, color: c })}
-              />
-
-              {/* Shadow Toggle */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', color: 'var(--text-main)', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={teamNameBox.hasShadow || false}
-                    onChange={(e) => setTeamNameBox({ ...teamNameBox, hasShadow: e.target.checked })}
-                  />
-                  Enable Drop Shadow
-                </label>
-                {teamNameBox.hasShadow && (
-                  <ColorPickerWithAlpha
-                    label="SHADOW COLOR"
-                    value={teamNameBox.shadowColor || 'rgba(0,0,0,0.25)'}
-                    onChange={(c) => setTeamNameBox({ ...teamNameBox, shadowColor: c })}
-                  />
-                )}
-              </div>
-
-            </div>
-          </fieldset>
+          <NametagTextBoxControls
+            title="Text Box 2: Team / Group Name"
+            Icon={Layers}
+            accent="#D97706"
+            borderColor="rgba(217, 119, 6, 0.3)"
+            colorLabel="TEAM NAME COLOR"
+            box={teamNameBox}
+            setBox={setTeamNameBox}
+            naturalWidth={naturalWidth}
+            naturalHeight={naturalHeight}
+            defaults={TEAM_NAME_BOX_DEFAULTS}
+          />
 
           {/* Form Actions */}
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>

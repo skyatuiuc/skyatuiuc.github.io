@@ -4,7 +4,8 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import QRCode from 'qrcode';
 import { saveFlyerTemplateWithChunks, loadFlyerTemplateImage, deleteFlyerTemplateWithChunks } from '../../services/flyerChunkService';
 import { useRoster } from '../../context/RosterContext';
-import ColorPickerWithAlpha from './ColorPickerWithAlpha';
+import ColorPickerWithAlpha from '../ui/ColorPickerWithAlpha';
+import { loadImageFile } from '../../utils/imageUtils';
 import { useToast } from '../ui/ToastProvider';
 import { useConfirm } from '../ui/ConfirmProvider';
 import { getRetreatLabel } from '../../models/retreat';
@@ -186,56 +187,49 @@ export default function FlyerTemplateStudioTab() {
     return () => { if (unsubscribe) unsubscribe(); };
   }, []);
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const handleImageUpload = async (e) => {
+    let loaded;
+    try {
+      loaded = await loadImageFile(e.target.files?.[0]);
+    } catch (err) {
+      if (e.target.files?.[0]) toast.error(err.message);
+      return;
+    }
+    // Natural image dimensions preserve the exact aspect ratio and original resolution
+    const { dataUrl: rawBase64, width, height } = loaded;
+    setTplImageBase64(rawBase64);
+    setTplWidth(width);
+    setTplHeight(height);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const rawBase64 = event.target.result;
-      const img = new Image();
-      img.onload = () => {
-        // Read actual natural image dimensions to preserve exact aspect ratio and 100% original resolution
-        const width = img.naturalWidth || img.width;
-        const height = img.naturalHeight || img.height;
+    // Apply image-dimension relative defaults on upload (for new templates)
+    if (!editingTemplateId) {
+      const smallerDim = Math.min(width, height);
 
-        setTplImageBase64(rawBase64);
-        setTplWidth(width);
-        setTplHeight(height);
+      // QR Code size = 12.5% of smaller dimension
+      const defaultQrSize = Math.round(smallerDim * 0.125);
+      // Text size = 4% of image height
+      const defaultTextSize = Math.max(1, Math.round(height * 0.04));
 
-        // Apply image-dimension relative defaults on upload (for new templates)
-        if (!editingTemplateId) {
-          const smallerDim = Math.min(width, height);
+      // Middle of flyer
+      const defaultQrX = Math.round(width / 2);
+      const defaultQrY = Math.round(height / 2);
 
-          // QR Code size = 12.5% of smaller dimension
-          const defaultQrSize = Math.round(smallerDim * 0.125);
-          // Text size = 4% of image height
-          const defaultTextSize = Math.max(1, Math.round(height * 0.04));
+      // Text right below QR code
+      const defaultTextX = Math.round(width / 2);
+      const defaultTextY = Math.round(defaultQrY + (defaultQrSize / 2) + defaultTextSize + 10);
 
-          // Middle of flyer
-          const defaultQrX = Math.round(width / 2);
-          const defaultQrY = Math.round(height / 2);
-
-          // Text right below QR code
-          const defaultTextX = Math.round(width / 2);
-          const defaultTextY = Math.round(defaultQrY + (defaultQrSize / 2) + defaultTextSize + 10);
-
-          setQrSize(defaultQrSize);
-          setQrX(defaultQrX);
-          setQrY(defaultQrY);
-          setTextSize(defaultTextSize);
-          setTextX(defaultTextX);
-          setTextY(defaultTextY);
-          setQrBgColor('transparent');
-          setQrHasShadow(false);
-          setQrShadowColor('#000000');
-          setTextColor('#000000'); // Black text default
-          setTextHasShadow(false); // No shadow default
-        }
-      };
-      img.src = rawBase64;
-    };
-    reader.readAsDataURL(file);
+      setQrSize(defaultQrSize);
+      setQrX(defaultQrX);
+      setQrY(defaultQrY);
+      setTextSize(defaultTextSize);
+      setTextX(defaultTextX);
+      setTextY(defaultTextY);
+      setQrBgColor('transparent');
+      setQrHasShadow(false);
+      setQrShadowColor('#000000');
+      setTextColor('#000000'); // Black text default
+      setTextHasShadow(false); // No shadow default
+    }
   };
 
   const handleStartEditTemplate = async (tpl) => {

@@ -309,6 +309,23 @@ try {
     check('Retry recovers', !(await page.$('[data-testid="analytics-error"]')));
   });
 
+  await step('Template studios: image upload and shared controls (U22)', async () => {
+    const fixture = new URL('./fixtures/template-600x400.png', import.meta.url).pathname;
+    await page.goto(`${BASE}/admin/nametag-templates`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('input[type="file"]');
+    await (await page.$('input[type="file"]')).uploadFile(fixture);
+    await waitForText('Image loaded (600×400px');
+    const text = await bodyText();
+    check('nametag studio reads the image size', true);
+    check('both text-box panels render from the shared component', text.includes('Text Box 1: Participant First Name') && text.includes('Text Box 2: Team / Group Name'));
+    check('shared colour picker in the nametag studio', (await page.$$('input[type="color"]')).length >= 2);
+    await page.goto(`${BASE}/admin/flyer-templates`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('input[type="file"]');
+    await (await page.$('input[type="file"]')).uploadFile(fixture);
+    await sleep(800);
+    check('flyer studio reads the image size', (await bodyText()).includes('(600x400px)'));
+  });
+
   await step('Retreat Management: counts, duplicate, date check (U19)', async () => {
     await page.goto(`${BASE}/admin/retreats`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('details.retreat-past summary');

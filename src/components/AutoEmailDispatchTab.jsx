@@ -16,7 +16,6 @@ import {
   Info,
   Check,
   AlertTriangle,
-  RefreshCw,
   Copy,
   ExternalLink
 } from 'lucide-react';
@@ -31,6 +30,7 @@ import {
 } from '../services/emailService';
 import { EMAIL_TEMPLATES } from '../templates/emailTemplates';
 import EmailPreviewModal from './EmailPreviewModal';
+import EmailActionCell from './dispatch/EmailActionCell';
 import EmailSettingsModal from './EmailSettingsModal';
 import ApplicantPanel from './ApplicantPanel';
 import { useToast } from './ui/ToastProvider';
@@ -305,113 +305,6 @@ export default function AutoEmailDispatchTab() {
     } else {
       toast.success(`Sent ${results.successes.length} "${tplName}" emails.`);
     }
-  };
-
-  // Helper to render sent status pill + send button for a specific column
-  const renderEmailActionCell = (participant, templateKey, _columnTitle) => {
-    const isAcceptedCol = templateKey === 'application_accepted';
-    const isPaying = checkRequiresPayment(participant);
-    
-    // Determine state key
-    const stateKey = isAcceptedCol ? 'application_accepted' : templateKey;
-    const sentRecord = participant.sentEmails?.[stateKey];
-    const isSent = Boolean(sentRecord?.sent);
-    const sentDate = sentRecord?.sentAt 
-      ? new Date(sentRecord.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-      : '';
-
-    // PayPal validation error on accepted column
-    const isMissingPaypal = isAcceptedCol && isPaying && !(participant.paypalLink || '').trim();
-
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-start', padding: '0 4px', width: '100%' }}>
-        {/* Status Indicator Pill */}
-        {isSent ? (
-          <span 
-            className="badge badge-earth" 
-            title={`Sent on ${new Date(sentRecord.sentAt).toLocaleString()} by ${sentRecord.sentBy || 'skyatuiuc@gmail.com'}`}
-            style={{ 
-              fontSize: '0.68rem',
-              fontWeight: 700,
-              padding: '0.12rem 0.4rem',
-              borderRadius: '3px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.2rem',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            <Check size={10} /> Sent {sentDate}
-          </span>
-        ) : (
-          <span 
-            className="badge" 
-            style={{ 
-              background: '#F1F5F9', 
-              color: 'var(--text-muted)', 
-              border: '1px solid var(--border-color)',
-              fontSize: '0.68rem',
-              padding: '0.12rem 0.4rem',
-              borderRadius: '3px',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            Unsent
-          </span>
-        )}
-
-        {/* Action Button: Preview & Send / Resend */}
-        <button
-          type="button"
-          data-preview-template={templateKey}
-          onClick={() => {
-            setPreviewModalConfig({
-              templateKey,
-              participant
-            });
-          }}
-          disabled={isMissingPaypal}
-          style={{
-            padding: '0.2rem 0.48rem',
-            borderRadius: '3px',
-            border: isSent 
-              ? '1px solid var(--border-color)' 
-              : isMissingPaypal 
-                ? '1px solid #F87171' 
-                : '1px solid rgba(31, 116, 241, 0.4)',
-            background: isSent 
-              ? '#F8FAFC' 
-              : isMissingPaypal 
-                ? '#FEF2F2' 
-                : 'var(--sky-blue-light)',
-            color: isSent 
-              ? 'var(--text-secondary)' 
-              : isMissingPaypal 
-                ? '#DC2626' 
-                : 'var(--sky-blue)',
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            cursor: isMissingPaypal ? 'not-allowed' : 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.25rem',
-            width: 'fit-content',
-            transition: 'all 0.15s ease'
-          }}
-          title={isMissingPaypal ? 'Missing PayPal Link. Add a PayPal invoice link to enable sending.' : isSent ? 'Resend this email' : 'Preview & Send Email'}
-        >
-          {isSent ? <RefreshCw size={10} /> : <Send size={10} />}
-          {isSent ? 'Resend' : 'Send'}
-        </button>
-
-        {/* Missing PayPal link warning caption */}
-        {isMissingPaypal && (
-          <span style={{ fontSize: '0.65rem', color: '#DC2626', fontWeight: 600, lineHeight: 1.1 }}>
-            ⚠️ Need PayPal Link
-          </span>
-        )}
-      </div>
-    );
   };
 
   const isWebhookConfigured = Boolean(
@@ -897,27 +790,27 @@ export default function AutoEmailDispatchTab() {
 
                   {/* Column 5: App Received Email Action */}
                   <div>
-                    {renderEmailActionCell(applicant, 'application_received', 'App Received')}
+                    <EmailActionCell participant={applicant} templateKey="application_received" onPreview={setPreviewModalConfig} />
                   </div>
 
                   {/* Column 6: Acceptance Email Action (Intelligently detects Standard vs PayPal) */}
                   <div>
-                    {renderEmailActionCell(applicant, 'application_accepted', 'Acceptance')}
+                    <EmailActionCell participant={applicant} templateKey="application_accepted" onPreview={setPreviewModalConfig} />
                   </div>
 
                   {/* Column 7: Reminder Email Action */}
                   <div>
-                    {renderEmailActionCell(applicant, 'reminder', 'Reminder')}
+                    <EmailActionCell participant={applicant} templateKey="reminder" onPreview={setPreviewModalConfig} />
                   </div>
 
                   {/* Column 8: Welcome Email Action */}
                   <div>
-                    {renderEmailActionCell(applicant, 'welcome', 'Welcome')}
+                    <EmailActionCell participant={applicant} templateKey="welcome" onPreview={setPreviewModalConfig} />
                   </div>
 
                   {/* Column 9: Completion Email Action */}
                   <div>
-                    {renderEmailActionCell(applicant, 'completion', 'Completion')}
+                    <EmailActionCell participant={applicant} templateKey="completion" onPreview={setPreviewModalConfig} />
                   </div>
 
                 </div>
