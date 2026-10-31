@@ -53,7 +53,7 @@ export default [
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^(_|React$)' }],
       'react-refresh/only-export-components': [
         'warn',
-        { allowConstantExport: true, allowExportNames: ['useAuth', 'ADMIN_EMAIL', 'useRoster', 'useToast', 'useConfirm'] }
+        { allowConstantExport: true, allowExportNames: ['useAuth', 'ADMIN_EMAIL', 'useRoster', 'useToast', 'useConfirm', 'useSettings'] }
       ]
     }
   }

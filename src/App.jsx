@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { RosterProvider } from './context/RosterContext';
+import { SettingsProvider } from './context/SettingsContext';
 import { ToastProvider } from './components/ui/ToastProvider';
 import { ConfirmProvider } from './components/ui/ConfirmProvider';
 
@@ -55,6 +56,7 @@ export default function App() {
     <ConfirmProvider>
     <AuthProvider>
       <RosterProvider>
+      <SettingsProvider>
       <Router>
         <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
           <Navbar />
@@ -110,6 +112,7 @@ export default function App() {
           <Footer />
         </div>
       </Router>
+      </SettingsProvider>
       </RosterProvider>
     </AuthProvider>
     </ConfirmProvider>

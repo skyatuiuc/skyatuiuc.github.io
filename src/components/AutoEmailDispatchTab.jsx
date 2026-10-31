@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { db, isFirebaseConfigured } from '../firebase/config';
-import { doc, getDoc, setDoc, deleteField } from 'firebase/firestore';
-import { useAuth, ADMIN_EMAIL } from '../context/AuthContext';
+import { deleteField } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
 import { useRoster } from '../context/RosterContext';
 import { useApplicantFilters } from '../hooks/useApplicantFilters';
 import ApplicantFilterBar from './ApplicantFilterBar';
@@ -20,7 +19,6 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { 
-  DEFAULT_EMAIL_SETTINGS, 
   checkRequiresPayment, 
   parseFeeAndPayment,
   sendSingleEmail, 
@@ -31,7 +29,8 @@ import {
 import { EMAIL_TEMPLATES } from '../templates/emailTemplates';
 import EmailPreviewModal from './EmailPreviewModal';
 import EmailActionCell from './dispatch/EmailActionCell';
-import EmailSettingsModal from './EmailSettingsModal';
+import { useSettings } from '../context/SettingsContext';
+import { useNavigate } from 'react-router-dom';
 import ApplicantPanel from './ApplicantPanel';
 import { useToast } from './ui/ToastProvider';
 import { useConfirm } from './ui/ConfirmProvider';
@@ -45,38 +44,9 @@ export default function AutoEmailDispatchTab() {
   const { currentUser } = useAuth();
   const { activeRetreat, registrations, updateRegistration } = useRoster();
 
-  // Email Settings State
-  const [emailSettings, setEmailSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem('sky_email_settings');
-      return saved ? { ...DEFAULT_EMAIL_SETTINGS, ...JSON.parse(saved) } : DEFAULT_EMAIL_SETTINGS;
-    } catch {
-      return DEFAULT_EMAIL_SETTINGS;
-    }
-  });
-
-  // Sync cloud email settings on mount
-  useEffect(() => {
-    let isMounted = true;
-    if (isFirebaseConfigured && db) {
-      getDoc(doc(db, 'system_settings', 'email_config'))
-        .then((docSnap) => {
-          if (isMounted && docSnap.exists()) {
-            const data = docSnap.data();
-            setEmailSettings((prev) => ({ ...prev, ...data }));
-            try {
-              localStorage.setItem('sky_email_settings', JSON.stringify(data));
-            } catch (e) {
-              console.warn("Local storage cache notice:", e);
-            }
-          }
-        })
-        .catch((err) => console.warn("Email settings cloud sync notice:", err));
-    }
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  // Global settings (one live listener, shared): links, contacts, cheat sheet, relay URL
+  const { emailSettings } = useSettings();
+  const navigate = useNavigate();
 
   const userEmailLower = (currentUser?.email || '').toLowerCase().trim();
   const { filters, setFilter, resetFilters, filtered: displayedApplicants, statusCounts, activeFilterCount } = useApplicantFilters(
@@ -96,29 +66,14 @@ export default function AutoEmailDispatchTab() {
 
   // Modals State
   const [previewModalConfig, setPreviewModalConfig] = useState(null); // { templateKey, participant }
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [inspectParticipant, setInspectParticipant] = useState(null);
 
   // PayPal Link saving indicators: { [participantId]: boolean }, and unsaved edits per row
   const [savedPaypalLinks, setSavedPaypalLinks] = useState({});
   const [paypalDrafts, setPaypalDrafts] = useState({});
 
-  const isSuperAdmin = userEmailLower === ADMIN_EMAIL.toLowerCase();
 
   // Save updated email settings (Super Admin only)
-  const handleSaveSettings = (newSettings) => {
-    if (!isSuperAdmin) {
-      toast.error('Unauthorized: Only the Super Admin can modify global email settings.');
-      return;
-    }
-    setEmailSettings(newSettings);
-    localStorage.setItem('sky_email_settings', JSON.stringify(newSettings));
-    if (isFirebaseConfigured && db) {
-      setDoc(doc(db, 'system_settings', 'email_config'), newSettings, { merge: true }).catch(console.warn);
-    }
-    toast.success('Email settings and template links saved to cloud!');
-  };
-
   // Copy Email Roster Helper
   const handleCopyEmails = (listToCopy) => {
     const emails = listToCopy.map(r => r.email).filter(Boolean).join(', ');
@@ -347,7 +302,7 @@ export default function AutoEmailDispatchTab() {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => setShowSettingsModal(true)}
+            onClick={() => navigate('/admin/settings')}
             style={{
               padding: '0.4rem 0.9rem',
               fontSize: '0.82rem',
@@ -446,7 +401,7 @@ export default function AutoEmailDispatchTab() {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => setShowSettingsModal(true)}
+              onClick={() => navigate('/admin/settings')}
               style={{ padding: '0.55rem 1rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
               title="Configure retreat links, survey URL, and Apps Script Webhook"
             >
@@ -846,15 +801,6 @@ export default function AutoEmailDispatchTab() {
         />
       )}
 
-      {/* Email Settings Modal */}
-      {showSettingsModal && (
-        <EmailSettingsModal
-          emailSettings={emailSettings}
-          isSuperAdmin={isSuperAdmin}
-          onSave={handleSaveSettings}
-          onClose={() => setShowSettingsModal(false)}
-        />
-      )}
 
       {/* Participant Dossier Details Modal */}
       {inspectParticipant && (

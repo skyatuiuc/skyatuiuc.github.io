@@ -163,8 +163,12 @@ await page.setRequestInterception(true);
 const relayLog = [];
 let relayRemaining = 2;
 let relayAnalyticsFails = false;
+let relayVersion = '3.2.0';
 page.on('request', async (req) => {
   if (!/script\.google\.com|googleusercontent\.com\/macros/.test(req.url())) return req.continue();
+  if (req.method() === 'GET') {
+    return req.respond({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ status: 'online', version: relayVersion }) });
+  }
   if (req.method() !== 'POST') return req.abort();
   let body = {};
   try {
@@ -280,7 +284,7 @@ try {
   // Make sure the past retreat is the active one in the selector
   await page.evaluate((id) => localStorage.setItem('sky_active_retreat_id', id), pastRetreat.id);
 
-  for (const tab of ['Volunteer Access', 'Retreat Management', 'Group Assignments', 'Auto Email Dispatch', 'Flyer Templates', 'Nametag Templates', 'Campaign Scan Analytics', 'Data, Usage & Backups']) {
+  for (const tab of ['Volunteer Access', 'Retreat Management', 'Group Assignments', 'Auto Email Dispatch', 'Flyer Templates', 'Nametag Templates', 'Campaign Scan Analytics', 'Data, Usage & Backups', 'Settings']) {
     await step(`Admin tab "${tab}" renders`, async () => {
       await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded' });
       await clickByText('button', tab);
@@ -293,6 +297,28 @@ try {
     await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded' });
     await clickByText('button', 'Auto Email Dispatch');
     await waitForText(`of ${retreatRegs.length} applicant records`);
+  });
+
+  await step('Settings tab: live settings, save, relay version check, legacy copies cleared (U23)', async () => {
+    await page.evaluate(() => localStorage.setItem('sky_email_settings', JSON.stringify({ webhookUrl: 'https://stale.example' })));
+    await page.goto(`${BASE}/admin/settings`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="relay-health"]');
+    check('legacy settings copy removed from the browser', (await page.evaluate(() => localStorage.getItem('sky_email_settings'))) === null);
+    // Relay version check: an outdated relay is called out, a current one is fine
+    await clickByText('[data-testid="relay-health"] button', 'Check relay');
+    await waitForText('Relay online but outdated (v3.2.0)');
+    check('outdated relay flagged', true);
+    relayVersion = '4.5.0';
+    await clickByText('[data-testid="relay-health"] button', 'Check relay');
+    await waitForText('Relay online · v4.5.0');
+    check('current relay shown as online', true);
+    // Edit and save a contact name
+    const contactInput = await page.evaluateHandle(() => [...document.querySelectorAll('input')].find(i => i.value === 'E2E'));
+    await contactInput.click({ clickCount: 3 });
+    await page.keyboard.type('E2E Saved');
+    await clickByText('button', 'Save settings');
+    await sleep(1200);
+    check('settings saved to Firestore', (await readOne('system_settings', 'email_config'))?.contactName === 'E2E Saved');
   });
 
   await step('Campaign analytics: relay data, explicit error with Retry (U20)', async () => {

@@ -7,7 +7,7 @@ import RetreatSelector from '../components/RetreatSelector';
 import { usePortalUrlState } from '../hooks/usePortalUrlState';
 import VolunteersTab from '../components/admin/VolunteersTab';
 import RetreatsTab from '../components/admin/RetreatsTab';
-import { UserPlus, Calendar, Users, Mail, FileText, Tag, BarChart3, Database, HeartHandshake, ArrowRight } from 'lucide-react';
+import { UserPlus, Calendar, Users, Mail, FileText, Tag, BarChart3, Database, HeartHandshake, Settings, ArrowRight } from 'lucide-react';
 
 // Heavy tabs (PDF/canvas tooling, charts) load only when opened
 const GroupAssignmentTab = lazy(() => import('../components/GroupAssignmentTab'));
@@ -16,6 +16,7 @@ const FlyerTemplateStudioTab = lazy(() => import('../components/admin/FlyerTempl
 const NametagTemplateTab = lazy(() => import('../components/NametagTemplateTab'));
 const CampaignAnalyticsTab = lazy(() => import('../components/admin/CampaignAnalyticsTab'));
 const DataTab = lazy(() => import('../components/admin/DataTab'));
+const SettingsTab = lazy(() => import('../components/admin/SettingsTab'));
 
 const TabFallback = () => (
   <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>Loading…</div>
@@ -32,7 +33,8 @@ export default function Admin() {
     { id: 'flyer-templates', label: 'Flyer Templates', Icon: FileText, accent: 'var(--illini-orange)', color: '#C2410C' },
     { id: 'nametag-templates', label: 'Nametag Templates', Icon: Tag, accent: '#0284C7', color: '#0284C7' },
     { id: 'analytics', label: 'Campaign Scan Analytics', Icon: BarChart3, accent: 'var(--sky-sun)', color: '#B45309' },
-    { id: 'data', label: 'Data, Usage & Backups', Icon: Database, accent: '#10B981', color: '#166534' }
+    { id: 'data', label: 'Data, Usage & Backups', Icon: Database, accent: '#10B981', color: '#166534' },
+    { id: 'settings', label: 'Settings', Icon: Settings, accent: '#64748B', color: '#334155' }
   ];
   const { activeTab, setActiveTab } = usePortalUrlState('/admin', tabs.map(t => t.id));
   const location = useLocation();
@@ -70,6 +72,7 @@ export default function Admin() {
           {activeTab === 'nametag-templates' && <NametagTemplateTab />}
           {activeTab === 'analytics' && <CampaignAnalyticsTab />}
           {activeTab === 'data' && <DataTab />}
+          {activeTab === 'settings' && <SettingsTab />}
         </Suspense>
 
       </div>
