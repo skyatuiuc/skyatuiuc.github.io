@@ -273,6 +273,25 @@ try {
     check('no assignedGroup written', after.every(r => !('assignedGroup' in r)));
   });
 
+  await step('Applicant panel opens from Groups with the retreat record', async () => {
+    await page.goto(`${BASE}/admin/groups`, { waitUntil: 'domcontentloaded' });
+    await sleep(800);
+    const opened = await page.evaluate(() => {
+      const info = document.querySelector('[draggable="true"] button[title^="Click to view"]');
+      if (!info) return false;
+      info.click();
+      return true;
+    });
+    check('a member chip info button was clicked', opened);
+    await page.waitForSelector('[role="dialog"] #dossier-status', { timeout: 5000 });
+    const text = (await bodyText()).toLowerCase();
+    check('panel shows the status control', true);
+    check('panel shows group, attendance and emails sent', text.includes('emails sent') && /day 1 [✓—]/.test(text) && text.includes('group'));
+    await page.keyboard.press('Escape');
+    await sleep(300);
+    check('Esc closes the panel', !(await page.$('[role="dialog"] #dossier-status')));
+  });
+
   // ------------------------------------------------ Volunteer portal (as admin)
   await step('Volunteer orientation roster shows only the active retreat', async () => {
     await page.goto(`${BASE}/volunteer`, { waitUntil: 'domcontentloaded' });

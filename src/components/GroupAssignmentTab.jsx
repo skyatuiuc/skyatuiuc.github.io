@@ -17,7 +17,7 @@ import {
   Tag,
   Filter
 } from 'lucide-react';
-import ParticipantDetailsModal from './ParticipantDetailsModal';
+import ApplicantPanel from './ApplicantPanel';
 import NametagDownloadModal from './NametagDownloadModal';
 import { useToast } from './ui/ToastProvider';
 import { useConfirm } from './ui/ConfirmProvider';
@@ -1351,9 +1351,8 @@ export default function GroupAssignmentTab() {
 
       {/* Participant Details Inspection Modal */}
       {inspectParticipant && (
-        <ParticipantDetailsModal
-          participant={inspectParticipant.rawRecord}
-          groupName={inspectParticipant.assignedGroup}
+        <ApplicantPanel
+          registrationId={inspectParticipant.id}
           onClose={() => setInspectParticipant(null)}
         />
       )}

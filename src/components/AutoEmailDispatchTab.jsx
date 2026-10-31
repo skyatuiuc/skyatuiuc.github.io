@@ -5,7 +5,7 @@ import { useAuth, ADMIN_EMAIL } from '../context/AuthContext';
 import { useRoster } from '../context/RosterContext';
 import { useApplicantFilters } from '../hooks/useApplicantFilters';
 import ApplicantFilterBar from './ApplicantFilterBar';
-import { getDisplayName, getGroupId, getGroupName } from '../models/applicant';
+import { getDisplayName } from '../models/applicant';
 import { StatusBadge } from './ui/StatusBadge';
 import {
   Mail,
@@ -30,7 +30,7 @@ import {
 import { EMAIL_TEMPLATES } from '../templates/emailTemplates';
 import EmailPreviewModal from './EmailPreviewModal';
 import EmailSettingsModal from './EmailSettingsModal';
-import ParticipantDetailsModal from './ParticipantDetailsModal';
+import ApplicantPanel from './ApplicantPanel';
 import { useToast } from './ui/ToastProvider';
 import { useConfirm } from './ui/ConfirmProvider';
 
@@ -878,9 +878,8 @@ export default function AutoEmailDispatchTab() {
 
       {/* Participant Dossier Details Modal */}
       {inspectParticipant && (
-        <ParticipantDetailsModal
-          participant={inspectParticipant}
-          groupName={getGroupName(getGroupId(inspectParticipant, activeRetreat), activeRetreat)}
+        <ApplicantPanel
+          registrationId={inspectParticipant.id}
           onClose={() => setInspectParticipant(null)}
         />
       )}

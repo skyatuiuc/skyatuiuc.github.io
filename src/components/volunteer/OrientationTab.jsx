@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useRoster } from '../../context/RosterContext';
 import { useApplicantFilters } from '../../hooks/useApplicantFilters';
 import ApplicantFilterBar from '../ApplicantFilterBar';
-import OrientationDossierModal from './OrientationDossierModal';
+import ApplicantPanel from '../ApplicantPanel';
 import { useToast } from '../ui/ToastProvider';
 import { useConfirm } from '../ui/ConfirmProvider';
 import { getDisplayName, getPayment, getAppliedAtMs, PAYMENT } from '../../models/applicant';
@@ -31,7 +31,7 @@ export default function OrientationTab() {
   );
 
   const [selectedId, setSelectedId] = useState(null);
-  const selectedReg = selectedId ? registrations.find(r => r.id === selectedId) : null;
+  const closePanel = useCallback(() => setSelectedId(null), []);
 
   // General Interest List -> retreat moves (super admin; defaults to the next retreat by start date)
   const canMove = isAdmin && Boolean(activeRetreat?.isGeneral);
@@ -278,8 +278,8 @@ export default function OrientationTab() {
         )}
       </div>
 
-      {selectedReg && (
-        <OrientationDossierModal key={selectedReg.id} reg={selectedReg} onClose={() => setSelectedId(null)} />
+      {selectedId && (
+        <ApplicantPanel key={selectedId} registrationId={selectedId} onClose={closePanel} />
       )}
     </div>
   );

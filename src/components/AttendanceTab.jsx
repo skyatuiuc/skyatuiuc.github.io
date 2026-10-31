@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useRoster } from '../context/RosterContext';
-import ParticipantDetailsModal from './ParticipantDetailsModal';
+import ApplicantPanel from './ApplicantPanel';
 import { useToast } from './ui/ToastProvider';
 import {
   getDisplayName, getStatus, STATUS, getGroupId, getGroupName, groupIdFor, isAttending, matchesSearch, RETREAT_DAYS
@@ -651,9 +651,8 @@ export default function AttendanceTab() {
 
       {/* Participant Details Inspection Modal */}
       {inspectParticipant && (
-        <ParticipantDetailsModal
-          participant={inspectParticipant.rawRecord}
-          groupName={inspectParticipant.assignedGroup}
+        <ApplicantPanel
+          registrationId={inspectParticipant.id}
           onClose={() => setInspectParticipant(null)}
         />
       )}
