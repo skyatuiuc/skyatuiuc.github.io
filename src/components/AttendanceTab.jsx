@@ -119,6 +119,11 @@ export default function AttendanceTab() {
     return filtered.sort((a, b) => (Number(b.isVolunteer) - Number(a.isVolunteer)) || a.name.localeCompare(b.name));
   }, [retreatApprovedParticipants, filters, activeRetreat, activeView, selectedMyGroup, userAssignedGroupId]);
 
+  const presentCount = useMemo(
+    () => displayRoster.filter(m => m.attendance?.[activeDayKey] === true).length,
+    [displayRoster, activeDayKey]
+  );
+
   // 5. Toggle attendance: only this day's flag is written (dot path), so two volunteers checking
   // people in at the same time never overwrite each other's marks.
   const writeAttendance = (memberId, dayKey, present) => updateRegistration(memberId, {
@@ -342,6 +347,25 @@ export default function AttendanceTab() {
 
       </div>
 
+      {/* STICKY DAY + PRESENT COUNT (stays visible while scrolling the roster on phones) */}
+      <div className="attendance-daybar" role="group" aria-label="Retreat day">
+        {retreatDays.map(day => (
+          <button
+            key={day.key}
+            type="button"
+            className="chip"
+            aria-pressed={day.dayIndex === activeDayIndex}
+            onClick={() => setActiveDayIndex(day.dayIndex)}
+            style={day.dayIndex === activeDayIndex ? { background: 'var(--sky-blue)', color: '#FFFFFF', borderColor: 'var(--sky-blue)' } : undefined}
+          >
+            {day.label}
+          </button>
+        ))}
+        <span className="attendance-count" aria-live="polite">
+          {presentCount} / {displayRoster.length} present
+        </span>
+      </div>
+
       {/* FILTERS (shared bar) */}
       <ApplicantFilterBar
         facets={activeView === 'my_group' ? ['search', 'attendance'] : ['search', 'group', 'attendance']}
@@ -491,6 +515,7 @@ export default function AttendanceTab() {
                       aria-pressed={isPresent}
                       aria-label={`${member.name}: ${activeDayObj.label} attendance`}
                       onClick={() => handleToggleAttendance(member)}
+                      className="attendance-toggle"
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',

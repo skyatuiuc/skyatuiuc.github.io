@@ -360,6 +360,15 @@ try {
       const keysChanged = ['day1', 'day2', 'day3'].filter(d => Boolean(prev[d]) !== Boolean(changed[0].attendance?.[d]));
       check('only one day flag changed', keysChanged.length === 1, keysChanged.join(','));
     }
+    const countText = await page.$eval('.attendance-count', el => el.textContent);
+    check('present count is shown for the selected day', /\d+ \/ \d+ present/.test(countText), countText);
+    // Undo restores the previous value (U13)
+    await clickByText('button', 'Undo');
+    await sleep(1200);
+    const undone = await readAll('registrations');
+    const target = changed[0] && undone.find(r => r.id === changed[0].id);
+    const prevAtt = changed[0] ? (before.find(b => b.id === changed[0].id)?.attendance || {}) : {};
+    check('Undo restores the attendance mark', target && ['day1', 'day2', 'day3'].every(d => Boolean(target.attendance?.[d]) === Boolean(prevAtt[d])));
   });
 
   await step('Flyer studio tab renders', async () => {

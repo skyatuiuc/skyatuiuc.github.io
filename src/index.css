@@ -619,3 +619,24 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
     scroll-behavior: auto !important;
   }
 }
+
+/* Attendance check-in (U13) */
+.attendance-daybar {
+  position: sticky;
+  top: 66px; /* below the sticky navbar */
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.75rem;
+  box-shadow: var(--shadow-sm);
+}
+.attendance-count { margin-left: auto; font-weight: 800; color: var(--text-main); font-size: 0.9rem; }
+@media (max-width: 640px) {
+  .attendance-toggle { min-height: 44px; min-width: 112px; justify-content: center; }
+}
