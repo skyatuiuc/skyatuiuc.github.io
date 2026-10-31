@@ -449,7 +449,7 @@ export default function NametagDownloadModal({
               </div>
             ) : templates.length === 0 ? (
               <div style={{ padding: '1rem', background: '#FFFBEB', borderRadius: 'var(--radius-sm)', border: '1px solid #FDE68A', color: '#92400E', fontSize: '0.85rem' }}>
-                <strong>No templates found:</strong> Please navigate to Admin Hub &gt; Nametag Templates to upload and configure a template first.
+                <strong>No templates found:</strong> Please open Admin Portal &gt; Nametag Templates to upload and configure a template first.
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>

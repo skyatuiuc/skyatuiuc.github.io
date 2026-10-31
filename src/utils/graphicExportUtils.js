@@ -1,4 +1,5 @@
 import QRCode from 'qrcode';
+import { formatRetreatDates } from '../models/retreat';
 
 // Precomputed CRC32 table for PNG chunk checksums
 const crcTable = (() => {
@@ -325,9 +326,7 @@ export async function renderAndExportFlyer({
     ctx.fillText(retreatTitle, exportW / 2, Math.round(280 * safeScale));
 
     // Dates
-    const datesStr = activeRetreat?.startDate && activeRetreat?.endDate
-      ? `${activeRetreat.startDate} to ${activeRetreat.endDate}`
-      : 'Campus Retreat';
+    const datesStr = formatRetreatDates(activeRetreat) || 'Campus Retreat';
     ctx.fillStyle = '#B45309';
     ctx.font = `bold ${Math.round(28 * safeScale)}px "Source Sans 3", sans-serif`;
     ctx.fillText(datesStr, exportW / 2, Math.round(360 * safeScale));

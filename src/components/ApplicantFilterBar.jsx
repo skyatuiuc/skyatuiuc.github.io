@@ -23,7 +23,7 @@ const SELECT_FACETS = {
   payment: { label: 'Payment', options: [['all', 'All payments'], ['settled', 'Paid / Exempt'], ['unpaid', 'Unpaid'], ['paid', 'Paid'], ['exempt', 'Exempt ($0 fee)']] },
   iahv: { label: 'IAHV', options: [['all', 'IAHV: any'], ['yes', 'IAHV registered'], ['no', 'Not IAHV registered']] },
   role: { label: 'Role', options: [['all', 'All roles'], ...Object.entries(ROLE_CATEGORY_LABELS)] },
-  people: { label: 'People', options: [['all', 'Participants & volunteers'], ['participants', 'Participants only'], ['volunteers', 'Volunteers only']] },
+  people: { label: 'People', options: [['all', 'Participants & volunteers'], ['participants', 'Participants only'], ['volunteers', 'Attending volunteers only']] },
   email: { label: 'Email', options: EMAIL_FILTER_OPTIONS },
   attendance: {
     label: 'Attendance',

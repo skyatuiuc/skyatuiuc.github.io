@@ -205,7 +205,7 @@ try {
   await signInAs(ADMIN);
   await step('Admin page loads', async () => {
     await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded' });
-    await waitForText('UIUC Campus Administration');
+    await waitForText('Authorize New Volunteer');
   });
 
   await step('Admin migration: dry run + apply', async () => {
@@ -394,7 +394,7 @@ try {
   });
   await step('Non-admin volunteer is kept out of /admin', async () => {
     await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded' });
-    check('redirected away from admin', !(await bodyText()).includes('UIUC Campus Administration'));
+    check('redirected away from admin', !(await bodyText()).includes('Authorize New Volunteer'));
   });
 
   // ------------------------------------------------ applicants

@@ -1,6 +1,6 @@
 // File export helpers shared by the Admin Data tab and roster screens.
 import {
-  getDisplayName, getStatus, getPayment, getGroupId, getGroupName, getAttendance
+  getDisplayName, getStatus, getStatusLabel, getPayment, getGroupId, getGroupName, getAttendance
 } from '../models/applicant';
 
 export const downloadBlob = (blob, filename) => {
@@ -27,7 +27,7 @@ const ROSTER_COLUMNS = [
   ['Email', (r) => r.email],
   ['Phone', (r) => r.phone],
   ['Academic Role', (r) => r.academicRole],
-  ['Status', (r) => getStatus(r)],
+  ['Application Status', (r) => getStatusLabel(getStatus(r))],
   ['Fee', (r) => getPayment(r).formattedFee],
   ['Payment', (r) => getPayment(r).status],
   ['IAHV Registered', (r) => (r.iahvRegistered ? 'Yes' : 'No')],

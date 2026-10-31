@@ -8,6 +8,7 @@ import HeroGallery from '../components/HeroGallery';
 
 import { loadCachedRetreats } from '../utils/retreatUtils';
 import { todayChicago } from '../utils/dateUtils';
+import { formatRetreatDates } from '../models/retreat';
 
 export default function Home() {
   const [activeFaq, setActiveFaq] = useState(null);
@@ -369,7 +370,7 @@ export default function Home() {
               <Calendar size={48} color="var(--sky-blue)" style={{ marginBottom: '1rem', opacity: 0.8 }} />
               <h3 style={{ fontSize: '1.8rem', fontWeight: 700, marginBottom: '0.75rem', color: 'var(--text-main)' }}>No Upcoming Retreat Currently Scheduled</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', maxWidth: '600px', margin: '0 auto 1.5rem auto' }}>
-                We are currently finalizing dates for our next campus retreat session. Super Admins can schedule new retreats directly from the Admin Hub.
+                We are currently finalizing dates for our next campus retreat session. Admins can schedule new retreats from the Admin Portal.
               </p>
               <a href="mailto:skyatuiuc@gmail.com" className="btn btn-secondary">
                 Contact skyatuiuc@gmail.com for Info
@@ -389,7 +390,7 @@ export default function Home() {
                     <span className="badge badge-sky" style={{ fontSize: '0.7rem', marginBottom: '0.75rem' }}>Past Retreat</span>
                     <h4 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-main)' }}>{ret.title}</h4>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '0.5rem' }}>
-                      📅 {ret.startDate} - {ret.endDate} • 📍 {ret.location}
+                      📅 {formatRetreatDates(ret)} • 📍 {ret.location}
                     </p>
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.825rem' }}>
                       👥 {ret.participantCount} Students Trained • 👩‍🏫 {ret.teachers}

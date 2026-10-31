@@ -175,7 +175,7 @@ export default function OrientationTab() {
               <thead>
                 <tr>
                   <th>APPLICANT</th>
-                  <th>ORIENTATION STATUS</th>
+                  <th>APPLICATION STATUS</th>
                   <th>POINT OF CONTACT</th>
                   <th>PAYMENT</th>
                   <th>IAHV REG</th>

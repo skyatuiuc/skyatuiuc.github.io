@@ -15,7 +15,7 @@ export default function Volunteer() {
   const { syncError, registrations } = useRoster();
 
   const tabs = [
-    { id: 'orientation', label: `Orientation Workbench (${registrations.length})`, Icon: UserCheck },
+    { id: 'orientation', label: `Orientation (${registrations.length})`, Icon: UserCheck },
     { id: 'attendance', label: 'Retreat Attendance', Icon: CheckSquare, accent: '#10B981', color: '#10B981' },
     { id: 'flyers', label: 'Flyer & QR Studio', Icon: QrCode, accent: 'var(--sky-sun)', color: '#B45309' }
   ];
@@ -27,7 +27,7 @@ export default function Volunteer() {
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            <h1 style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--text-main)' }}>Participant Orientation & Roster Portal</h1>
+            <h1 style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--text-main)' }}>Volunteer Portal</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
               Logged in as: <strong style={{ color: 'var(--sky-blue)' }}>{currentUser?.email}</strong>
               {isAdmin && <span className="badge badge-sun" style={{ marginLeft: '0.5rem', fontSize: '0.65rem' }}>SUPER ADMIN</span>}

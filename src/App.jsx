@@ -86,7 +86,7 @@ export default function App() {
                   } 
                 />
 
-                {/* Guarded Super Admin Hub (Lazy) */}
+                {/* Guarded Admin Portal (Lazy) */}
                 <Route 
                   path="/admin/:tab?" 
                   element={

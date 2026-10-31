@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useRoster } from '../../context/RosterContext';
-import { getDisplayName, getStatus, getPayment, getAppliedAtMs, STATUS_OPTIONS, PAYMENT } from '../../models/applicant';
+import { getDisplayName, getStatus, getPayment, getAppliedAtMs, STATUS_OPTIONS, PAYMENT, getStatusLabel } from '../../models/applicant';
 import { todayChicago } from '../../utils/dateUtils';
 import { useConfirm } from '../ui/ConfirmProvider';
 import { Mail, Phone, MessageSquare, Copy, X, FileText, CheckCircle2, Trash2, AlertTriangle } from 'lucide-react';
@@ -12,7 +12,6 @@ import { Mail, Phone, MessageSquare, Copy, X, FileText, CheckCircle2, Trash2, Al
 
 const NOTES_DEBOUNCE_MS = 600;
 
-const STATUS_LABELS = { Pending: 'Pending Orientation' };
 
 const labelStyle = { display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' };
 const controlStyle = { width: '100%', padding: '0.65rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.85rem' };
@@ -187,9 +186,9 @@ export default function OrientationDossierModal({ reg, onClose }) {
         {/* Control bench */}
         <div style={{ background: '#F8FAFC', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1.25rem', marginBottom: '1.75rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
           <div>
-            <label htmlFor="dossier-status" style={labelStyle}>ORIENTATION STATUS</label>
+            <label htmlFor="dossier-status" style={labelStyle}>APPLICATION STATUS</label>
             <select id="dossier-status" value={status} onChange={(e) => save({ status: e.target.value })} style={{ ...controlStyle, fontWeight: 700, fontSize: '0.9rem' }}>
-              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{getStatusLabel(s)}</option>)}
             </select>
           </div>
 

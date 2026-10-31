@@ -253,13 +253,13 @@ export default function Navbar() {
                     >
                       <HeartHandshake size={16} color="var(--sky-earth)" />
                       <div>
-                        <div>Volunteer Workbench</div>
+                        <div>Volunteer Portal</div>
                         <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Applicant Dossiers & Orientations</div>
                       </div>
                     </Link>
                   )}
 
-                  {/* Menu Item 3: Super Admin Hub (Admins only) */}
+                  {/* Menu Item 3: Admin Portal (Admins only) */}
                   {isAdmin && (
                     <Link 
                       to="/admin" 
@@ -281,7 +281,7 @@ export default function Navbar() {
                     >
                       <Shield size={16} color="var(--sky-sun)" />
                       <div>
-                        <div>Super Admin Hub</div>
+                        <div>Admin Portal</div>
                         <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Volunteers & Cloud Monitor</div>
                       </div>
                     </Link>
@@ -352,8 +352,8 @@ export default function Navbar() {
           <Link to="/research" onClick={() => setMobileMenuOpen(false)} style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '1.05rem', fontWeight: 600, padding: '0.4rem 0' }}>Research Studies</Link>
           <Link to="/register" onClick={() => setMobileMenuOpen(false)} style={{ color: 'var(--sky-blue)', textDecoration: 'none', fontSize: '1.05rem', fontWeight: 700, padding: '0.4rem 0' }}>Retreat Application</Link>
           {currentUser && <Link to="/my-retreats" onClick={() => setMobileMenuOpen(false)} style={{ color: 'var(--text-main)', textDecoration: 'none', fontSize: '1.05rem', fontWeight: 600, padding: '0.4rem 0' }}>My Retreats & History</Link>}
-          {isVolunteer && <Link to="/volunteer" onClick={() => setMobileMenuOpen(false)} style={{ color: 'var(--sky-earth)', textDecoration: 'none', fontSize: '1.05rem', fontWeight: 700, padding: '0.4rem 0' }}>Volunteer Workbench</Link>}
-          {isAdmin && <Link to="/admin" onClick={() => setMobileMenuOpen(false)} style={{ color: 'var(--sky-sun)', textDecoration: 'none', fontSize: '1.05rem', fontWeight: 700, padding: '0.4rem 0' }}>Super Admin Hub</Link>}
+          {isVolunteer && <Link to="/volunteer" onClick={() => setMobileMenuOpen(false)} style={{ color: 'var(--sky-earth)', textDecoration: 'none', fontSize: '1.05rem', fontWeight: 700, padding: '0.4rem 0' }}>Volunteer Portal</Link>}
+          {isAdmin && <Link to="/admin" onClick={() => setMobileMenuOpen(false)} style={{ color: 'var(--sky-sun)', textDecoration: 'none', fontSize: '1.05rem', fontWeight: 700, padding: '0.4rem 0' }}>Admin Portal</Link>}
         </div>
       )}
     </nav>

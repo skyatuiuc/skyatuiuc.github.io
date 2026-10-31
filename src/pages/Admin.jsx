@@ -45,7 +45,7 @@ export default function Admin() {
         {/* Admin Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            <h1 style={{ fontSize: 'clamp(1.5rem, 3.5vw, 2.2rem)', fontWeight: 800, lineHeight: 1.25, color: 'var(--text-main)' }}>UIUC Campus Administration & Monitoring</h1>
+            <h1 style={{ fontSize: 'clamp(1.5rem, 3.5vw, 2.2rem)', fontWeight: 800, lineHeight: 1.25, color: 'var(--text-main)' }}>Admin Portal</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', marginTop: '0.25rem' }}>
               Authenticated Super Admin: <strong style={{ color: 'var(--sky-blue)' }}>{currentUser?.email}</strong>
             </p>

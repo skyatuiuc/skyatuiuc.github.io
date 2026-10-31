@@ -7,6 +7,7 @@ import { todayChicago } from '../../utils/dateUtils';
 import { Trash2, Calendar, Plus, Edit3, Save, X } from 'lucide-react';
 import { useToast } from '../ui/ToastProvider';
 import { useConfirm } from '../ui/ConfirmProvider';
+import { formatRetreatDates } from '../../models/retreat';
 
 // Admin tab: schedule retreats and edit retreat history
 export default function RetreatsTab() {
@@ -463,7 +464,7 @@ export default function RetreatsTab() {
                       )}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span>📅 {ret.startDate} to {ret.endDate}</span>
+                      <span>📅 {formatRetreatDates(ret)}</span>
                       <span>•</span>
                       <span>📍 {ret.location || 'UIUC Campus'}{ret.address ? ` (${ret.address})` : ''}</span>
                     </div>

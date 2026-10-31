@@ -6,7 +6,8 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { INITIAL_RETREATS } from '../data/retreatData';
 import { Calendar, CheckCircle2, Clock, User, LogIn, ArrowRight, Sparkles, HeartHandshake } from 'lucide-react';
 import { loadCachedRetreats } from '../utils/retreatUtils';
-import { getStatus, getAttendance, STATUS, GENERAL_RETREAT } from '../models/applicant';
+import { getStatus, getStatusLabel, getAttendance, STATUS, GENERAL_RETREAT } from '../models/applicant';
+import { formatRetreatDates } from '../models/retreat';
 import { getFeeTierLabel } from '../data/pricingData';
 
 export default function MyRetreats() {
@@ -161,7 +162,7 @@ export default function MyRetreats() {
                             </h3>
                           </div>
                           <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                            <span>📅 {retreatDetail.startDate} to {retreatDetail.endDate}</span>
+                            <span>📅 {formatRetreatDates(retreatDetail) || 'Dates to be announced'}</span>
                             <span>•</span>
                             <span>📍 {retreatDetail.location}</span>
                           </div>
@@ -217,8 +218,8 @@ export default function MyRetreats() {
                         </div>
 
                         <div>
-                          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>ORIENTATION STATUS</div>
-                          <div style={{ color: 'var(--text-main)', fontWeight: 600 }}>{status}</div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>APPLICATION STATUS</div>
+                          <div style={{ color: 'var(--text-main)', fontWeight: 600 }}>{getStatusLabel(status)}</div>
                         </div>
                       </div>
 

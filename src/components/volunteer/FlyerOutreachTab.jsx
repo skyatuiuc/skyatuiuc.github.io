@@ -7,6 +7,7 @@ import { loadFlyerTemplateImage } from '../../services/flyerChunkService';
 import { renderAndExportFlyer, calculateScaledDimensions, colorToQrHex, parsePixel } from '../../utils/graphicExportUtils';
 import { QrCode, Download, Copy } from 'lucide-react';
 import { useToast } from '../ui/ToastProvider';
+import { formatRetreatDates } from '../../models/retreat';
 
 // Volunteer tab: generate a campaign flyer (template + QR code + shortlink) for outreach.
 // Mounted only while the tab is open, so its template listener costs nothing otherwise.
@@ -491,7 +492,7 @@ export default function FlyerOutreachTab() {
                   </h4>
                   
                   <div style={{ color: '#B45309', fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.75rem' }}>
-                    {activeRetreat ? (activeRetreat.startDate && activeRetreat.endDate ? `${activeRetreat.startDate} to ${activeRetreat.endDate}` : 'Campus Retreat') : 'Campus Retreat'}
+                    {formatRetreatDates(activeRetreat) || 'Campus Retreat'}
                   </div>
 
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: '1rem' }}>

@@ -158,7 +158,7 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
               )}
             </div>
             <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              {participant.academicRole || (isVolunteer ? 'Retreat Volunteer Mentor' : 'Participant')}
+              {participant.academicRole || (isVolunteer ? 'Attending Volunteer' : 'Participant')}
             </p>
           </div>
         </div>

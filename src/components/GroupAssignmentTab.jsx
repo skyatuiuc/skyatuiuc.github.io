@@ -53,7 +53,7 @@ const getMemberTheme = (member) => {
       avatarColor: '#161942',
       textColor: '#B45309',
       hoverShadow: '0 4px 12px rgba(250, 188, 29, 0.3)',
-      statusLabel: 'Volunteer'
+      statusLabel: 'Attending Volunteer'
     };
   }
   if (member.status === STATUS.WITHDRAWN) {
@@ -911,7 +911,7 @@ export default function GroupAssignmentTab() {
               onChange={() => setShowVolunteers(prev => !prev)}
               style={{ accentColor: '#FABC1D', cursor: 'pointer' }}
             />
-            <span>Volunteers</span>
+            <span>Attending Volunteers</span>
             <span style={{
               background: showVolunteers ? 'rgba(250, 188, 29, 0.3)' : '#E2E8F0',
               padding: '0.1rem 0.45rem',
@@ -1111,7 +1111,7 @@ export default function GroupAssignmentTab() {
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--sky-sun)' }} />
-            Volunteers: <strong style={{ color: '#B45309' }}>{allManageableMembers.filter(m => m.isVolunteer).length}</strong>
+            Attending volunteers: <strong style={{ color: '#B45309' }}>{allManageableMembers.filter(m => m.isVolunteer).length}</strong>
           </span>
         </div>
       </div>
