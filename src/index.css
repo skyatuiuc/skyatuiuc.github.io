@@ -603,3 +603,9 @@ input:focus, select:focus, textarea:focus {
 /* Active retreat bar */
 .retreat-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; padding: 0.85rem 1.25rem; margin-bottom: 1.5rem; }
 .retreat-bar-label { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Form fields flagged by validation (overrides inline borders) */
+input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"] {
+  border: 1.5px solid #EF4444 !important;
+  background: #FEF2F2 !important;
+}

@@ -127,3 +127,29 @@ describe('buildMovedRegistration', () => {
     });
   });
 });
+
+import { validateRegistrationForm, prefillFromPreviousApplication } from '../src/models/registrationForm';
+
+describe('registration form', () => {
+  const valid = {
+    firstName: 'Ada', lastName: 'L', email: 'ada@x.edu', phone: '217', academicRole: 'Undergraduate Student',
+    isOver18: '18 or older', completedSkyBefore: 'No', healthConditions: ['None'], otherHealthConditions: '',
+    foodAllergies: '', referralSource: 'Friend', agreeToAll3Days: 'Yes'
+  };
+  it('accepts a complete form and reports every missing field at once', () => {
+    expect(validateRegistrationForm(valid)).toEqual({});
+    const errors = validateRegistrationForm({ ...valid, firstName: ' ', phone: '', healthConditions: [], agreeToAll3Days: 'No' });
+    expect(Object.keys(errors).sort()).toEqual(['agreeToAll3Days', 'firstName', 'healthConditions', 'phone']);
+  });
+  it('requires a description for "Other" and enforces the rules\' length limits', () => {
+    expect(validateRegistrationForm({ ...valid, healthConditions: ['Other'] })).toHaveProperty('otherHealthConditions');
+    expect(validateRegistrationForm({ ...valid, referralSource: 'x'.repeat(251) })).toHaveProperty('referralSource');
+  });
+  it('carries over identity, contact, role, age and health answers only', () => {
+    const carried = prefillFromPreviousApplication({ ...valid, status: 'Approved', groupId: 'group-1', referralSource: 'Flyer' });
+    expect(carried).toEqual({
+      firstName: 'Ada', lastName: 'L', phone: '217', academicRole: 'Undergraduate Student', isOver18: '18 or older',
+      healthConditions: ['None'], otherHealthConditions: '', foodAllergies: ''
+    });
+  });
+});

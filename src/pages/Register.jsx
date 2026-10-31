@@ -1,18 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db, isFirebaseConfigured } from '../firebase/config';
 import { doc, setDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { INITIAL_RETREATS } from '../data/retreatData';
 import { ACADEMIC_ROLE_OPTIONS } from '../data/pricingData';
-import { Send, AlertCircle, CheckCircle2, LogIn, ArrowLeft, Clock, Mail, PhoneCall } from 'lucide-react';
+import { Send, AlertCircle, CheckCircle2, LogIn, ArrowLeft, Clock, Mail, PhoneCall, Info } from 'lucide-react';
 import { recordCampaignConversion } from '../services/campaignAnalyticsService';
 import confetti from 'canvas-confetti';
 import RetreatDetailsCard from '../components/RetreatDetailsCard';
 import { loadCachedRetreats } from '../utils/retreatUtils';
 import { getRetreatLabel } from '../models/retreat';
 import { todayChicago } from '../utils/dateUtils';
-import { getStatus, getStatusLabel, STATUS_STYLES, GENERAL_RETREAT_ID, registrationId } from '../models/applicant';
+import { getStatus, getStatusLabel, getAppliedAtMs, STATUS_STYLES, GENERAL_RETREAT_ID, registrationId } from '../models/applicant';
+import { validateRegistrationForm, prefillFromPreviousApplication, FORM_FIELDS } from '../models/registrationForm';
+
+const FieldError = ({ message }) => (message ? <p className="field-error" role="alert">{message}</p> : null);
 
 export default function Register() {
   const { retreatId: paramRetreatId } = useParams();
@@ -54,6 +57,10 @@ export default function Register() {
   const [retreatsLoaded, setRetreatsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+  // Returning applicants: the previous application their answers were carried over from
+  const [prefilledFrom, setPrefilledFrom] = useState(null);
+  const prefillAppliedRef = useRef(false);
 
   const handleDirectSignIn = async () => {
     setAuthLoading(true);
@@ -142,6 +149,23 @@ export default function Register() {
           const targetRetreatId = selectedRetreatId || (upcomingRetreatIds.length === 0 ? GENERAL_RETREAT_ID : '');
           const currentApp = targetRetreatId ? apps.find(r => r.retreatId === targetRetreatId) : null;
           setExistingApp(currentApp || null);
+          if (!currentApp && apps.length > 0 && !prefillAppliedRef.current) {
+            prefillAppliedRef.current = true;
+            const previous = [...apps].sort((a, b) => getAppliedAtMs(b) - getAppliedAtMs(a))[0];
+            const carried = prefillFromPreviousApplication(previous);
+            setFormData(prev => {
+              const next = { ...prev };
+              Object.entries(carried).forEach(([field, value]) => {
+                const current = prev[field];
+                // Names from the Google profile are only a guess; the applicant's own previous answer wins
+                const replaceable = Array.isArray(current) ? current.length === 0
+                  : !current || (field === 'firstName' && current === fName) || (field === 'lastName' && current === lName);
+                if (replaceable && (Array.isArray(value) ? value.length > 0 : value)) next[field] = value;
+              });
+              return next;
+            });
+            setPrefilledFrom(previous);
+          }
           if (currentApp) {
             setFormData({
               firstName: currentApp.firstName || '',
@@ -210,66 +234,33 @@ export default function Register() {
     });
   };
 
+  // After a failed submit, clear each field's message as soon as it is fixed
+  useEffect(() => {
+    setFieldErrors(prev => {
+      const keys = Object.keys(prev);
+      if (keys.length === 0) return prev;
+      const now = validateRegistrationForm(formData);
+      const next = Object.fromEntries(keys.filter(k => now[k]).map(k => [k, now[k]]));
+      if (Object.keys(next).length === 0) setError('');
+      return Object.keys(next).length === keys.length ? prev : next;
+    });
+  }, [formData]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
     if (existingApp) return;
 
-    // VALIDATION
-    if (!formData.firstName.trim() || !formData.lastName.trim()) {
-      setError('Please provide your first and last name.');
-      return;
-    }
-
-    if (!formData.email.trim()) {
-      setError('Please provide a valid email address.');
-      return;
-    }
-
-    if (!formData.phone.trim()) {
-      setError('Please provide your phone number.');
-      return;
-    }
-
-    if (!formData.academicRole) {
-      setError('Please select your UIUC role/affiliation.');
-      return;
-    }
-
-    if (!formData.isOver18) {
-      setError('Please indicate your age category.');
-      return;
-    }
-
-    if (!formData.completedSkyBefore) {
-      setError('Please specify if you have taken a SKY course before.');
-      return;
-    }
-
-    if (formData.healthConditions.length === 0) {
-      setError('Please select at least one health condition (or "None").');
-      return;
-    }
-
-    if (formData.healthConditions.includes('Other') && !formData.otherHealthConditions.trim()) {
-      setError('Please specify your other health condition.');
-      return;
-    }
-
-    if (formData.agreeToAll3Days !== 'Yes') {
-      setError('Full attendance across all 3 retreat days is required. Please confirm your commitment.');
-      return;
-    }
-
-    if (!formData.referralSource.trim()) {
-      setError('Please let us know how you heard about us.');
-      return;
-    }
-
-    if (formData.firstName.trim().length > 100 || formData.lastName.trim().length > 100 || formData.phone.trim().length > 30 ||
-        formData.otherHealthConditions.trim().length > 1000 || formData.foodAllergies.trim().length > 500 || formData.referralSource.trim().length > 250) {
-      setError('One or more fields exceed maximum character limits.');
+    const errors = validateRegistrationForm(formData);
+    setFieldErrors(errors);
+    const firstInvalid = FORM_FIELDS.find(f => errors[f]);
+    if (firstInvalid) {
+      const count = Object.keys(errors).length;
+      setError(count === 1 ? errors[firstInvalid] : `Please fix the ${count} highlighted fields below.`);
+      const fieldEl = document.querySelector(`[data-field="${firstInvalid}"]`);
+      fieldEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      fieldEl?.querySelector('input, select, textarea')?.focus({ preventScroll: true });
       return;
     }
 
@@ -438,6 +429,9 @@ export default function Register() {
                     <p style={{ color: '#78350F', fontSize: '0.925rem', lineHeight: 1.6, margin: 0, fontWeight: 500 }}>
                       Every applicant must go through short orientation via phone call to confirm their attendance and secure their spot for the retreat. Our club officers will start reviewing your application shortly - please expect a brief phone call within the next few days, between <strong>12pm–6pm</strong>.
                     </p>
+                    <p style={{ color: '#78350F', fontSize: '0.9rem', margin: '0.6rem 0 0 0' }}>
+                      You can check your application status any time on <Link to="/my-retreats" style={{ color: '#92400E', fontWeight: 700 }}>My Retreats</Link>.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -550,6 +544,17 @@ export default function Register() {
             })()}
 
             {/* TOP ERROR ALERT */}
+            {prefilledFrom && !existingApp && (
+              <div className="notice notice-info" style={{ marginBottom: '1.5rem', alignItems: 'flex-start' }}>
+                <Info size={18} style={{ flexShrink: 0, marginTop: '0.1rem' }} />
+                <span>
+                  Welcome back! We filled in your details from your application on{' '}
+                  {new Date(getAppliedAtMs(prefilledFrom)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}.
+                  {' '}Please check they are still correct, especially your role, age and health information.
+                </span>
+              </div>
+            )}
+
             {error && (
               <div style={{
                 background: '#FEF2F2',
@@ -568,7 +573,7 @@ export default function Register() {
             )}
 
             {/* REGISTRATION FORM */}
-            <form onSubmit={handleSubmit} className="glass-card form-card-responsive" style={{ padding: 'clamp(1.25rem, 4vw, 2.5rem)', background: '#FFFFFF' }}>
+            <form onSubmit={handleSubmit} noValidate className="glass-card form-card-responsive" style={{ padding: 'clamp(1.25rem, 4vw, 2.5rem)', background: '#FFFFFF' }}>
               
               <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '1.5rem', color: 'var(--text-main)' }}>
                 Participant Registration & Health Disclosure
@@ -576,7 +581,7 @@ export default function Register() {
 
               {/* Section 1: Contact Info */}
               <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginBottom: '1.25rem' }}>
-                <div>
+                <div data-field="firstName">
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>FIRST NAME *</label>
                   <input 
                     type="text"
@@ -584,6 +589,7 @@ export default function Register() {
                     maxLength={100}
                     disabled={Boolean(existingApp)}
                     value={formData.firstName}
+                    aria-invalid={Boolean(fieldErrors.firstName)}
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                     style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.firstName.length >= 100 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
@@ -592,8 +598,9 @@ export default function Register() {
                       Maximum 100 characters reached
                     </span>
                   )}
+                <FieldError message={fieldErrors.firstName} />
                 </div>
-                <div>
+                <div data-field="lastName">
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>LAST NAME *</label>
                   <input 
                     type="text"
@@ -601,6 +608,7 @@ export default function Register() {
                     maxLength={100}
                     disabled={Boolean(existingApp)}
                     value={formData.lastName}
+                    aria-invalid={Boolean(fieldErrors.lastName)}
                     onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                     style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.lastName.length >= 100 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
@@ -609,11 +617,12 @@ export default function Register() {
                       Maximum 100 characters reached
                     </span>
                   )}
+                <FieldError message={fieldErrors.lastName} />
                 </div>
               </div>
 
               <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
-                <div>
+                <div data-field="email">
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>EMAIL ADDRESS *</label>
                   <input 
                     type="email"
@@ -622,8 +631,9 @@ export default function Register() {
                     value={formData.email}
                     style={{ width: '100%', padding: '0.75rem 1rem', background: '#F8FAFC', border: '1px solid rgba(35, 39, 95, 0.12)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', fontSize: '0.9rem' }}
                   />
+                <FieldError message={fieldErrors.email} />
                 </div>
-                <div>
+                <div data-field="phone">
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>PHONE NUMBER *</label>
                   <input 
                     type="tel"
@@ -632,6 +642,7 @@ export default function Register() {
                     disabled={Boolean(existingApp)}
                     placeholder="(217) 555-0199"
                     value={formData.phone}
+                    aria-invalid={Boolean(fieldErrors.phone)}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.phone.length >= 30 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
@@ -640,17 +651,19 @@ export default function Register() {
                       Maximum 30 characters reached
                     </span>
                   )}
+                <FieldError message={fieldErrors.phone} />
                 </div>
               </div>
 
               {/* Section 2: Affiliation & Age */}
               <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
-                <div>
+                <div data-field="academicRole">
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>UIUC ROLE / AFFILIATION *</label>
                   <select 
                     required
                     disabled={Boolean(existingApp)}
                     value={formData.academicRole}
+                    aria-invalid={Boolean(fieldErrors.academicRole)}
                     onChange={(e) => setFormData({ ...formData, academicRole: e.target.value })}
                     style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   >
@@ -659,14 +672,16 @@ export default function Register() {
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
                   </select>
+                <FieldError message={fieldErrors.academicRole} />
                 </div>
 
-                <div>
+                <div data-field="isOver18">
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>AGE *</label>
                   <select 
                     required
                     disabled={Boolean(existingApp)}
                     value={formData.isOver18}
+                    aria-invalid={Boolean(fieldErrors.isOver18)}
                     onChange={(e) => setFormData({ ...formData, isOver18: e.target.value })}
                     style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   >
@@ -674,16 +689,18 @@ export default function Register() {
                     <option value="18 or older">18 or older</option>
                     <option value="Under 18">Under 18</option>
                   </select>
+                <FieldError message={fieldErrors.isOver18} />
                 </div>
               </div>
 
               {/* Section 3: Completed SKY Course Before? */}
-              <div style={{ marginBottom: '1.75rem' }}>
+              <div data-field="completedSkyBefore" style={{ marginBottom: '1.75rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>HAVE YOU COMPLETED A SKY HAPPINESS RETREAT BEFORE? *</label>
                 <select 
                   required
                   disabled={Boolean(existingApp)}
                   value={formData.completedSkyBefore}
+                  aria-invalid={Boolean(fieldErrors.completedSkyBefore)}
                   onChange={(e) => setFormData({ ...formData, completedSkyBefore: e.target.value })}
                   style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                 >
@@ -691,10 +708,11 @@ export default function Register() {
                   <option value="No">No, this is my first SKY retreat</option>
                   <option value="Yes">Yes, I am a SKY course graduate</option>
                 </select>
+              <FieldError message={fieldErrors.completedSkyBefore} />
               </div>
 
               {/* Section 4: HEALTH DISCLOSURE CHECKBOXES WITH OTHER INPUT */}
-              <div style={{ marginBottom: '2rem' }}>
+              <div data-field="healthConditions" style={{ marginBottom: '2rem' }}>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.35rem' }}>
                   PLEASE INDICATE IF YOU HAVE ANY OF THESE HEALTH CONDITIONS *
                 </label>
@@ -733,7 +751,7 @@ export default function Register() {
 
                 {/* Conditional Other Input */}
                 {formData.healthConditions.includes('Other') && (
-                  <div className="animate-fade-in" style={{ marginTop: '0.75rem' }}>
+                  <div data-field="otherHealthConditions" className="animate-fade-in" style={{ marginTop: '0.75rem' }}>
                     <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#B45309', marginBottom: '0.35rem' }}>
                       PLEASE SPECIFY OTHER HEALTH CONDITION(S) *
                     </label>
@@ -744,6 +762,7 @@ export default function Register() {
                       disabled={Boolean(existingApp)}
                       placeholder="Specify pre-existing medical or health conditions..."
                       value={formData.otherHealthConditions}
+                    aria-invalid={Boolean(fieldErrors.otherHealthConditions)}
                       onChange={(e) => setFormData({ ...formData, otherHealthConditions: e.target.value })}
                       style={{
                         width: '100%',
@@ -760,13 +779,15 @@ export default function Register() {
                         Maximum 1000 characters reached
                       </span>
                     )}
+                  <FieldError message={fieldErrors.otherHealthConditions} />
                   </div>
                 )}
+              <FieldError message={fieldErrors.healthConditions} />
               </div>
 
               {/* Food Allergies & Referral */}
               <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '2rem' }}>
-                <div>
+                <div data-field="foodAllergies">
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>DIETARY RESTRICTIONS / ALLERGIES</label>
                   <input 
                     type="text"
@@ -774,6 +795,7 @@ export default function Register() {
                     disabled={Boolean(existingApp)}
                     placeholder="Vegetarian, Vegan, Gluten Free, Nut Allergy..."
                     value={formData.foodAllergies}
+                    aria-invalid={Boolean(fieldErrors.foodAllergies)}
                     onChange={(e) => setFormData({ ...formData, foodAllergies: e.target.value })}
                     style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.foodAllergies.length >= 500 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
@@ -782,8 +804,9 @@ export default function Register() {
                       Maximum 500 characters reached
                     </span>
                   )}
+                <FieldError message={fieldErrors.foodAllergies} />
                 </div>
-                <div>
+                <div data-field="referralSource">
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>HOW DID YOU HEAR ABOUT US? *</label>
                   <input 
                     type="text"
@@ -792,6 +815,7 @@ export default function Register() {
                     disabled={Boolean(existingApp)}
                     placeholder="Quad Day, Friend, Instagram, Quad Flyer..."
                     value={formData.referralSource}
+                    aria-invalid={Boolean(fieldErrors.referralSource)}
                     onChange={(e) => setFormData({ ...formData, referralSource: e.target.value })}
                     style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: formData.referralSource.length >= 250 ? '1.5px solid #EF4444' : '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
                   />
@@ -800,11 +824,12 @@ export default function Register() {
                       Maximum 250 characters reached
                     </span>
                   )}
+                <FieldError message={fieldErrors.referralSource} />
                 </div>
               </div>
 
               {/* Section 5: VERBOSE & SIGNIFICANT 3-DAY ATTENDANCE POLICY AGREEMENT (AT BOTTOM) */}
-              <div style={{
+              <div data-field="agreeToAll3Days" style={{
                 background: formData.agreeToAll3Days === 'No' ? '#FEF2F2' : 'var(--sky-sun-light)',
                 border: formData.agreeToAll3Days === 'No' ? '1.5px solid #F87171' : '1.5px solid rgba(250, 188, 29, 0.4)',
                 borderRadius: 'var(--radius-md)',
@@ -836,6 +861,7 @@ export default function Register() {
                   required
                   disabled={Boolean(existingApp)}
                   value={formData.agreeToAll3Days}
+                  aria-invalid={Boolean(fieldErrors.agreeToAll3Days)}
                   onChange={(e) => setFormData({ ...formData, agreeToAll3Days: e.target.value })}
                   style={{
                     width: '100%',
@@ -862,7 +888,7 @@ export default function Register() {
                 </div>
 
                 {/* BOTTOM ATTENDANCE REQUIREMENT ERROR ALERT WITH CONTACT LINK */}
-                {(formData.agreeToAll3Days === 'No' || (error && error.includes('attendance'))) && (
+                {formData.agreeToAll3Days === 'No' && (
                   <div className="animate-fade-in" style={{
                     marginTop: '1.25rem',
                     padding: '1rem 1.25rem',
@@ -884,6 +910,7 @@ export default function Register() {
                     </div>
                   </div>
                 )}
+              <FieldError message={fieldErrors.agreeToAll3Days} />
               </div>
 
               {/* Submit Button */}

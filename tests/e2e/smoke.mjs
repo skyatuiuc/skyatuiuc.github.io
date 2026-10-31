@@ -405,6 +405,11 @@ try {
     await page.goto(`${BASE}/register/${upcoming.id}`, { waitUntil: 'domcontentloaded' });
     await sleep(1200);
     check('form is editable', !(await bodyText()).includes('Application Submitted (View Only)'));
+    check('returning applicant sees the prefill notice', (await bodyText()).includes('Welcome back! We filled in your details'));
+    const phone = await page.$eval('input[placeholder="(217) 555-0199"]', el => el.value);
+    check('phone carried over from the previous application', phone === returning.phone, phone);
+    const sky = await page.evaluate(() => [...document.querySelectorAll('form select')].find(s => [...s.options].some(o => o.text.includes('first SKY')))?.value);
+    check('"done SKY before" is not carried over', sky === '', sky);
   });
   await step('My Retreats lists the past application (applicant email query allowed)', async () => {
     await page.goto(`${BASE}/my-retreats`, { waitUntil: 'domcontentloaded' });
@@ -417,6 +422,10 @@ try {
   await step('New applicant submits a v2 application', async () => {
     await page.goto(`${BASE}/register/${upcoming.id}`, { waitUntil: 'domcontentloaded' });
     await sleep(1000);
+    await page.click('button[type="submit"]');
+    await sleep(500);
+    const fieldErrors = await page.$$eval('.field-error', els => els.length);
+    check('empty submit shows every field error inline', fieldErrors >= 6 && (await bodyText()).includes('Please fix the'), `${fieldErrors} field errors`);
     await page.evaluate(() => {
       const setVal = (el, value) => {
         const proto = el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
