@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
-import { collection, doc, onSnapshot, query, where, updateDoc, setDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, query, where, updateDoc, setDoc, writeBatch } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../firebase/config';
 import { useAuth } from './AuthContext';
 import { getDefaultActiveRetreatId } from '../utils/retreatUtils';
-import { GENERAL_RETREAT, GENERAL_RETREAT_ID } from '../models/applicant';
+import { GENERAL_RETREAT, GENERAL_RETREAT_ID, registrationId, buildMovedRegistration } from '../models/applicant';
 
 // Shared roster for every volunteer/admin screen.
 //
@@ -143,6 +143,33 @@ export function RosterProvider({ children }) {
     await batch.commit();
   }, []);
 
+  // Move registrations (e.g. off the General Interest List) into another retreat. Each person moves
+  // atomically: new {email}_{target} doc + notes, old doc + notes deleted. People who already have an
+  // application for the target retreat are skipped. Deleting registrations needs the super admin.
+  const moveRegistrations = useCallback(async (regs, targetRetreatId, movedBy) => {
+    const moved = [];
+    const skipped = [];
+    for (const reg of regs) {
+      const targetId = registrationId(reg.email, targetRetreatId);
+      if (targetId === reg.id) continue;
+      if ((await getDoc(doc(db, 'registrations', targetId))).exists()) {
+        skipped.push(reg);
+        continue;
+      }
+      const now = new Date().toISOString();
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'registrations', targetId), buildMovedRegistration(reg, targetRetreatId, now));
+      if (reg.notes) {
+        batch.set(doc(db, 'registration_private', targetId), { retreatId: targetRetreatId, notes: reg.notes, updatedAt: now, updatedBy: movedBy || '' });
+      }
+      batch.delete(doc(db, 'registrations', reg.id));
+      batch.delete(doc(db, 'registration_private', reg.id));
+      await batch.commit();
+      moved.push(reg);
+    }
+    return { moved, skipped };
+  }, []);
+
   const value = {
     retreats,
     retreatsLoaded,
@@ -156,7 +183,8 @@ export function RosterProvider({ children }) {
     updateRegistration,
     updateRegistrations,
     saveNotes,
-    deleteRegistration
+    deleteRegistration,
+    moveRegistrations
   };
 
   return <RosterContext.Provider value={value}>{children}</RosterContext.Provider>;

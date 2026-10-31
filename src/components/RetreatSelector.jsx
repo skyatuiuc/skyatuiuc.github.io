@@ -1,6 +1,7 @@
 import React from 'react';
 import { Calendar } from 'lucide-react';
 import { useRoster } from '../context/RosterContext';
+import { getRetreatLabel } from '../models/retreat';
 
 // "Active target retreat" bar shared by the Admin and Volunteer portals. The selection lives in the
 // roster provider, so both portals always work on the same retreat.
@@ -27,7 +28,7 @@ export default function RetreatSelector() {
           Active Target Retreat:
         </span>
         <span style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-main)' }}>
-          {activeRetreat?.title || 'No Retreat Selected'}
+          {activeRetreat ? getRetreatLabel(activeRetreat) : 'No Retreat Selected'}
         </span>
         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
           {registrationsReady ? `${registrations.length} applications` : 'Loading…'}
@@ -52,7 +53,7 @@ export default function RetreatSelector() {
           }}
         >
           {retreatOptions.map(ret => (
-            <option key={ret.id} value={ret.id}>{ret.title}</option>
+            <option key={ret.id} value={ret.id}>{getRetreatLabel(ret)}</option>
           ))}
         </select>
       </div>

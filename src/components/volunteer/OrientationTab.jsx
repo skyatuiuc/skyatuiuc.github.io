@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useRoster } from '../../context/RosterContext';
 import { useApplicantFilters } from '../../hooks/useApplicantFilters';
@@ -7,7 +7,8 @@ import OrientationDossierModal from './OrientationDossierModal';
 import { getDisplayName, getStatus, getPayment, getAppliedAtMs, STATUS_STYLES, PAYMENT } from '../../models/applicant';
 import { downloadBlob, registrationsToCsv } from '../../utils/exportUtils';
 import { todayChicago } from '../../utils/dateUtils';
-import { User, UserPlus, ChevronRight, Trash2, Copy, Download } from 'lucide-react';
+import { getRetreatLabel, getUpcomingRetreats } from '../../models/retreat';
+import { User, UserPlus, ChevronRight, Trash2, Copy, Download, ArrowRightCircle } from 'lucide-react';
 
 // Volunteer tab: orientation roster for the active retreat (claim applicants, open dossiers).
 
@@ -18,7 +19,7 @@ const tdStyle = { padding: '0.75rem 1rem' };
 
 export default function OrientationTab() {
   const { currentUser, isAdmin } = useAuth();
-  const { registrations, activeRetreat, updateRegistration, deleteRegistration } = useRoster();
+  const { registrations, activeRetreat, retreats, updateRegistration, deleteRegistration, moveRegistrations } = useRoster();
   const userEmailLower = (currentUser?.email || '').toLowerCase();
 
   const { filters, setFilter, resetFilters, filtered, statusCounts, activeFilterCount } = useApplicantFilters(
@@ -30,9 +31,35 @@ export default function OrientationTab() {
   const [notice, setNotice] = useState({ kind: '', text: '' });
   const selectedReg = selectedId ? registrations.find(r => r.id === selectedId) : null;
 
-  const flash = (kind, text) => {
+  const flash = (kind, text, ms = 3500) => {
     setNotice({ kind, text });
-    setTimeout(() => setNotice({ kind: '', text: '' }), 3500);
+    setTimeout(() => setNotice({ kind: '', text: '' }), ms);
+  };
+
+  // General Interest List -> retreat moves (super admin; defaults to the next retreat by start date)
+  const canMove = isAdmin && Boolean(activeRetreat?.isGeneral);
+  const upcomingRetreats = useMemo(() => getUpcomingRetreats(retreats), [retreats]);
+  const [moveTargetId, setMoveTargetId] = useState('');
+  const moveTarget = upcomingRetreats.find(r => r.id === moveTargetId) || upcomingRetreats[0] || null;
+  const [moving, setMoving] = useState(false);
+
+  const handleMove = async (regs) => {
+    if (!moveTarget || regs.length === 0 || moving) return;
+    const label = getRetreatLabel(moveTarget);
+    const who = regs.length === 1 ? getDisplayName(regs[0]) : `${regs.length} applicants`;
+    if (!window.confirm(`Move ${who} to ${label}?\n\nAnswers, status, claim and notes move with them; they leave the General Interest List.`)) return;
+    setMoving(true);
+    try {
+      const { moved, skipped } = await moveRegistrations(regs, moveTarget.id, currentUser?.email);
+      const skippedText = skipped.length
+        ? ` Skipped ${skipped.length} already registered there: ${skipped.map(getDisplayName).join(', ')}.`
+        : '';
+      flash(skipped.length ? 'error' : 'success', `Moved ${moved.length} to ${label}.${skippedText}`, 8000);
+    } catch (err) {
+      flash('error', `Move stopped: ${err.code || err.message}. Anyone already moved is safe; re-run for the rest.`, 8000);
+    } finally {
+      setMoving(false);
+    }
   };
 
   const writeClaim = async (reg, claim) => {
@@ -106,6 +133,33 @@ export default function OrientationTab() {
           <Download size={12} /> Export CSV
         </button>
       </ApplicantFilterBar>
+
+      {canMove && (
+        <div className="glass-card" style={{ padding: '1rem 1.25rem', background: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <ArrowRightCircle size={18} color="var(--sky-blue)" />
+          {moveTarget ? (
+            <>
+              <label htmlFor="interest-move-target" style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>Move interest list to</label>
+              <select
+                id="interest-move-target"
+                value={moveTarget.id}
+                onChange={(e) => setMoveTargetId(e.target.value)}
+                style={{ padding: '0.4rem 0.7rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', fontWeight: 600 }}
+              >
+                {upcomingRetreats.map(r => <option key={r.id} value={r.id}>{getRetreatLabel(r)}</option>)}
+              </select>
+              <button type="button" onClick={() => handleMove(filtered)} disabled={moving || filtered.length === 0} className="btn btn-primary" style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem' }}>
+                {moving ? 'Moving…' : `Move ${filtered.length} shown`}
+              </button>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>or use Move on a single row.</span>
+            </>
+          ) : (
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              No upcoming retreat yet. Create one in Admin › Retreat Management to move interest-list applicants into it.
+            </span>
+          )}
+        </div>
+      )}
 
       {notice.text && (
         <div style={{
@@ -216,6 +270,11 @@ export default function OrientationTab() {
                           <button onClick={(e) => { e.stopPropagation(); setSelectedId(reg.id); }} className="btn btn-primary btn-sm" style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', gap: '0.3rem' }}>
                             Orientation Dossier <ChevronRight size={14} />
                           </button>
+                          {canMove && moveTarget && (
+                            <button onClick={(e) => { e.stopPropagation(); handleMove([reg]); }} disabled={moving} className="btn btn-secondary btn-sm" style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', gap: '0.3rem' }} title={`Move to ${getRetreatLabel(moveTarget)}`}>
+                              <ArrowRightCircle size={14} /> Move
+                            </button>
+                          )}
                           {isAdmin && (
                             <button onClick={(e) => { e.stopPropagation(); handleDelete(reg); }} style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', padding: '0.25rem' }} title="Delete record (Super Admin Only)">
                               <Trash2 size={15} />

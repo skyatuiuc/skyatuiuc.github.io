@@ -63,6 +63,20 @@ const seed = loadSeed();
 const today = new Date();
 const plusDays = (n) => new Date(today.getTime() + n * 86400000).toISOString().slice(0, 10);
 const upcoming = { id: 'retreat-upcoming', title: 'Upcoming Test Retreat', startDate: plusDays(10), endDate: plusDays(12), location: 'Test Hall', groupConfig: { numGroups: 4, groupNames: {} } };
+// General Interest List applicants (v1 shape): one to move, one who already applied to the upcoming retreat
+const interestBase = (email, retreatId) => ({
+  id: `${email}_${retreatId}`, email, retreatId, firstName: 'Interest', lastName: email.split('@')[0], phone: '2175550100',
+  academicRole: 'Undergraduate Student', isOver18: '18 or older', completedSkyBefore: 'No', healthConditions: ['None'],
+  otherHealthConditions: '', foodAllergies: '', referralSource: 'Quad Day', status: 'Pending',
+  appliedAt: '2026-09-22T00:00:00.000Z', updatedAt: '2026-09-22T00:00:00.000Z'
+});
+const INTEREST = 'interest1@illinois.edu';
+const DUP = 'dup@illinois.edu';
+seed.registrations.push(
+  { ...interestBase(INTEREST, 'general'), orientationNotes: 'wants the November retreat', claimedBy: ADMIN, sentEmails: { welcome: { sent: true, sentAt: '2026-09-22T00:00:00Z', sentBy: ADMIN } } },
+  interestBase(DUP, 'general'),
+  { ...interestBase(DUP, upcoming.id), status: 'Uncontacted' }
+);
 await env.withSecurityRulesDisabled(async (ctx) => {
   const db = ctx.firestore();
   for (const r of [...seed.retreats, upcoming]) {
@@ -315,6 +329,30 @@ try {
     await page.goto(`${BASE}/volunteer`, { waitUntil: 'domcontentloaded' });
     await clickByText('button', 'Flyer & QR Studio');
     await sleep(800);
+  });
+
+  await step('General Interest List: move to the next retreat', async () => {
+    const generalBefore = (await readAll('registrations')).filter(r => r.retreatId === 'general');
+    await page.evaluate(() => localStorage.setItem('sky_active_retreat_id', 'general'));
+    await page.goto(`${BASE}/volunteer`, { waitUntil: 'domcontentloaded' });
+    await waitForText('Move interest list to');
+    const target = await page.$eval('#interest-move-target', el => el.value);
+    check('move target defaults to the next retreat', target === upcoming.id, target);
+    await clickByText('button', `Move ${generalBefore.length} shown`);
+    await waitForText('Moved ', 20000);
+    check('duplicate applicant reported as skipped', (await bodyText()).includes('Skipped 1 already registered'));
+
+    const after = await readAll('registrations');
+    const movedDoc = after.find(r => r.id === `${INTEREST}_${upcoming.id}`);
+    check('moved applicant now in the target retreat', movedDoc?.retreatId === upcoming.id && movedDoc?.status === 'Pending' && movedDoc?.claimedBy === ADMIN, JSON.stringify(movedDoc && { retreatId: movedDoc.retreatId, status: movedDoc.status }));
+    check('moved applicant keeps no retreat-scoped fields', movedDoc && !('sentEmails' in movedDoc) && !('groupId' in movedDoc));
+    check('general-list doc removed', !after.some(r => r.id === `${INTEREST}_general`));
+    const movedNotes = await readOne('registration_private', `${INTEREST}_${upcoming.id}`);
+    check('notes moved with the applicant', movedNotes?.notes === 'wants the November retreat' && movedNotes?.retreatId === upcoming.id, JSON.stringify(movedNotes));
+    check('old notes doc removed', (await readOne('registration_private', `${INTEREST}_general`)) === null);
+    check('skipped applicant left on the general list', after.some(r => r.id === `${DUP}_general`));
+    check('general list now holds only the skipped applicant', after.filter(r => r.retreatId === 'general').length === 1);
+    await page.evaluate((id) => localStorage.setItem('sky_active_retreat_id', id), pastRetreat.id);
   });
 
   // ------------------------------------------------ non-admin volunteer

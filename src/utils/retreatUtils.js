@@ -1,5 +1,5 @@
 import { collection, getDocs } from 'firebase/firestore';
-import { todayChicago } from './dateUtils';
+import { getUpcomingRetreats } from '../models/retreat';
 
 const RETREAT_CACHE_KEY = 'sky_retreat_history';
 const RETREAT_CACHE_TS_KEY = 'sky_retreat_history_ts';
@@ -76,12 +76,8 @@ export const getDefaultActiveRetreatId = (retreats, savedRetreatId = null) => {
     return savedRetreatId;
   }
 
-  const todayStr = todayChicago();
-
   // 1. Ongoing or Upcoming retreats (nearest start date first)
-  const upcomingOrOngoing = retreats
-    .filter(r => (r.endDate && r.endDate >= todayStr) || (r.startDate && r.startDate >= todayStr))
-    .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+  const upcomingOrOngoing = getUpcomingRetreats(retreats);
 
   if (upcomingOrOngoing.length > 0) {
     return upcomingOrOngoing[0].id;

@@ -91,3 +91,39 @@ describe('CSV export', () => {
     expect(row).toContain('"note"');
   });
 });
+
+import { formatRetreatDates, getRetreatLabel, getUpcomingRetreats } from '../src/models/retreat';
+import { buildMovedRegistration } from '../src/models/applicant';
+
+describe('retreat helpers', () => {
+  it('labels retreats with their dates so repeated titles stay distinguishable', () => {
+    expect(formatRetreatDates({ startDate: '2026-09-11', endDate: '2026-09-13' })).toBe('Sep 11–13, 2026');
+    expect(formatRetreatDates({ startDate: '2026-10-30', endDate: '2026-11-01' })).toBe('Oct 30 – Nov 1, 2026');
+    expect(formatRetreatDates({ startDate: '2026-12-31', endDate: '2027-01-02' })).toBe('Dec 31, 2026 – Jan 2, 2027');
+    expect(getRetreatLabel({ title: 'SKY Retreat', startDate: '2026-09-11', endDate: '2026-09-13' })).toBe('SKY Retreat (Sep 11–13, 2026)');
+    expect(getRetreatLabel({ title: 'General Interest List' })).toBe('General Interest List');
+  });
+  it('lists ongoing and upcoming retreats soonest first', () => {
+    const retreats = [
+      { id: 'past', startDate: '2026-09-11', endDate: '2026-09-13' },
+      { id: 'later', startDate: '2027-02-05', endDate: '2027-02-07' },
+      { id: 'ongoing', startDate: '2026-10-30', endDate: '2026-11-01' },
+      { id: 'next', startDate: '2026-11-06', endDate: '2026-11-08' }
+    ];
+    expect(getUpcomingRetreats(retreats, '2026-10-31').map(r => r.id)).toEqual(['ongoing', 'next', 'later']);
+  });
+});
+
+describe('buildMovedRegistration', () => {
+  it('keeps answers, status and contact history but drops retreat-scoped fields', () => {
+    const reg = {
+      id: 'a@x.edu_general', notes: 'merged by roster', email: 'a@x.edu', retreatId: 'general', firstName: 'A', status: 'Pending',
+      claimedBy: 'v@x.edu', lastContactedDate: '2026-10-01', appliedAt: '2026-09-22T00:00:00Z', groupId: 'group-1',
+      attendance: { day1: true }, paymentStatus: 'Paid', paidAt: 'x', paypalLink: 'p', iahvRegistered: true, sentEmails: { welcome: { sent: true } }
+    };
+    expect(buildMovedRegistration(reg, 'retreat-2', 'NOW')).toEqual({
+      email: 'a@x.edu', retreatId: 'retreat-2', firstName: 'A', status: 'Pending', claimedBy: 'v@x.edu',
+      lastContactedDate: '2026-10-01', appliedAt: '2026-09-22T00:00:00Z', updatedAt: 'NOW'
+    });
+  });
+});

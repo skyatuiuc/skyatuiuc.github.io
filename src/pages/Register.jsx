@@ -10,6 +10,7 @@ import { recordCampaignConversion } from '../services/campaignAnalyticsService';
 import confetti from 'canvas-confetti';
 import RetreatDetailsCard from '../components/RetreatDetailsCard';
 import { loadCachedRetreats } from '../utils/retreatUtils';
+import { getRetreatLabel } from '../models/retreat';
 import { todayChicago } from '../utils/dateUtils';
 import { getStatus, STATUS_STYLES, GENERAL_RETREAT_ID, registrationId } from '../models/applicant';
 
@@ -527,7 +528,7 @@ export default function Register() {
                 >
                   {upcomingRetreatsList.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.title}
+                      {getRetreatLabel(r)}
                     </option>
                   ))}
                 </select>

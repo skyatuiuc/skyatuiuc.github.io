@@ -5,6 +5,7 @@ import QRCode from 'qrcode';
 import { saveFlyerTemplateWithChunks, loadFlyerTemplateImage, deleteFlyerTemplateWithChunks } from '../../services/flyerChunkService';
 import { useRoster } from '../../context/RosterContext';
 import ColorPickerWithAlpha from './ColorPickerWithAlpha';
+import { getRetreatLabel } from '../../models/retreat';
 import { colorToQrHex, parsePixel } from '../../utils/graphicExportUtils';
 import { Trash2, CheckCircle2, AlertCircle, FileText, QrCode, Edit3 } from 'lucide-react';
 
@@ -429,7 +430,7 @@ export default function FlyerTemplateStudioTab({ setMessage }) {
               <option value="">Select Retreat Target...</option>
               {retreats.map(ret => (
                 <option key={ret.id} value={ret.id}>
-                  {ret.title} ({ret.startDate} to {ret.endDate})
+                  {getRetreatLabel(ret)}
                 </option>
               ))}
             </select>
@@ -908,7 +909,7 @@ export default function FlyerTemplateStudioTab({ setMessage }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.95rem' }}>{tpl.templateName}</div>
                   <div style={{ fontSize: '0.78rem', color: '#B45309', fontWeight: 600, marginTop: '0.15rem' }}>
-                    Retreat: {tpl.retreatTitle}
+                    Retreat: {(() => { const ret = retreats.find(r => r.id === tpl.retreatId); return ret ? getRetreatLabel(ret) : tpl.retreatTitle; })()}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
                     QR: {tpl.qrBox?.x}px, {tpl.qrBox?.y}px | Text: {tpl.shortlinkText?.x || 600}px, {tpl.shortlinkText?.y || 1450}px

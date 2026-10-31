@@ -166,6 +166,22 @@ export const sentEmailKey = (templateKey) => (String(templateKey).startsWith('ap
 
 export const hasSentEmail = (reg, templateKey) => Boolean(reg?.sentEmails?.[sentEmailKey(templateKey)]?.sent);
 
+// ---------- Moving between retreats ----------
+
+// Fields that describe one retreat's logistics; they do not carry over when a registration moves
+export const RETREAT_SCOPED_FIELDS = ['groupId', 'attendance', 'paymentStatus', 'paidAt', 'paypalLink', 'iahvRegistered', 'sentEmails'];
+
+/**
+ * Registration data for the same person in another retreat (e.g. from the General Interest List).
+ * Keeps their answers, status, claim and contact history; drops retreat-scoped fields and the
+ * roster's merged-in `id`/`notes` (notes live in registration_private).
+ */
+export const buildMovedRegistration = (reg, targetRetreatId, nowIso) => {
+  const { id: _id, notes: _notes, ...data } = reg;
+  RETREAT_SCOPED_FIELDS.forEach((field) => { delete data[field]; });
+  return { ...data, retreatId: targetRetreatId, updatedAt: nowIso };
+};
+
 // ---------- Search ----------
 
 export const matchesSearch = (reg, query) => {
