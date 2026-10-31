@@ -53,6 +53,8 @@ export const formatDirectImageUrl = (url) => {
   return clean;
 };
 
+export const DEFAULT_CHEAT_SHEET_URL = 'https://skyuiuc.org/assets/skyhomepracticecheatsheet.png';
+
 export const DEFAULT_EMAIL_SETTINGS = {
   webhookUrl: import.meta.env?.VITE_EMAIL_WEBHOOK_URL || '', // Configurable Google Apps Script Webhook
   senderEmail: 'skyatuiuc@gmail.com',
@@ -67,8 +69,8 @@ export const DEFAULT_EMAIL_SETTINGS = {
   dailyPracticeLink: import.meta.env?.VITE_DAILY_PRACTICE_LINK || '',
   defaultRegistrationLink: 'https://members.us.iahv.org/us-en/course/checkout',
   registrationLink: 'https://members.us.iahv.org/us-en/course/checkout',
-  practiceGuideUrl: 'https://skyuiuc.org/assets/skyhomepracticeguide.png',
-  cheatSheetUrl: 'https://skyuiuc.org/assets/skyhomepracticeguide.png'
+  // Home practice cheat sheet in the completion email; admins point this at the current version
+  cheatSheetUrl: DEFAULT_CHEAT_SHEET_URL
 };
 
 // Fee and payment status for templates and the dispatch table (single source: models/applicant)
@@ -187,8 +189,7 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
     surveyLink: sanitizeUrl(settings.surveyLink),
     dailyPracticeLink: sanitizeUrl(settings.dailyPracticeLink),
     groupPhotoUrl: formatDirectImageUrl(retreat?.groupPhotoUrl || settings.groupPhotoUrl),
-    practiceGuideUrl: sanitizeUrl(settings.practiceGuideUrl || retreat?.practiceGuideUrl || settings.cheatSheetUrl || retreat?.cheatSheetUrl || 'https://skyuiuc.org/assets/skyhomepracticeguide.png'),
-    cheatSheetUrl: sanitizeUrl(settings.practiceGuideUrl || retreat?.practiceGuideUrl || settings.cheatSheetUrl || retreat?.cheatSheetUrl || 'https://skyuiuc.org/assets/skyhomepracticeguide.png')
+    cheatSheetUrl: formatDirectImageUrl(settings.cheatSheetUrl) || DEFAULT_CHEAT_SHEET_URL
   };
 
   const htmlBody = template.renderHtml(templateData);

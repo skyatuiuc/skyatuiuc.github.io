@@ -5,7 +5,7 @@ import {
   Save,
   Settings
 } from 'lucide-react';
-import { DEFAULT_EMAIL_SETTINGS } from '../services/emailService';
+import { DEFAULT_EMAIL_SETTINGS, DEFAULT_CHEAT_SHEET_URL } from '../services/emailService';
 
 export default function EmailSettingsModal({
   emailSettings = {},
@@ -282,18 +282,14 @@ export default function EmailSettingsModal({
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-main)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.35rem' }}>
-                  SKY Home Practice Guide Link (Default: skyuiuc.org Image)
+                  Home Practice Cheat Sheet (Completion Email; image or Google Drive link)
                 </label>
                 <input
                   type="url"
                   disabled={!isSuperAdmin}
-                  value={formData.practiceGuideUrl || formData.cheatSheetUrl || ''}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    practiceGuideUrl: e.target.value,
-                    cheatSheetUrl: e.target.value
-                  })}
-                  placeholder="https://skyuiuc.org/assets/skyhomepracticeguide.png"
+                  value={formData.cheatSheetUrl || ''}
+                  onChange={(e) => setFormData({ ...formData, cheatSheetUrl: e.target.value })}
+                  placeholder={DEFAULT_CHEAT_SHEET_URL}
                   style={{
                     width: '100%',
                     padding: '0.65rem 0.85rem',

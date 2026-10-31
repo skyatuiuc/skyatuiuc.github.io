@@ -436,7 +436,7 @@ export const EMAIL_TEMPLATES = {
     id: 'completion',
     name: 'Retreat Completion & Follow-Up',
     subject: 'SKY Happiness Retreat | Congratulations and Next Steps!',
-    description: 'Sent after retreat completion with cohort group photo, home practice guide, Sattva app, Sunday reunions, and team info.',
+    description: 'Sent after retreat completion with cohort group photo, home practice cheat sheet, Sattva app, Sunday reunions, and team info.',
     renderHtml: (data) => `
 <!DOCTYPE html>
 <html>
@@ -492,31 +492,31 @@ export const EMAIL_TEMPLATES = {
       <a href="${data.sattvaLink || 'https://www.sattva.life/'}" style="color: #1F74F1; font-weight: bold; text-decoration: none;">Download Sattva App &rarr;</a> (Join our UIUC Circle with code: <strong>KPN8RG</strong>)
     </p>
 
-    <!-- HOME PRACTICE GUIDE -->
-    ${(data.practiceGuideUrl || data.cheatSheetUrl) ? `
+    <!-- HOME PRACTICE CHEAT SHEET -->
+    ${data.cheatSheetUrl ? `
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
-      Home Practice Reference Guide
+      Home Practice Cheat Sheet
     </h3>
     <p style="line-height: 1.6; font-size: 15px; color: #23275F; margin: 8px 0;">
-      Save our quick-reference guide for 3-stage pranayama, breath counts, and daily home practice sequence:
+      Save our cheat sheet for 3-stage pranayama, breath counts, and the daily home practice sequence:
     </p>
-    ${/\.(png|jpe?g|webp|gif)$/i.test((data.practiceGuideUrl || data.cheatSheetUrl).split('?')[0]) ? `
+    ${(/\.(png|jpe?g|webp|gif)$/i.test(data.cheatSheetUrl.split('?')[0]) || data.cheatSheetUrl.startsWith('https://lh3.googleusercontent.com/d/')) ? `
     <div style="margin: 16px 0 20px 0; text-align: center;">
-      <a href="${data.practiceGuideUrl || data.cheatSheetUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; display: inline-block; max-width: 100%;">
+      <a href="${data.cheatSheetUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; display: inline-block; max-width: 100%;">
         <img 
-          src="${data.practiceGuideUrl || data.cheatSheetUrl}" 
-          alt="SKY Daily Home Practice Guide - Sequence and Breath Counts" 
+          src="${data.cheatSheetUrl}" 
+          alt="SKY Home Practice Cheat Sheet - Sequence and Breath Counts" 
           width="540" 
           style="width: 100%; max-width: 540px; height: auto; border-radius: 6px; border: 1.5px solid #CBD5E1; display: block; margin: 0 auto; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" 
         />
       </a>
       <p style="margin: 8px 0 0 0; font-size: 12px; color: #718096; font-style: italic;">
-        Click to view full-resolution guide: <a href="${data.practiceGuideUrl || data.cheatSheetUrl}" style="color: #1F74F1; text-decoration: underline;">${data.practiceGuideUrl || data.cheatSheetUrl}</a>
+        Click to view the full-resolution cheat sheet: <a href="${data.cheatSheetUrl}" style="color: #1F74F1; text-decoration: underline;">${data.cheatSheetUrl}</a>
       </p>
     </div>` : `
     <p style="margin: 10px 0 15px 0;">
-      <a href="${data.practiceGuideUrl || data.cheatSheetUrl}" target="_blank" rel="noopener noreferrer" style="color: #1F74F1; font-weight: bold; text-decoration: none;">
-        View Daily Home Practice Guide &rarr;
+      <a href="${data.cheatSheetUrl}" target="_blank" rel="noopener noreferrer" style="color: #1F74F1; font-weight: bold; text-decoration: none;">
+        View the Home Practice Cheat Sheet &rarr;
       </a>
     </p>`}` : ''}
 
