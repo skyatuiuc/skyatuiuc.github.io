@@ -240,11 +240,15 @@ export async function getCampaignAnalyticsForDateRange(startDateStr, endDateStr)
         }
       }
 
-      const tokenParam = idToken ? `&idToken=${encodeURIComponent(idToken)}` : '';
-      const fetchUrl = `${webhookUrl}?action=get_campaign_analytics&startDate=${encodeURIComponent(startDateStr)}&endDate=${encodeURIComponent(endDateStr)}${tokenParam}`;
-      const resp = await fetch(fetchUrl, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' }
+      const resp = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'get_campaign_analytics',
+          idToken,
+          startDate: startDateStr,
+          endDate: endDateStr
+        })
       });
 
       if (resp.ok) {

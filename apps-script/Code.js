@@ -1,11 +1,11 @@
 /**
  * GOOGLE APPS SCRIPT RELAY & CAMPAIGN ANALYTICS ENGINE FOR SKY AT UIUC
  * 
- * Version: 4.1.0
+ * Version: 4.4.0
  * Managed in GitHub repository: https://github.com/skyatuiuc/skyatuiuc.github.io
  * 
  * Capabilities:
- * 1. Cryptographically verified Email Relay for authorized volunteers
+ * 1. Email Relay for authorized volunteers (ID tokens verified by Google via Firestore REST)
  * 2. High-performance, rate-limited Campaign QR/Shortlink Scan Ingestion (Zero-Quota Firestore protection)
  * 3. Auto-provisioning Google Sheet Database for lifetime campaign analytics
  * 4. Date-range aggregated metrics querying for Volunteer & Admin Dashboards
@@ -74,113 +74,115 @@ function getOrCreateCampaignSheet() {
 }
 
 /**
- * Cryptographically verify incoming Firebase Auth ID Token claims using Google Apps Script WebSafe Base64 decoding
- * @param {string} idToken Signed Firebase JWT
- * @returns {object|null} { email: string, uid: string, emailVerified: boolean } or null
+ * Decode (without trusting) the payload segment of a JWT.
+ * @param {string} token
+ * @returns {object|null}
  */
-function verifyFirebaseIdToken(idToken) {
-  if (!idToken || typeof idToken !== "string" || idToken.trim() === "") {
-    return null;
-  }
-
+function decodeJwtPayload_(token) {
+  var parts = token.split(".");
+  if (parts.length !== 3) return null;
   try {
-    var tokenStr = idToken.trim();
-    var parts = tokenStr.split(".");
-    if (parts.length !== 3) {
-      Logger.log("Invalid JWT structure: parts count !== 3");
-      return null;
-    }
-
-    // Decode JWT Payload (Part 2) using Google Apps Script Base64 WebSafe utility
-    var payloadJson = Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[1])).getDataAsString();
-    var payload = JSON.parse(payloadJson);
-
-    // 1. Verify Audience and Issuer match the Firebase project
-    var expectedIssuer = "https://securetoken.google.com/" + FIREBASE_PROJECT_ID;
-    if (payload.aud !== FIREBASE_PROJECT_ID || payload.iss !== expectedIssuer) {
-      Logger.log("Audience/Issuer mismatch: " + payload.aud + " / " + payload.iss);
-      return null;
-    }
-
-    // 2. Check token expiration
-    var nowSec = Math.floor(Date.now() / 1000);
-    if (payload.exp && payload.exp < (nowSec - 60)) { // 60s clock skew tolerance
-      Logger.log("Firebase ID Token expired at " + payload.exp + ", current time: " + nowSec);
-      return null;
-    }
-
-    // 3. Verify Email is present
-    var email = (payload.email || "").toLowerCase().trim();
-    if (!email) {
-      Logger.log("Missing email in verified token payload");
-      return null;
-    }
-
-    var isEmailVerified = payload.email_verified === true || payload.email_verified === "true";
-
-    return {
-      email: email,
-      uid: payload.user_id || payload.sub || "",
-      emailVerified: isEmailVerified
-    };
+    return JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[1])).getDataAsString());
   } catch (err) {
-    Logger.log("Token verification exception: " + err.toString());
     return null;
   }
 }
 
 /**
- * Check if the verified caller email is an authorized volunteer or super admin
- * @param {string} callerEmail
- * @param {string} idToken
+ * Authenticate a caller from a Firebase Auth ID token.
+ *
+ * Apps Script cannot verify RS256 signatures itself, so the token is presented to the
+ * Firestore REST API as a Bearer credential. Google validates its signature, expiry and
+ * project before evaluating security rules:
+ *   - 401 -> forged, expired or foreign token (rejected)
+ *   - 200 -> authentic, and authorized_volunteers/{email} exists
+ *   - 404 -> authentic, but not a listed volunteer
+ * (Rules let any signed-in user `get` the doc for their own email, so a genuine token never
+ * receives 403 for this path.) Only after this check are the payload claims trusted.
+ *
+ * Results are cached per token (SHA-256 digest), never per email, so a cached authorization
+ * cannot be borrowed by a forged token that merely claims the same email.
+ *
+ * @param {string} idToken Firebase ID token from the web client
+ * @returns {{email: string, authorized: boolean}|null} null when the token is not authentic
+ */
+function authenticateCaller(idToken) {
+  if (!idToken || typeof idToken !== "string") return null;
+  var token = idToken.trim();
+  var payload = decodeJwtPayload_(token);
+  if (!payload) return null;
+
+  // Cheap pre-checks so obviously bad tokens never cost a Firestore read
+  var nowSec = Math.floor(Date.now() / 1000);
+  if (payload.aud !== FIREBASE_PROJECT_ID || payload.iss !== "https://securetoken.google.com/" + FIREBASE_PROJECT_ID) {
+    return null;
+  }
+  if (!payload.exp || payload.exp <= nowSec) return null;
+  var email = String(payload.email || "").toLowerCase().trim();
+  if (!email) return null;
+
+  var cache = CacheService.getScriptCache();
+  var cacheKey = "auth_tok_" + Utilities.base64EncodeWebSafe(
+    Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token, Utilities.Charset.UTF_8)
+  );
+  var cached = cache.get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (e) { /* fall through to re-verify */ }
+  }
+
+  var code;
+  try {
+    var fsUrl = "https://firestore.googleapis.com/v1/projects/" + FIREBASE_PROJECT_ID +
+      "/databases/(default)/documents/authorized_volunteers/" + encodeURIComponent(email);
+    var resp = UrlFetchApp.fetch(fsUrl, {
+      muteHttpExceptions: true,
+      headers: { "Authorization": "Bearer " + token }
+    });
+    code = resp.getResponseCode();
+  } catch (err) {
+    Logger.log("Token verification request failed: " + err.toString());
+    return null;
+  }
+
+  if (code !== 200 && code !== 404) {
+    Logger.log("Rejected caller token for " + email + " (Firestore HTTP " + code + ")");
+    return null;
+  }
+
+  // The payload is now known to be Google-signed, so its claims can be trusted
+  if (payload.email_verified !== true) {
+    Logger.log("Rejected caller " + email + ": email not verified");
+    return null;
+  }
+
+  var result = {
+    email: email,
+    authorized: code === 200 || email === SUPER_ADMIN_EMAIL.toLowerCase() || isInScriptAllowlist_(email)
+  };
+
+  var ttl = Math.min(600, payload.exp - nowSec);
+  if (ttl > 0) cache.put(cacheKey, JSON.stringify(result), ttl);
+  return result;
+}
+
+/**
+ * Optional AUTHORIZED_VOLUNTEERS script property (comma-separated emails).
+ * Only consulted after the caller's identity has been verified.
+ * @param {string} email
  * @returns {boolean}
  */
-function isAuthorizedCaller(callerEmail, idToken) {
-  if (!callerEmail) return false;
-  callerEmail = callerEmail.toLowerCase().trim();
+function isInScriptAllowlist_(email) {
+  var listStr = PropertiesService.getScriptProperties().getProperty("AUTHORIZED_VOLUNTEERS");
+  if (!listStr) return false;
+  var list = listStr.toLowerCase().split(",").map(function(s) { return s.trim(); });
+  return list.indexOf(email) !== -1;
+}
 
-  // 1. Super Admin is always authorized
-  if (callerEmail === SUPER_ADMIN_EMAIL.toLowerCase()) {
-    return true;
-  }
-
-  // 2. Check CacheService to avoid burning Firestore read quota on every request
-  var cache = CacheService.getScriptCache();
-  var authCacheKey = "auth_vol_" + callerEmail;
-  if (cache.get(authCacheKey) === "1") {
-    return true;
-  }
-
-  // 3. Check Script Property AUTHORIZED_VOLUNTEERS fallback if configured
-  var authorizedListStr = PropertiesService.getScriptProperties().getProperty("AUTHORIZED_VOLUNTEERS");
-  if (authorizedListStr) {
-    var authorizedList = authorizedListStr.toLowerCase().split(",").map(function(s) { return s.trim(); });
-    if (authorizedList.indexOf(callerEmail) !== -1) {
-      cache.put(authCacheKey, "1", 600); // 10 minutes cache
-      return true;
-    }
-  }
-
-  // 4. Query Cloud Firestore to check if authorized_volunteers/{callerEmail} document exists
-  if (idToken) {
-    try {
-      var fsUrl = "https://firestore.googleapis.com/v1/projects/" + FIREBASE_PROJECT_ID + "/databases/(default)/documents/authorized_volunteers/" + encodeURIComponent(callerEmail);
-      var fsResp = UrlFetchApp.fetch(fsUrl, {
-        muteHttpExceptions: true,
-        headers: {
-          "Authorization": "Bearer " + idToken
-        }
-      });
-      if (fsResp.getResponseCode() === 200) {
-        cache.put(authCacheKey, "1", 600); // Cache authorization for 10 min to save Firestore reads
-        return true;
-      }
-    } catch (e) {
-      // Fallback
-    }
-  }
-
-  return false;
+function unauthorizedResponse_() {
+  return createJsonResponse({
+    status: "error",
+    message: "Unauthorized: Valid Firebase ID token from an authorized volunteer or super admin is required."
+  });
 }
 
 /**
@@ -475,36 +477,21 @@ function doPost(e) {
       return handleRecordConversion(data);
     }
 
-    // 3. Handle Campaign Analytics Query
+    // 3. Handle Campaign Analytics Query (volunteers only)
     if (action === "get_campaign_analytics" || action === "analytics") {
-      var queryToken = data.idToken || (e.parameter ? e.parameter.idToken : "") || "";
-      if (queryToken) {
-        var verifiedQueryCaller = verifyFirebaseIdToken(queryToken);
-        if (verifiedQueryCaller) {
-          Logger.log("Authenticated POST campaign analytics query by: " + verifiedQueryCaller.email);
-        }
+      var queryCaller = authenticateCaller(data.idToken || "");
+      if (!queryCaller || !queryCaller.authorized) {
+        return unauthorizedResponse_();
       }
-      return handleGetAnalytics(data.startDate || (e.parameter ? e.parameter.startDate : ""), data.endDate || (e.parameter ? e.parameter.endDate : ""));
+      return handleGetAnalytics(data.startDate || "", data.endDate || "");
     }
 
     // 4. Authenticated Email Dispatch Relay
-    var isAuthorized = false;
-    var senderEmail = "";
-
-    if (data.idToken) {
-      var verifiedCaller = verifyFirebaseIdToken(data.idToken);
-      if (verifiedCaller && isAuthorizedCaller(verifiedCaller.email, data.idToken)) {
-        isAuthorized = true;
-        senderEmail = verifiedCaller.email;
-      }
+    var caller = authenticateCaller(data.idToken || "");
+    if (!caller || !caller.authorized) {
+      return unauthorizedResponse_();
     }
-
-    if (!isAuthorized) {
-      return createJsonResponse({ 
-        status: "error", 
-        message: "Unauthorized: Valid Firebase ID token from an authorized volunteer or super admin is required." 
-      });
-    }
+    var senderEmail = caller.email;
 
     if (!data.to || !data.subject || !data.htmlBody) {
       return createJsonResponse({ 
@@ -535,21 +522,14 @@ function doPost(e) {
 function doGet(e) {
   var action = e && e.parameter ? e.parameter.action : "";
   if (action === "get_campaign_analytics" || action === "analytics") {
-    var idToken = e && e.parameter ? (e.parameter.idToken || "") : "";
-    if (idToken) {
-      var verifiedCaller = verifyFirebaseIdToken(idToken);
-      if (verifiedCaller) {
-        Logger.log("Authenticated GET campaign analytics query by: " + verifiedCaller.email);
-      }
-    }
-
-    return handleGetAnalytics(e.parameter.startDate, e.parameter.endDate);
+    // Analytics must be requested via POST with the ID token in the body (keeps tokens out of URLs/logs)
+    return createJsonResponse({ status: "error", message: "Use POST for campaign analytics queries." });
   }
 
-  return createJsonResponse({ 
-    status: "online", 
+  return createJsonResponse({
+    status: "online",
     service: "SKY UIUC Relay & Campaign Engine",
-    version: "4.3.0",
+    version: "4.4.0",
     time: new Date().toISOString()
   });
 }

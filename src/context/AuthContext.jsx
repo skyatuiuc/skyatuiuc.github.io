@@ -12,6 +12,24 @@ const INITIAL_AUTHORIZED_VOLUNTEERS = [
   ADMIN_EMAIL.toLowerCase()
 ];
 
+// Browser storage keys that hold people's data; wiped whenever the session ends
+const SESSION_DATA_KEYS = ['sky_authorized_emails', 'sky_registrations'];
+
+const clearSessionData = () => {
+  SESSION_DATA_KEYS.forEach((key) => localStorage.removeItem(key));
+};
+
+const toUserObj = (user) => {
+  const cleanEmail = user.email ? user.email.toLowerCase() : '';
+  return {
+    uid: user.uid,
+    email: cleanEmail,
+    displayName: user.displayName || cleanEmail,
+    photoURL: user.photoURL,
+    isGoogleAuth: true
+  };
+};
+
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -29,6 +47,34 @@ export function AuthProvider({ children }) {
     }
   });
 
+  // Confirm (or revoke) volunteer status for the signed-in email with a single document read
+  const resolveVolunteerStatus = async (cleanEmail) => {
+    if (!cleanEmail || !db) return;
+    const rememberEmail = (prev) => {
+      const updated = prev.includes(cleanEmail) ? prev : [...prev, cleanEmail];
+      localStorage.setItem('sky_authorized_emails', JSON.stringify(updated));
+      return updated;
+    };
+    if (cleanEmail === ADMIN_EMAIL.toLowerCase()) {
+      setAuthorizedEmails(rememberEmail);
+      return;
+    }
+    try {
+      const docSnap = await getDoc(doc(db, 'authorized_volunteers', cleanEmail));
+      if (docSnap.exists()) {
+        setAuthorizedEmails(rememberEmail);
+      } else {
+        setAuthorizedEmails((prev) => {
+          const pruned = prev.filter(e => e !== cleanEmail);
+          localStorage.setItem('sky_authorized_emails', JSON.stringify(pruned));
+          return pruned;
+        });
+      }
+    } catch (err) {
+      console.warn("Volunteer verification notice:", err);
+    }
+  };
+
   // Listen to Firebase Auth state & verify volunteer status atomically
   useEffect(() => {
     let unsubscribeAuth = null;
@@ -38,82 +84,23 @@ export function AuthProvider({ children }) {
       // Catch redirect auth completion if popup flow fell back
       getRedirectResult(auth).then(async (result) => {
         if (result?.user) {
-          const cleanEmail = result.user.email ? result.user.email.toLowerCase() : '';
-          const userObj = {
-            uid: result.user.uid,
-            email: cleanEmail,
-            displayName: result.user.displayName || cleanEmail,
-            photoURL: result.user.photoURL,
-            isGoogleAuth: true
-          };
+          const userObj = toUserObj(result.user);
           setCurrentUser(userObj);
-
-          if (cleanEmail && db && cleanEmail !== ADMIN_EMAIL.toLowerCase()) {
-            try {
-              const userDocRef = doc(db, 'authorized_volunteers', cleanEmail);
-              const docSnap = await getDoc(userDocRef);
-              if (docSnap.exists()) {
-                setAuthorizedEmails((prev) => {
-                  const updated = prev.includes(cleanEmail) ? prev : [...prev, cleanEmail];
-                  localStorage.setItem('sky_authorized_emails', JSON.stringify(updated));
-                  return updated;
-                });
-              }
-            } catch (err) {
-              console.warn("Redirect volunteer verification error:", err);
-            }
-          }
+          await resolveVolunteerStatus(userObj.email);
         }
       }).catch((err) => console.warn("Redirect sign-in notice:", err));
 
       unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
         if (user) {
-          const cleanEmail = user.email ? user.email.toLowerCase() : '';
-          const userObj = {
-            uid: user.uid,
-            email: cleanEmail,
-            displayName: user.displayName || user.email,
-            photoURL: user.photoURL,
-            isGoogleAuth: true
-          };
+          const userObj = toUserObj(user);
           setCurrentUser(userObj);
-
-          // Direct volunteer document check for current user prior to releasing loading state
-          if (cleanEmail && db) {
-            if (cleanEmail === ADMIN_EMAIL.toLowerCase()) {
-              setAuthorizedEmails((prev) => {
-                const updated = prev.includes(cleanEmail) ? prev : [...prev, cleanEmail];
-                localStorage.setItem('sky_authorized_emails', JSON.stringify(updated));
-                return updated;
-              });
-            } else {
-              try {
-                const userDocRef = doc(db, 'authorized_volunteers', cleanEmail);
-                const docSnap = await getDoc(userDocRef);
-                if (docSnap.exists()) {
-                  setAuthorizedEmails((prev) => {
-                    const updated = prev.includes(cleanEmail) ? prev : [...prev, cleanEmail];
-                    localStorage.setItem('sky_authorized_emails', JSON.stringify(updated));
-                    return updated;
-                  });
-                } else {
-                  // Current user is not an authorized volunteer: prune from local whitelist
-                  setAuthorizedEmails((prev) => {
-                    const pruned = prev.filter(e => e !== cleanEmail || e === ADMIN_EMAIL.toLowerCase());
-                    localStorage.setItem('sky_authorized_emails', JSON.stringify(pruned));
-                    return pruned;
-                  });
-                }
-              } catch (e) {
-                console.warn("Volunteer doc check notice:", e);
-              }
-            }
-          }
+          // Resolve volunteer status before releasing the loading state
+          await resolveVolunteerStatus(userObj.email);
         } else {
           setCurrentUser(null);
           // Only clear volunteer list on confirmed logout/unauthenticated state
           setAuthorizedEmails([ADMIN_EMAIL.toLowerCase()]);
-          localStorage.removeItem('sky_authorized_emails');
+          clearSessionData();
         }
         setLoading(false);
       });
@@ -177,32 +164,10 @@ export function AuthProvider({ children }) {
 
       const result = await signInWithPopup(auth, provider);
       if (result && result.user) {
-        const cleanEmail = result.user.email ? result.user.email.toLowerCase() : '';
-        const userObj = {
-          uid: result.user.uid,
-          email: cleanEmail,
-          displayName: result.user.displayName || cleanEmail,
-          photoURL: result.user.photoURL,
-          isGoogleAuth: true
-        };
+        const userObj = toUserObj(result.user);
         setCurrentUser(userObj);
-
         // Immediate volunteer status resolution on interactive login
-        if (cleanEmail && db && cleanEmail !== ADMIN_EMAIL.toLowerCase()) {
-          try {
-            const userDocRef = doc(db, 'authorized_volunteers', cleanEmail);
-            const docSnap = await getDoc(userDocRef);
-            if (docSnap.exists()) {
-              setAuthorizedEmails(prev => {
-                const updated = prev.includes(cleanEmail) ? prev : [...prev, cleanEmail];
-                localStorage.setItem('sky_authorized_emails', JSON.stringify(updated));
-                return updated;
-              });
-            }
-          } catch (e) {
-            console.warn("Volunteer verification error on login:", e);
-          }
-        }
+        await resolveVolunteerStatus(userObj.email);
 
         return userObj;
       }
@@ -231,7 +196,7 @@ export function AuthProvider({ children }) {
     }
     setCurrentUser(null);
     setAuthorizedEmails([ADMIN_EMAIL.toLowerCase()]);
-    localStorage.removeItem('sky_authorized_emails');
+    clearSessionData();
   };
 
   // Add volunteer email (Super Admin only)

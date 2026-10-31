@@ -1,5 +1,5 @@
 import { auth, db, isFirebaseConfigured } from '../firebase/config';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
 import { logDatabaseOperation } from './telemetryService';
 import { EMAIL_TEMPLATES } from '../templates/emailTemplates';
 import { getRetreatDaySchedule } from '../data/scheduleData';
@@ -306,6 +306,7 @@ export const sendSingleEmail = async (templateTypeKey, participant, retreat, ema
   }
 
   // 3. Dispatch via Google Apps Script Webhook
+  let dispatchedBy = '';
   try {
     const response = await fetch(webhookUrl, {
       method: 'POST',
@@ -336,6 +337,7 @@ export const sendSingleEmail = async (templateTypeKey, participant, retreat, ema
     if (!result || result.status !== 'success') {
       throw new Error(result?.message || 'Apps Script email dispatch rejected.');
     }
+    dispatchedBy = result.dispatchedBy || '';
   } catch (err) {
     console.error("Apps Script Webhook request error:", err);
     throw new Error(`Failed to dispatch email via Apps Script Webhook: ${err.message}`);
@@ -345,7 +347,8 @@ export const sendSingleEmail = async (templateTypeKey, participant, retreat, ema
   const sentRecord = {
     sent: true,
     sentAt: new Date().toISOString(),
-    sentBy: currentUser?.email || 'skyatuiuc@gmail.com',
+    // The relay reports the identity it verified from the ID token
+    sentBy: dispatchedBy || auth?.currentUser?.email || currentUser?.email || '',
     templateKey: payload.templateKey,
     subject: payload.subject,
     paypalLinkUsed: payload.paypalLink || null
@@ -354,19 +357,17 @@ export const sendSingleEmail = async (templateTypeKey, participant, retreat, ema
   // Canonical key for status tracking
   const stateKey = (templateTypeKey.startsWith('application_accepted')) ? 'application_accepted' : templateTypeKey;
 
-  const currentSentEmails = participant.sentEmails || {};
   const updatedSentEmails = {
-    ...currentSentEmails,
+    ...(participant.sentEmails || {}),
     [stateKey]: sentRecord
   };
 
-  // 4. Save to Firestore & localStorage
+  // 4. Persist only this template's record (dot path), so concurrent sends never clobber each other
   if (participant.id && isFirebaseConfigured && db) {
     try {
-      await setDoc(doc(db, 'registrations', participant.id), {
-        sentEmails: updatedSentEmails,
-        emailUpdatedAt: new Date().toISOString()
-      }, { merge: true });
+      await updateDoc(doc(db, 'registrations', participant.id), {
+        [`sentEmails.${stateKey}`]: sentRecord
+      });
       logDatabaseOperation(0, 1, 0);
     } catch (err) {
       console.warn("Error saving email status to Firestore:", err);
