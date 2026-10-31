@@ -6,15 +6,19 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
+
+    // Google is the only sign-in provider, but an email address is only trusted once verified
+    function hasVerifiedEmail() {
+      return isAuthenticated() && request.auth.token.email_verified == true;
+    }
     
     function isAdmin() {
-      return isAuthenticated() && 
-             request.auth.token.email_verified == true && 
+      return hasVerifiedEmail() &&
              request.auth.token.email.lower() == 'skyatuiuc@gmail.com';
     }
     
     function isVolunteer() {
-      return isAuthenticated() && (
+      return hasVerifiedEmail() && (
         isAdmin() || 
         exists(/databases/$(database)/documents/authorized_volunteers/$(request.auth.token.email.lower()))
       );
@@ -25,7 +29,7 @@ service cloud.firestore {
       // On creation: applicants may only create their own record ({email}_{retreatId}) for an existing
       // retreat (or the 'general' interest list), with schema-v2 keys, size limits and an initial status.
       allow create: if isVolunteer() || (
-        isAuthenticated() &&
+        hasVerifiedEmail() &&
         document == request.auth.token.email.lower() + '_' + request.resource.data.retreatId &&
         request.resource.data.email == request.auth.token.email.lower() &&
         (request.resource.data.retreatId == 'general' || exists(/databases/$(database)/documents/retreat_history/$(request.resource.data.retreatId))) &&
@@ -48,7 +52,7 @@ service cloud.firestore {
         request.resource.data.appliedAt is string && request.resource.data.appliedAt.size() <= 40
       );
 
-      allow read: if isVolunteer() || (isAuthenticated() && resource.data.email.lower() == request.auth.token.email.lower());
+      allow read: if isVolunteer() || (hasVerifiedEmail() && resource.data.email.lower() == request.auth.token.email.lower());
       
       // Strict field protection: Applicants cannot modify applications once submitted.
       // All registration updates are strictly reserved for authorized volunteers and super admins.
@@ -64,7 +68,7 @@ service cloud.firestore {
 
     // 3. Authorized Volunteer Whitelist (Users can only verify themselves; volunteers can list)
     match /authorized_volunteers/{userEmail} {
-      allow get: if isAuthenticated() && (request.auth.token.email.lower() == userEmail.lower() || isVolunteer());
+      allow get: if hasVerifiedEmail() && (request.auth.token.email.lower() == userEmail.lower() || isVolunteer());
       allow list: if isVolunteer();
       allow write, create, update, delete: if isAdmin();
     }

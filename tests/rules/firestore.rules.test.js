@@ -122,6 +122,20 @@ describe.runIf(process.env.FIRESTORE_EMULATOR_HOST)('firestore.rules', () => {
     });
   });
 
+  describe('unverified email addresses', () => {
+    const unverified = (email) => env.authenticatedContext(email, { email, email_verified: false }).firestore();
+    it('grant no volunteer or admin access', async () => {
+      await assertFails(getDocs(query(collection(unverified('vol@illinois.edu'), 'registrations'), where('retreatId', '==', RETREAT))));
+      await assertFails(getDoc(doc(unverified('vol@illinois.edu'), 'registration_private', `other@illinois.edu_${RETREAT}`)));
+      await assertFails(deleteDoc(doc(unverified('skyatuiuc@gmail.com'), 'registrations', `other@illinois.edu_${RETREAT}`)));
+    });
+    it('cannot read or create applications under that address', async () => {
+      const db = unverified('other@illinois.edu');
+      await assertFails(getDocs(query(collection(db, 'registrations'), where('email', '==', 'other@illinois.edu'))));
+      await assertFails(setDoc(doc(unverified('ada@illinois.edu'), 'registrations', `ada@illinois.edu_${RETREAT}`), applicantDoc('ada@illinois.edu')));
+    });
+  });
+
   describe('Apps Script relay assumption', () => {
     // authenticateCaller() treats "404 for your own volunteer doc" as "authentic token, not a volunteer".
     it('a signed-in non-volunteer may get (and so receive 404 for) their own volunteer doc', async () => {
