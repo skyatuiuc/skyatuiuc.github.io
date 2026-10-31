@@ -84,6 +84,11 @@ await env.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(db, 'retreat_history', id), data);
   }
   for (const v of seed.volunteers) await setDoc(doc(db, 'authorized_volunteers', v), { email: v, addedAt: '2026-08-01T00:00:00Z' });
+  // Relay settings pointing at a fake URL the harness intercepts (never the production relay)
+  await setDoc(doc(db, 'system_settings', 'email_config'), {
+    webhookUrl: 'https://script.google.com/macros/s/E2E-FAKE-RELAY/exec',
+    whatsAppLink: 'https://chat.whatsapp.com/e2e', contactPhone: '2175550000', contactName: 'E2E', senderEmail: ADMIN
+  });
   for (const r of seed.registrations) {
     const { id, ...data } = r;
     await setDoc(doc(db, 'registrations', id), { id, ...data });
@@ -140,11 +145,26 @@ page.on('console', (msg) => {
 // Native dialogs are no longer used; fail loudly if one appears
 page.on('dialog', (d) => { pageErrors.push(`Unexpected native dialog: ${d.message()}`); d.dismiss(); });
 await page.setRequestInterception(true);
+// Never let the local app reach the production Apps Script: answer relay calls with a fake relay that
+// mirrors the real one's quota/send/scan responses, and record what was sent.
+const relayLog = [];
+let relayRemaining = 2;
 page.on('request', (req) => {
-  // Never let the local app reach the production Apps Script or analytics
-  if (/script\.google\.com|googleusercontent\.com\/macros/.test(req.url())) req.abort();
-  else req.continue();
+  if (!/script\.google\.com|googleusercontent\.com\/macros/.test(req.url())) return req.continue();
+  if (req.method() !== 'POST') return req.abort();
+  let body = {};
+  try { body = JSON.parse(req.postData() || '{}'); } catch { /* beacon */ }
+  relayLog.push(body);
+  let res = { status: 'success' };
+  if (body.action === 'get_email_quota') {
+    res = { status: 'success', limit: 100, used: 100 - relayRemaining, remaining: relayRemaining, nextFreeAt: null };
+  } else if (body.action === 'send_email') {
+    if (relayRemaining <= 0) res = { status: 'error', code: 'quota_exhausted', message: 'Daily email limit reached (100 per 24 hours).' };
+    else { relayRemaining -= 1; res = { status: 'success', dispatchedBy: ADMIN, remaining: relayRemaining }; }
+  }
+  return req.respond({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(res) });
 });
+const relaySends = () => relayLog.filter(b => b.action === 'send_email');
 
 const errorsSince = (n) => pageErrors.slice(n);
 // Firestore keeps a long-lived channel open, so "network idle" never happens; wait on DOM instead
@@ -259,6 +279,44 @@ try {
     await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded' });
     await clickByText('button', 'Auto Email Dispatch');
     await waitForText(`of ${retreatRegs.length} applicant records`);
+  });
+
+  await step('Email Dispatch: quota, test send, eligibility and quota cap (U18)', async () => {
+    await page.goto(`${BASE}/admin/emails`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => /2 of 100 emails left/.test(document.querySelector('[data-testid="email-quota"]')?.textContent || ''), { timeout: 10000 });
+    check('relay quota is shown', true);
+
+    // Test send goes only to the admin and records nothing
+    const first = retreatRegs[0];
+    const beforeTest = await readOne('registrations', first.id);
+    await page.$eval('[data-preview-template="application_received"]', el => el.click());
+    await clickByText('button', 'Send test to me');
+    await sleep(1200);
+    const testSend = relaySends().at(-1);
+    check('test email goes to the signed-in admin with [TEST] in the subject', testSend?.to === ADMIN && testSend?.subject?.startsWith('[TEST] '), `${testSend?.to} ${testSend?.subject}`);
+    const afterTest = await readOne('registrations', first.id);
+    check('test email records nothing on the registration', JSON.stringify(afterTest?.sentEmails || {}) === JSON.stringify(beforeTest?.sentEmails || {}));
+    await clickByText('button', 'Cancel');
+
+    // Batch "welcome" to everyone: ineligible people are skipped and the batch is capped at the quota (1 left)
+    await page.waitForFunction(() => /1 of 100 emails left/.test(document.querySelector('[data-testid="email-quota"]')?.textContent || ''), { timeout: 10000 });
+    await page.$eval('input[title="Select All"]', el => el.click());
+    await page.select('#batch-template', 'welcome');
+    const sendsBefore = relaySends().length;
+    await page.$eval('#batch-send', el => el.click());
+    await page.waitForSelector('[data-confirm="ok"]');
+    const dialog = await page.$eval('[role="dialog"]', el => el.innerText);
+    check('confirm explains skipped ineligible applicants', /not eligible and will be skipped/.test(dialog));
+    check('confirm explains the quota cap', /Only 1 email can be sent/.test(dialog));
+    await confirmDialog();
+    await sleep(2000);
+    const batchSends = relaySends().slice(sendsBefore);
+    const sentTo = batchSends.map(b => b.to);
+    const eligibleEmails = retreatRegs.filter(r => ['Approved', 'Volunteer'].includes(r.status)).map(r => r.email);
+    check('batch sent exactly the remaining quota, to eligible people only', batchSends.length === 1 && sentTo.every(e => eligibleEmails.includes(e)), sentTo.join(','));
+    const recipient = (await readAll('registrations')).find(r => r.retreatId === pastRetreat.id && r.email === sentTo[0]);
+    const sentAtMs = Date.parse(recipient?.sentEmails?.welcome?.sentAt || '');
+    check('the batch send is recorded on the registration', Date.now() - sentAtMs < 60000, recipient?.sentEmails?.welcome?.sentAt);
   });
 
   await step('Group Assignments: auto-arrange writes groupId only', async () => {

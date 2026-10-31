@@ -19,6 +19,7 @@ const validClaims = (email, extra = {}) => ({
 
 function loadScript({ firestoreCodeFor }) {
   const cacheStore = new Map();
+  const props = new Map();
   const calls = { fetch: [], sent: [] };
   const ctx = {
     Utilities: {
@@ -31,7 +32,7 @@ function loadScript({ firestoreCodeFor }) {
       formatDate: (d) => d.toISOString().slice(0, 10)
     },
     CacheService: { getScriptCache: () => ({ get: (k) => cacheStore.get(k) ?? null, put: (k, v) => cacheStore.set(k, v) }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props.get(k) ?? null, setProperty: (k, v) => props.set(k, v) }) },
     UrlFetchApp: {
       fetch: (url, opts) => {
         calls.fetch.push({ url, opts });
@@ -49,7 +50,7 @@ function loadScript({ firestoreCodeFor }) {
   vm.createContext(ctx);
   vm.runInContext(source, ctx);
   ctx.handleGetAnalytics = () => ctx.createJsonResponse({ status: 'success', dailyMetrics: [] });
-  return { ctx, calls, cacheStore };
+  return { ctx, calls, cacheStore, props };
 }
 
 const post = (ctx, body) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(body) } }).text);
@@ -115,6 +116,24 @@ describe('Apps Script relay authentication', () => {
     expect(env.calls.fetch).toHaveLength(1); // second call served from cache
     const forged = genuine.replace('.signature', '.forged');
     expect(post(env.ctx, emailBody(forged)).status).toBe('error');
+  });
+
+  it('counts sends over a rolling 24 hours, reports the quota, and refuses once it is used up', () => {
+    const token = makeToken(validClaims('vol@illinois.edu'));
+    env.props.set('EMAIL_DAILY_LIMIT', '2');
+    expect(post(env.ctx, { action: 'get_email_quota', idToken: token })).toMatchObject({ status: 'success', limit: 2, used: 0, remaining: 2 });
+    expect(post(env.ctx, emailBody(token))).toMatchObject({ status: 'success', remaining: 1 });
+    expect(post(env.ctx, emailBody(token))).toMatchObject({ status: 'success', remaining: 0 });
+    const refused = post(env.ctx, emailBody(token));
+    expect(refused).toMatchObject({ status: 'error', code: 'quota_exhausted' });
+    expect(env.calls.sent).toHaveLength(2);
+    // Sends older than 24 hours no longer count
+    env.props.set('email_send_log', JSON.stringify([Date.now() - 25 * 3600 * 1000, Date.now() - 25 * 3600 * 1000]));
+    expect(post(env.ctx, { action: 'get_email_quota', idToken: token }).remaining).toBe(2);
+  });
+
+  it('does not reveal the quota to unauthenticated callers', () => {
+    expect(post(env.ctx, { action: 'get_email_quota', idToken: '' }).status).toBe('error');
   });
 
   it('requires a verified volunteer for campaign analytics, and refuses GET queries', () => {

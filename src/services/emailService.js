@@ -230,23 +230,17 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
 };
 
 // Send single email and persist status
-export const sendSingleEmail = async (templateTypeKey, participant, retreat, emailSettings = {}) => {
-  if (!participant?.email) {
-    throw new Error("Cannot send email: participant has no email address.");
-  }
-
-  // 1. Prepare and validate email payload
-  const payload = compileEmailPayload(templateTypeKey, participant, retreat, emailSettings);
-
+// POST an authenticated request to the Apps Script relay. Throws (with .code from the relay, e.g.
+// 'quota_exhausted') unless the relay answers { status: 'success' }.
+const postToRelay = async (emailSettings, body) => {
   const settings = { ...DEFAULT_EMAIL_SETTINGS, ...emailSettings };
   const webhookUrl = settings.webhookUrl?.trim();
   const isConfiguredWebhook = webhookUrl && webhookUrl.startsWith('https://script.google.com/macros/s/') && !webhookUrl.includes('EXAMPLE');
-
   if (!isConfiguredWebhook) {
-    throw new Error("Gmail Webhook URL is not configured yet. Please open 'Email Settings & Links', deploy the Google Apps Script connector under skyatuiuc@gmail.com, and paste your Web App URL.");
+    throw new Error("Gmail Webhook URL is not configured yet. Please open Admin › Settings, deploy the Google Apps Script connector under skyatuiuc@gmail.com, and paste your Web App URL.");
   }
 
-  // 2. Obtain caller's live Firebase Auth ID Token for authenticated relay
+  // The relay verifies the caller's live Firebase ID token
   let idToken = '';
   if (auth?.currentUser) {
     try {
@@ -256,42 +250,72 @@ export const sendSingleEmail = async (templateTypeKey, participant, retreat, ema
     }
   }
 
-  // 3. Dispatch via Google Apps Script Webhook
-  let dispatchedBy = '';
+  const response = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ ...body, idToken })
+  });
+  const rawText = await response.text();
+  let result;
   try {
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({
-        action: 'send_email',
-        idToken,
-        sender: 'skyatuiuc@gmail.com',
-        to: payload.recipientEmail,
-        toName: payload.recipientName,
-        subject: payload.subject,
-        htmlBody: payload.htmlBody,
-        plainText: payload.plainText,
-        templateKey: payload.templateKey,
-        participantId: participant.id
-      })
-    });
+    result = JSON.parse(rawText);
+  } catch {
+    throw new Error(`Apps Script relay failed (non-JSON response): ${rawText.slice(0, 120)}`);
+  }
+  if (!result || result.status !== 'success') {
+    const err = new Error(result?.message || 'Apps Script relay rejected the request.');
+    err.code = result?.code || '';
+    throw err;
+  }
+  return result;
+};
 
-    // Inspect real JSON response from Google Apps Script
-    const rawText = await response.text();
-    let result;
-    try {
-      result = JSON.parse(rawText);
-    } catch {
-      throw new Error(`Apps Script dispatch failed (Non-JSON response): ${rawText.slice(0, 120)}`);
-    }
+/** Remaining relay sends in the rolling 24-hour window: { limit, used, remaining, nextFreeAt }. */
+export const getEmailQuota = async (emailSettings = {}) => {
+  const result = await postToRelay(emailSettings, { action: 'get_email_quota' });
+  return { limit: result.limit, used: result.used, remaining: result.remaining, nextFreeAt: result.nextFreeAt || null };
+};
 
-    if (!result || result.status !== 'success') {
-      throw new Error(result?.message || 'Apps Script email dispatch rejected.');
-    }
+const relaySend = (payload, participantId, emailSettings, { to, subjectPrefix = '' } = {}) => postToRelay(emailSettings, {
+  action: 'send_email',
+  sender: 'skyatuiuc@gmail.com',
+  to: to || payload.recipientEmail,
+  toName: payload.recipientName,
+  subject: `${subjectPrefix}${payload.subject}`,
+  htmlBody: payload.htmlBody,
+  plainText: payload.plainText,
+  templateKey: payload.templateKey,
+  participantId
+});
+
+/** Send the exact email a participant would get, to someone else (the admin), without recording it. */
+export const sendTestEmail = async (templateTypeKey, participant, retreat, emailSettings, toEmail) => {
+  if (!toEmail) throw new Error('No address to send the test to.');
+  const payload = compileEmailPayload(templateTypeKey, participant, retreat, emailSettings);
+  const result = await relaySend(payload, '', emailSettings, { to: toEmail, subjectPrefix: '[TEST] ' });
+  return { subject: payload.subject, remaining: result.remaining };
+};
+
+export const sendSingleEmail = async (templateTypeKey, participant, retreat, emailSettings = {}) => {
+  if (!participant?.email) {
+    throw new Error("Cannot send email: participant has no email address.");
+  }
+
+  // 1. Prepare and validate email payload
+  const payload = compileEmailPayload(templateTypeKey, participant, retreat, emailSettings);
+
+  // 2. Dispatch via the Apps Script relay
+  let dispatchedBy = '';
+  let remaining = null;
+  try {
+    const result = await relaySend(payload, participant.id, emailSettings);
     dispatchedBy = result.dispatchedBy || '';
+    remaining = typeof result.remaining === 'number' ? result.remaining : null;
   } catch (err) {
     console.error("Apps Script Webhook request error:", err);
-    throw new Error(`Failed to dispatch email via Apps Script Webhook: ${err.message}`);
+    const wrapped = new Error(`Failed to dispatch email via Apps Script Webhook: ${err.message}`);
+    wrapped.code = err.code || '';
+    throw wrapped;
   }
 
   // 3. Update sent record in participant registration
@@ -326,6 +350,7 @@ export const sendSingleEmail = async (templateTypeKey, participant, retreat, ema
 
   return {
     success: true,
+    remaining,
     subject: payload.subject,
     templateName: payload.templateName,
     payload,
@@ -338,7 +363,9 @@ export const sendSingleEmail = async (templateTypeKey, participant, retreat, ema
 export const sendBatchEmails = async (templateTypeKey, participants, retreat, emailSettings = {}, onProgress = null) => {
   const results = {
     successes: [],
-    failures: []
+    failures: [],
+    notAttempted: [],
+    quotaExhausted: ''
   };
 
   for (let i = 0; i < participants.length; i++) {
@@ -351,6 +378,12 @@ export const sendBatchEmails = async (templateTypeKey, participants, retreat, em
       const res = await sendSingleEmail(templateTypeKey, p, retreat, emailSettings);
       results.successes.push({ participant: p, result: res });
     } catch (err) {
+      if (err.code === 'quota_exhausted') {
+        // Stop instead of failing every remaining send; they stay unsent and can be resumed later
+        results.notAttempted = participants.slice(i);
+        results.quotaExhausted = err.message;
+        break;
+      }
       results.failures.push({ participant: p, error: err.message });
     }
   }

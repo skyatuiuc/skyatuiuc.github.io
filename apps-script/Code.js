@@ -1,7 +1,7 @@
 /**
  * GOOGLE APPS SCRIPT RELAY & CAMPAIGN ANALYTICS ENGINE FOR SKY AT UIUC
  * 
- * Version: 4.4.0
+ * Version: 4.5.0
  * Managed in GitHub repository: https://github.com/skyatuiuc/skyatuiuc.github.io
  * 
  * Capabilities:
@@ -437,6 +437,31 @@ function createJsonResponse(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// ---------- Email quota (consumer Gmail: about 100 recipients per rolling 24 hours) ----------
+// The relay is the only sender on this account, so it counts its own sends instead of calling
+// MailApp.getRemainingDailyQuota(), which would need an extra OAuth scope (and re-authorization).
+var EMAIL_DAILY_LIMIT_DEFAULT = 100;
+var EMAIL_SEND_LOG_KEY = "email_send_log";
+var DAY_MS = 24 * 60 * 60 * 1000;
+
+function emailQuotaStatus_() {
+  var props = PropertiesService.getScriptProperties();
+  var limit = Number(props.getProperty("EMAIL_DAILY_LIMIT")) || EMAIL_DAILY_LIMIT_DEFAULT;
+  var cutoff = Date.now() - DAY_MS;
+  var log = [];
+  try { log = JSON.parse(props.getProperty(EMAIL_SEND_LOG_KEY) || "[]"); } catch (err) { log = []; }
+  log = log.filter(function (t) { return typeof t === "number" && t > cutoff; });
+  var nextFreeAt = log.length >= limit ? new Date(Math.min.apply(null, log) + DAY_MS).toISOString() : null;
+  return { limit: limit, used: log.length, remaining: Math.max(0, limit - log.length), nextFreeAt: nextFreeAt, log: log, props: props };
+}
+
+function recordEmailSend_() {
+  var quota = emailQuotaStatus_();
+  quota.log.push(Date.now());
+  quota.props.setProperty(EMAIL_SEND_LOG_KEY, JSON.stringify(quota.log));
+  return Math.max(0, quota.limit - quota.log.length);
+}
+
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
@@ -487,10 +512,26 @@ function doPost(e) {
     }
     var senderEmail = caller.email;
 
+    // 4a. Remaining email quota (volunteers only)
+    if (action === "get_email_quota" || action === "quota") {
+      var status = emailQuotaStatus_();
+      return createJsonResponse({ status: "success", limit: status.limit, used: status.used, remaining: status.remaining, nextFreeAt: status.nextFreeAt });
+    }
+
     if (!data.to || !data.subject || !data.htmlBody) {
       return createJsonResponse({ 
         status: "error", 
         message: "Missing required fields (to, subject, htmlBody)" 
+      });
+    }
+
+    var quota = emailQuotaStatus_();
+    if (quota.remaining <= 0) {
+      return createJsonResponse({
+        status: "error",
+        code: "quota_exhausted",
+        message: "Daily email limit reached (" + quota.limit + " per 24 hours). Sending resumes after " + quota.nextFreeAt + ".",
+        nextFreeAt: quota.nextFreeAt
       });
     }
 
@@ -499,12 +540,14 @@ function doPost(e) {
       name: data.senderName || "SKY Meditation at UIUC",
       replyTo: "skyatuiuc@gmail.com"
     });
+    var remaining = recordEmailSend_();
 
     return createJsonResponse({ 
       status: "success", 
       recipient: data.to,
       templateKey: data.templateKey || "custom",
       dispatchedBy: senderEmail,
+      remaining: remaining,
       timestamp: new Date().toISOString()
     });
 
@@ -523,7 +566,7 @@ function doGet(e) {
   return createJsonResponse({
     status: "online",
     service: "SKY UIUC Relay & Campaign Engine",
-    version: "4.4.0",
+    version: "4.5.0",
     time: new Date().toISOString()
   });
 }

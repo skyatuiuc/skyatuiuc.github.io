@@ -17,10 +17,13 @@ export default function EmailPreviewModal({
   retreat, 
   emailSettings, 
   onSend, 
+  onSendTest,
+  testRecipient,
   onClose 
 }) {
   const [viewTab, setViewTab] = useState('html'); // 'html' | 'text'
   const [isSending, setIsSending] = useState(false);
+  const [isSendingTest, setIsSendingTest] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   // Lock body scroll while preview is open
@@ -49,8 +52,18 @@ export default function EmailPreviewModal({
       await onSend(templateKey, participant);
       onClose();
     } catch (err) {
-      setErrorMsg(err.message || 'Failed to dispatch email.');
+      if (!err.cancelled) setErrorMsg(err.message || 'Failed to dispatch email.');
       setIsSending(false);
+    }
+  };
+
+  const handleSendTest = async () => {
+    if (compileError || !onSendTest) return;
+    setIsSendingTest(true);
+    try {
+      await onSendTest(templateKey, participant);
+    } finally {
+      setIsSendingTest(false);
     }
   };
 
@@ -327,6 +340,19 @@ export default function EmailPreviewModal({
           >
             Cancel
           </button>
+
+          {onSendTest && testRecipient && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleSendTest}
+              disabled={Boolean(compileError) || isSending || isSendingTest}
+              title={`Sends this exact email to ${testRecipient} with [TEST] in the subject; nothing is recorded`}
+              style={{ padding: '0.55rem 1.15rem', fontSize: '0.88rem', marginLeft: 'auto', marginRight: '0.6rem' }}
+            >
+              {isSendingTest ? 'Sending test…' : 'Send test to me'}
+            </button>
+          )}
 
           <button
             type="button"

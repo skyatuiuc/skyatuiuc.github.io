@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { db, isFirebaseConfigured } from '../firebase/config';
 import { doc, getDoc, setDoc, deleteField } from 'firebase/firestore';
 import { useAuth, ADMIN_EMAIL } from '../context/AuthContext';
 import { useRoster } from '../context/RosterContext';
 import { useApplicantFilters } from '../hooks/useApplicantFilters';
 import ApplicantFilterBar from './ApplicantFilterBar';
-import { getDisplayName } from '../models/applicant';
+import { getDisplayName, getEmailEligibility } from '../models/applicant';
 import { StatusBadge } from './ui/StatusBadge';
 import {
   Mail,
@@ -25,7 +25,9 @@ import {
   checkRequiresPayment, 
   parseFeeAndPayment,
   sendSingleEmail, 
-  sendBatchEmails 
+  sendBatchEmails,
+  sendTestEmail,
+  getEmailQuota
 } from '../services/emailService';
 import { EMAIL_TEMPLATES } from '../templates/emailTemplates';
 import EmailPreviewModal from './EmailPreviewModal';
@@ -86,6 +88,9 @@ export default function AutoEmailDispatchTab() {
 
   const [selectedApplicantIds, setSelectedApplicantIds] = useState(new Set());
   const [batchTemplateKey, setBatchTemplateKey] = useState('application_accepted');
+  const [includeIneligible, setIncludeIneligible] = useState(false);
+  // Relay send quota (consumer Gmail: ~100 per rolling 24 h). null = loading; { error } = unavailable
+  const [quota, setQuota] = useState(null);
   const [isBatchSending, setIsBatchSending] = useState(false);
   const [batchProgress, setBatchProgress] = useState(null); // { current, total, recipient }
 
@@ -187,11 +192,47 @@ export default function AutoEmailDispatchTab() {
     }
   };
 
+  const refreshQuota = useCallback(async () => {
+    try {
+      setQuota(await getEmailQuota(emailSettings));
+    } catch (err) {
+      setQuota({ error: err.message });
+    }
+  }, [emailSettings]);
+  useEffect(() => { refreshQuota(); }, [refreshQuota]);
+
   // Send Single Email (emailService records the sent email on the registration)
   const handleSendSingle = async (templateKey, participant) => {
-    const result = await sendSingleEmail(templateKey, participant, activeRetreat, emailSettings);
-    const emailSubject = result?.subject || EMAIL_TEMPLATES[templateKey]?.subject || 'Notification';
-    toast.success(`✓ Email "${emailSubject}" sent to ${getDisplayName(participant)}!`);
+    const { eligible, reason } = getEmailEligibility(participant, templateKey);
+    if (!eligible && !(await confirm({
+      title: 'Send anyway?',
+      message: `${getDisplayName(participant)} ${reason}, so this email is not meant for them. Send it anyway?`,
+      confirmLabel: 'Send anyway',
+      danger: true
+    }))) {
+      const cancelled = new Error('Not sent.');
+      cancelled.cancelled = true;
+      throw cancelled;
+    }
+    try {
+      const result = await sendSingleEmail(templateKey, participant, activeRetreat, emailSettings);
+      const emailSubject = result?.subject || EMAIL_TEMPLATES[templateKey]?.subject || 'Notification';
+      toast.success(`Email "${emailSubject}" sent to ${getDisplayName(participant)}.`);
+    } finally {
+      refreshQuota();
+    }
+  };
+
+  // Test send: the exact email this participant would get, delivered to the signed-in admin only
+  const handleSendTest = async (templateKey, participant) => {
+    try {
+      const { subject } = await sendTestEmail(templateKey, participant, activeRetreat, emailSettings, currentUser?.email);
+      toast.success(`Test of "${subject}" sent to ${currentUser?.email}. Nothing was recorded for ${getDisplayName(participant)}.`);
+    } catch (err) {
+      toast.error(`Test email not sent: ${err.message}`);
+    } finally {
+      refreshQuota();
+    }
   };
 
   // Send Batch Emails
@@ -210,19 +251,41 @@ export default function AutoEmailDispatchTab() {
     }
 
     const tplName = EMAIL_TEMPLATES[batchTemplateKey]?.name || batchTemplateKey;
+
+    // Skip people the template is not meant for, unless the override is ticked
+    const ineligible = targets.filter(t => !getEmailEligibility(t, batchTemplateKey).eligible);
+    let toSend = includeIneligible ? targets : targets.filter(t => getEmailEligibility(t, batchTemplateKey).eligible);
+    if (toSend.length === 0) {
+      toast.error(`None of the selected applicants are eligible for "${tplName}" (e.g. ${getDisplayName(ineligible[0])} ${getEmailEligibility(ineligible[0], batchTemplateKey).reason}).`);
+      return;
+    }
+
+    // Never start more sends than the relay has quota for; the rest stay unsent for later
+    const remaining = typeof quota?.remaining === 'number' ? quota.remaining : null;
+    const heldBack = remaining !== null && toSend.length > remaining ? toSend.slice(remaining) : [];
+    if (heldBack.length) toSend = toSend.slice(0, remaining);
+    if (toSend.length === 0) {
+      toast.error(`The daily email limit is used up. Sending resumes after ${new Date(quota.nextFreeAt).toLocaleString()}.`);
+      return;
+    }
+
+    const notes = [
+      ineligible.length && !includeIneligible ? `${ineligible.length} selected applicant${ineligible.length === 1 ? ' is' : 's are'} not eligible and will be skipped.` : '',
+      heldBack.length ? `Only ${remaining} email${remaining === 1 ? '' : 's'} can be sent in the current 24-hour window; ${heldBack.length} will stay unsent so you can send them later.` : ''
+    ].filter(Boolean).join('\n');
     if (!(await confirm({
       title: `Send "${tplName}"?`,
-      message: `${targets.length} email${targets.length === 1 ? '' : 's'} will be sent from skyatuiuc@gmail.com to:`,
-      details: targets.map(t => `${getDisplayName(t)} (${t.email})`),
-      confirmLabel: `Send ${targets.length}`
+      message: `${toSend.length} email${toSend.length === 1 ? '' : 's'} will be sent from skyatuiuc@gmail.com.${notes ? `\n\n${notes}` : ''}\n\nRecipients:`,
+      details: toSend.map(t => `${getDisplayName(t)} (${t.email})`),
+      confirmLabel: `Send ${toSend.length}`
     }))) return;
 
     setIsBatchSending(true);
-    setBatchProgress({ current: 0, total: targets.length, recipient: '' });
+    setBatchProgress({ current: 0, total: toSend.length, recipient: '' });
 
     const results = await sendBatchEmails(
       batchTemplateKey,
-      targets,
+      toSend,
       activeRetreat,
       emailSettings,
       (current, total, participant) => {
@@ -234,10 +297,13 @@ export default function AutoEmailDispatchTab() {
     setBatchProgress(null);
     setSelectedApplicantIds(new Set());
 
-    if (results.failures.length > 0) {
-      toast.error(`Sent ${results.successes.length} emails. ${results.failures.length} failed.`);
+    refreshQuota();
+    if (results.quotaExhausted) {
+      toast.error(`Sent ${results.successes.length}. ${results.quotaExhausted} ${results.notAttempted.length} not sent yet; they stay unsent so you can resume later.`);
+    } else if (results.failures.length > 0) {
+      toast.error(`Sent ${results.successes.length} emails. ${results.failures.length} failed: ${results.failures.slice(0, 3).map(f => getDisplayName(f.participant)).join(', ')}${results.failures.length > 3 ? '…' : ''}`);
     } else {
-      toast.success(`🎉 Successfully dispatched ${results.successes.length} "${tplName}" emails!`);
+      toast.success(`Sent ${results.successes.length} "${tplName}" emails.`);
     }
   };
 
@@ -297,6 +363,7 @@ export default function AutoEmailDispatchTab() {
         {/* Action Button: Preview & Send / Resend */}
         <button
           type="button"
+          data-preview-template={templateKey}
           onClick={() => {
             setPreviewModalConfig({
               templateKey,
@@ -541,11 +608,26 @@ export default function AutoEmailDispatchTab() {
 
           {/* Batch Actions Selector & Trigger */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <span
+              className="text-xs fw-bold"
+              data-testid="email-quota"
+              title="Gmail accounts can send to about 100 recipients per rolling 24 hours from Apps Script"
+              style={{ color: quota?.remaining === 0 ? '#B91C1C' : 'var(--text-secondary)' }}
+            >
+              {quota === null ? 'Checking email quota…'
+                : quota.error ? 'Email quota unavailable'
+                  : `${quota.remaining} of ${quota.limit} emails left (24 h)`}
+            </span>
+            <label className="row text-xs" style={{ gap: '0.3rem', color: 'var(--text-secondary)' }} title="Also send to applicants this template is not meant for">
+              <input type="checkbox" checked={includeIneligible} onChange={(e) => setIncludeIneligible(e.target.checked)} />
+              Include ineligible
+            </label>
             <span style={{ fontSize: '0.8rem', color: selectedApplicantIds.size > 0 ? 'var(--sky-blue)' : 'var(--text-muted)', fontWeight: 700 }}>
               {selectedApplicantIds.size} Selected
             </span>
 
             <select
+              id="batch-template"
               value={batchTemplateKey}
               onChange={(e) => setBatchTemplateKey(e.target.value)}
               disabled={selectedApplicantIds.size === 0 || isBatchSending}
@@ -568,6 +650,7 @@ export default function AutoEmailDispatchTab() {
             </select>
 
             <button
+              id="batch-send"
               type="button"
               className="btn btn-primary"
               onClick={handleSendBatch}
@@ -864,6 +947,8 @@ export default function AutoEmailDispatchTab() {
           retreat={activeRetreat}
           emailSettings={emailSettings}
           onSend={handleSendSingle}
+          onSendTest={handleSendTest}
+          testRecipient={currentUser?.email}
           onClose={() => setPreviewModalConfig(null)}
         />
       )}

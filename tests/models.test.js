@@ -153,3 +153,19 @@ describe('registration form', () => {
     });
   });
 });
+
+import { getEmailEligibility } from '../src/models/applicant';
+
+describe('email eligibility', () => {
+  const full = { day1: true, day2: true, day3: true };
+  it('matches each template to the people it is for', () => {
+    expect(getEmailEligibility({ status: 'Uncontacted' }, 'application_received').eligible).toBe(true);
+    expect(getEmailEligibility({ status: 'Pending' }, 'application_accepted_paypal').eligible).toBe(false);
+    expect(getEmailEligibility({ status: 'Approved' }, 'application_accepted_standard').eligible).toBe(true);
+    expect(getEmailEligibility({ status: 'Volunteer' }, 'welcome').eligible).toBe(true);
+    expect(getEmailEligibility({ status: 'Pending' }, 'welcome').eligible).toBe(false);
+    expect(getEmailEligibility({ status: 'Approved', attendance: { day1: true } }, 'completion').eligible).toBe(false);
+    expect(getEmailEligibility({ status: 'Approved', attendance: full }, 'completion').eligible).toBe(true);
+    expect(getEmailEligibility({ status: 'Withdrawn', attendance: full }, 'completion')).toEqual({ eligible: false, reason: 'has withdrawn' });
+  });
+});

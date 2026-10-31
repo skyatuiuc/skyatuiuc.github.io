@@ -190,6 +190,26 @@ export const buildMovedRegistration = (reg, targetRetreatId, nowIso) => {
   return { ...data, retreatId: targetRetreatId, updatedAt: nowIso };
 };
 
+/**
+ * Who each email is meant for. Email Dispatch skips anyone else unless an admin explicitly overrides.
+ * @returns {{ eligible: boolean, reason: string }}
+ */
+export const getEmailEligibility = (reg, templateKey) => {
+  const status = getStatus(reg);
+  const key = sentEmailKey(templateKey);
+  if (status === STATUS.WITHDRAWN) return { eligible: false, reason: 'has withdrawn' };
+  if (key === 'application_accepted' || key === 'reminder') {
+    return status === STATUS.APPROVED ? { eligible: true, reason: '' } : { eligible: false, reason: 'is not Approved' };
+  }
+  if (key === 'welcome') {
+    return isAttending(reg) ? { eligible: true, reason: '' } : { eligible: false, reason: 'is not Approved or an Attending Volunteer' };
+  }
+  if (key === 'completion') {
+    return getAttendance(reg).isComplete ? { eligible: true, reason: '' } : { eligible: false, reason: 'has not attended all 3 days' };
+  }
+  return { eligible: true, reason: '' };
+};
+
 // ---------- Search ----------
 
 export const matchesSearch = (reg, query) => {
