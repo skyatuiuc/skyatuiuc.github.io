@@ -27,7 +27,9 @@ export default function OrientationTab() {
 
   const { filters, setFilter, resetFilters, filtered, statusCounts, activeFilterCount } = useApplicantFilters(
     registrations,
-    { userEmail: userEmailLower, retreat: activeRetreat }
+    { userEmail: userEmailLower, retreat: activeRetreat },
+    undefined,
+    'orientation'
   );
 
   const [selectedId, setSelectedId] = useState(null);

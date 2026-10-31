@@ -302,7 +302,11 @@ try {
     const approved = retreatRegs.filter(r => r.status === 'Approved').length;
     await clickByText('button', 'Approved (');
     await waitForText(`Showing ${approved} of ${retreatRegs.length}`);
+    await page.goto(`${BASE}/volunteer`, { waitUntil: 'domcontentloaded' });
+    await waitForText(`Showing ${approved} of ${retreatRegs.length}`);
+    check('status filter is remembered after a reload (U12)', true);
     await clickByText('button', 'Clear');
+    await waitForText(`Showing ${retreatRegs.length} of ${retreatRegs.length}`);
   });
 
   await step('Dossier: notes typed then closed immediately are still saved', async () => {

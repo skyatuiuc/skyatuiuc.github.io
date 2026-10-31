@@ -64,3 +64,12 @@ describe('filterApplicants', () => {
     expect(countActiveFilters({ ...FILTER_DEFAULTS, statuses: ['Approved'], claim: 'mine', sort: 'name' })).toBe(2);
   });
 });
+
+describe('countActiveFilters baseline', () => {
+  it('counts differences from a screen baseline, ignoring status order', () => {
+    const baseline = { ...FILTER_DEFAULTS, statuses: ['Approved', 'Volunteer'] };
+    expect(countActiveFilters({ ...baseline, statuses: ['Volunteer', 'Approved'] }, baseline)).toBe(0);
+    expect(countActiveFilters({ ...baseline, statuses: ['Approved'] }, baseline)).toBe(1);
+    expect(countActiveFilters({ ...baseline, statuses: [] }, baseline)).toBe(1);
+  });
+});

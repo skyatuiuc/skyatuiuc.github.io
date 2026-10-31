@@ -23,7 +23,7 @@ import {
   convertLength
 } from '../utils/nametagPdfUtils';
 import { getStatus, STATUS, STATUS_OPTIONS } from '../models/applicant';
-import { StatusBadge } from './ui/StatusBadge';
+import { StatusBadge, StatusChips } from './ui/StatusBadge';
 
 export default function NametagDownloadModal({
   isOpen,
@@ -119,6 +119,12 @@ export default function NametagDownloadModal({
     setSelectedStatusSet(new Set(statuses));
     setSelectedCandidateIds(new Set(allApplicants.filter(a => statuses.includes(getStatus(a))).map(a => a.id)));
   };
+
+  const statusCounts = useMemo(() => {
+    const counts = {};
+    allApplicants.forEach((a) => { const st = getStatus(a); counts[st] = (counts[st] || 0) + 1; });
+    return counts;
+  }, [allApplicants]);
 
   const handleToggleStatus = (statusName) => {
     const next = selectedStatusSet.has(statusName)
@@ -540,7 +546,7 @@ export default function NametagDownloadModal({
                     className="btn btn-secondary"
                     style={{ padding: '0.25rem 0.55rem', fontSize: '0.72rem', fontWeight: 700 }}
                   >
-                    Approved + Volunteers
+                    Approved + Attending Volunteers
                   </button>
                   <button
                     type="button"
@@ -553,40 +559,13 @@ export default function NametagDownloadModal({
                 </div>
               </div>
 
-              {/* Status Chips */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                {availableStatuses.map(status => {
-                  const isChecked = selectedStatusSet.has(status);
-                  const count = allApplicants.filter(a => getStatus(a) === status).length;
-                  return (
-                    <label
-                      key={status}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.35rem',
-                        padding: '0.3rem 0.6rem',
-                        borderRadius: '16px',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        background: isChecked ? '#DBEAFE' : '#FFFFFF',
-                        border: isChecked ? '1px solid #93C5FD' : '1px solid var(--border-color)',
-                        color: isChecked ? '#1E40AF' : 'var(--text-secondary)'
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => handleToggleStatus(status)}
-                        style={{ margin: 0, accentColor: '#0284C7' }}
-                      />
-                      <span>{status}</span>
-                      <span style={{ opacity: 0.65, fontSize: '0.68rem' }}>({count})</span>
-                    </label>
-                  );
-                })}
-              </div>
+              {/* Status Chips (shared) */}
+              <StatusChips
+                statuses={availableStatuses}
+                selected={[...selectedStatusSet]}
+                counts={statusCounts}
+                onToggle={handleToggleStatus}
+              />
             </div>
 
             {/* Collapsible Granular Candidate Checklist */}

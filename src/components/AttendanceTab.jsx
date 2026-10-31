@@ -5,18 +5,19 @@ import {
   Calendar,
   Users,
   Layers,
-  Search,
   Clock,
   Info,
-  Filter,
-  X
+  Filter
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useRoster } from '../context/RosterContext';
 import ApplicantPanel from './ApplicantPanel';
+import ApplicantFilterBar from './ApplicantFilterBar';
+import { useApplicantFilters } from '../hooks/useApplicantFilters';
+import { filterApplicants } from '../models/applicantFilters';
 import { useToast } from './ui/ToastProvider';
 import {
-  getDisplayName, getStatus, STATUS, getGroupId, getGroupName, groupIdFor, isAttending, matchesSearch, RETREAT_DAYS
+  getDisplayName, getStatus, STATUS, getGroupId, getGroupName, groupIdFor, isAttending, RETREAT_DAYS
 } from '../models/applicant';
 import { todayChicago, addDaysToKey } from '../utils/dateUtils';
 
@@ -61,8 +62,6 @@ export default function AttendanceTab() {
 
   // 2. VIEW SWITCHER: "my_group" (default) vs "everyone"
   const [activeView, setActiveView] = useState('my_group');
-  const [everyoneGroupFilter, setEveryoneGroupFilter] = useState('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
   const [inspectParticipant, setInspectParticipant] = useState(null);
 
   const numConfiguredGroups = Number(activeRetreat?.groupConfig?.numGroups) || 4;
@@ -87,10 +86,15 @@ export default function AttendanceTab() {
 
   // 3. Approved participants and volunteers (Volunteer status) registered for this retreat
   const retreatApprovedParticipants = useMemo(() => registrations.filter(isAttending), [registrations]);
+  const { filters, setFilter, resetFilters, activeFilterCount } = useApplicantFilters(
+    retreatApprovedParticipants, { retreat: activeRetreat }, undefined, 'attendance'
+  );
 
   // 4. Roster for the active view
   const displayRoster = useMemo(() => {
-    const members = retreatApprovedParticipants.map((r) => {
+    // The group facet only applies in Everyone view; My Group view is always one group
+    const visible = filterApplicants(retreatApprovedParticipants, filters, { retreat: activeRetreat }, activeView === 'my_group' ? ['group'] : []);
+    const members = visible.map((r) => {
       const groupId = getGroupId(r, activeRetreat);
       return {
         id: r.id,
@@ -109,17 +113,11 @@ export default function AttendanceTab() {
     if (activeView === 'my_group') {
       const target = selectedMyGroup || userAssignedGroupId;
       filtered = members.filter(m => m.groupId === target);
-    } else if (activeView === 'everyone' && everyoneGroupFilter !== 'ALL') {
-      filtered = members.filter(m => m.groupId === everyoneGroupFilter);
-    }
-
-    if (searchQuery.trim()) {
-      filtered = filtered.filter(m => matchesSearch(m.rawRecord, searchQuery));
     }
 
     // Volunteers first, then alphabetical
     return filtered.sort((a, b) => (Number(b.isVolunteer) - Number(a.isVolunteer)) || a.name.localeCompare(b.name));
-  }, [retreatApprovedParticipants, activeRetreat, activeView, selectedMyGroup, userAssignedGroupId, everyoneGroupFilter, searchQuery]);
+  }, [retreatApprovedParticipants, filters, activeRetreat, activeView, selectedMyGroup, userAssignedGroupId]);
 
   // 5. Toggle attendance: only this day's flag is written (dot path), so two volunteers checking
   // people in at the same time never overwrite each other's marks.
@@ -339,78 +337,21 @@ export default function AttendanceTab() {
               </span>
             </div>
 
-            {/* Filter by Group Dropdown (ONLY visible in Everyone Mode) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Filter size={15} color="var(--text-muted)" />
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Filter by Group:</span>
-              <select
-                value={everyoneGroupFilter}
-                onChange={(e) => setEveryoneGroupFilter(e.target.value)}
-                style={{
-                  padding: '0.4rem 0.75rem',
-                  background: '#FFFFFF',
-                  border: '1px solid var(--border-color)',
-                  color: 'var(--text-main)',
-                  borderRadius: 'var(--radius-sm)',
-                  fontSize: '0.82rem',
-                  fontWeight: 600
-                }}
-              >
-                <option value="ALL">All Groups & Unassigned</option>
-                {Array.from({ length: numConfiguredGroups }).map((_, i) => {
-                  const gId = `group-${i + 1}`;
-                  const gName = retreatGroupNames[gId] || `Group ${i + 1}`;
-                  return (
-                    <option key={gId} value={gId}>
-                      {gName}
-                    </option>
-                  );
-                })}
-                <option value="unassigned">Unassigned Only</option>
-              </select>
-            </div>
           </>
         )}
 
       </div>
 
-      {/* SEARCH BAR */}
-      <div style={{ position: 'relative', width: '100%' }}>
-        <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)' }} />
-        <input
-          type="text"
-          placeholder="Filter by participant name, email, or role..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '0.65rem 0.85rem 0.65rem 2.4rem',
-            background: '#FFFFFF',
-            border: '1px solid rgba(35, 39, 95, 0.15)',
-            color: 'var(--text-main)',
-            borderRadius: 'var(--radius-sm)',
-            fontSize: '0.88rem',
-            boxShadow: 'var(--shadow-sm)'
-          }}
-        />
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery('')}
-            style={{
-              position: 'absolute',
-              right: '0.75rem',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-muted)',
-              cursor: 'pointer'
-            }}
-          >
-            <X size={14} />
-          </button>
-        )}
-      </div>
+      {/* FILTERS (shared bar) */}
+      <ApplicantFilterBar
+        facets={activeView === 'my_group' ? ['search', 'attendance'] : ['search', 'group', 'attendance']}
+        filters={filters}
+        setFilter={setFilter}
+        resetFilters={resetFilters}
+        activeFilterCount={activeFilterCount}
+        retreat={activeRetreat}
+        resultCount={displayRoster.length}
+      />
 
       {/* =========================================================================
           ATTENDANCE PARTICIPANT ROSTER LIST (RESPONSIVE & MOBILE-FRIENDLY)
@@ -642,7 +583,7 @@ export default function AttendanceTab() {
               No members found in this roster view
             </div>
             <div style={{ fontSize: '0.85rem' }}>
-              {searchQuery ? 'Try clearing your search query filter above.' : 'Approved participants assigned to this group will appear here.'}
+              {activeFilterCount > 0 ? 'Try clearing the filters above.' : 'Approved participants and attending volunteers in this group will appear here.'}
             </div>
           </div>
         )}

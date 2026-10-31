@@ -7,24 +7,28 @@ import {
   Layers,
   Sparkles,
   RotateCcw,
-  Search,
   Info,
   Move,
   Calendar,
   Plus,
   Minus,
-  X,
-  Tag,
-  Filter
+  Tag
 } from 'lucide-react';
 import ApplicantPanel from './ApplicantPanel';
+import ApplicantFilterBar from './ApplicantFilterBar';
+import { useApplicantFilters } from '../hooks/useApplicantFilters';
+import { filterApplicants } from '../models/applicantFilters';
 import NametagDownloadModal from './NametagDownloadModal';
 import { useToast } from './ui/ToastProvider';
 import { useConfirm } from './ui/ConfirmProvider';
 import {
-  STATUS, STATUS_OPTIONS, getStatus, getDisplayName, getAppliedAtMs, getGroupId, getGroupName, groupIdFor,
+  STATUS, getStatus, getDisplayName, getAppliedAtMs, getGroupId, getGroupName, groupIdFor,
   getRoleCategory, ROLE_CATEGORY, matchesSearch
 } from '../models/applicant';
+
+// Groups default to the people expected at the retreat; any status can be added from the filter bar
+const GROUP_FILTER_INITIAL = Object.freeze({ statuses: [STATUS.APPROVED, STATUS.VOLUNTEER] });
+const GROUP_FACETS = ['search', 'statuses'];
 
 // Priority sort: volunteers, then approved, pending, did not reply, uncontacted, withdrawn;
 // within a rank, oldest application first.
@@ -111,15 +115,12 @@ export default function GroupAssignmentTab() {
   const [groupNames, setGroupNames] = useState(() => activeRetreat?.groupConfig?.groupNames || {});
 
   // Multi-Select Application Status Filter & Volunteers Visibility (the Volunteer status has its own pill)
-  const [selectedStatuses, setSelectedStatuses] = useState(() => new Set([STATUS.APPROVED]));
-  const [showVolunteers, setShowVolunteers] = useState(true);
 
   // Role-based Auto-Arrangement Settings
   const [autoArrangeRole, setAutoArrangeRole] = useState('participants'); // 'participants' | 'volunteers' | 'all' | 'undergraduate' | 'graduate' | 'faculty'
   const [autoArrangeOnlyUnassigned, setAutoArrangeOnlyUnassigned] = useState(false);
 
   // UI Search & Drag state
-  const [searchQuery, setSearchQuery] = useState('');
   const [draggedChip, setDraggedChip] = useState(null);
   const [activeDropZone, setActiveDropZone] = useState(null);
   const [inspectParticipant, setInspectParticipant] = useState(null);
@@ -138,44 +139,15 @@ export default function GroupAssignmentTab() {
     groupConfig: { ...(activeRetreat?.groupConfig || {}), numGroups, groupNames }
   }), [activeRetreat, numGroups, groupNames]);
 
-  // Status counts across all retreat applicants
-  const statusCounts = useMemo(() => {
-    const counts = Object.fromEntries(STATUS_OPTIONS.map(s => [s, 0]));
-    retreatAllApplicants.forEach((reg) => { counts[getStatus(reg)] += 1; });
-    return { counts, volCount: counts[STATUS.VOLUNTEER] };
-  }, [retreatAllApplicants]);
+  // Shared filter state (remembered per browser): statuses decide who is manageable; search narrows the view
+  const { filters, setFilter, resetFilters, statusCounts, activeFilterCount } = useApplicantFilters(
+    retreatAllApplicants, { retreat: retreatView }, GROUP_FILTER_INITIAL, 'groups'
+  );
+  const searchQuery = filters.search;
 
-  // Status toggle handlers
-  const handleToggleStatus = (statusName) => {
-    setSelectedStatuses(prev => {
-      const next = new Set(prev);
-      if (next.has(statusName)) next.delete(statusName);
-      else next.add(statusName);
-      return next;
-    });
-  };
-
-  const handleSelectAllStatuses = () => {
-    setSelectedStatuses(new Set(STATUS_OPTIONS));
-    setShowVolunteers(true);
-  };
-
-  const handleSelectApprovedOnly = () => {
-    setSelectedStatuses(new Set([STATUS.APPROVED]));
-    setShowVolunteers(true);
-  };
-
-  const handleClearStatuses = () => {
-    setSelectedStatuses(new Set());
-    setShowVolunteers(false);
-  };
-
-  // Manageable members: retreat applicants matching the selected statuses (+ volunteers if shown)
-  const allManageableMembers = useMemo(() => retreatAllApplicants
-    .filter((reg) => {
-      const status = getStatus(reg);
-      return status === STATUS.VOLUNTEER ? showVolunteers : selectedStatuses.has(status);
-    })
+  // Manageable members: retreat applicants matching the selected statuses (search is applied below,
+  // so auto-arrange always works on the whole status-filtered set)
+  const allManageableMembers = useMemo(() => filterApplicants(retreatAllApplicants, filters, { retreat: retreatView }, ['search'])
     .map((reg) => {
       const groupId = getGroupId(reg, retreatView);
       return {
@@ -192,7 +164,7 @@ export default function GroupAssignmentTab() {
         assignedGroup: groupId ? getGroupName(groupId, retreatView) : '',
         rawRecord: reg
       };
-    }), [retreatAllApplicants, selectedStatuses, showVolunteers, retreatView]);
+    }), [retreatAllApplicants, filters, retreatView]);
 
   // Filtered members based on search query, sorted by rank
   const filteredMembers = useMemo(() => {
@@ -772,338 +744,22 @@ export default function GroupAssignmentTab() {
 
       </div>
 
-      {/* MULTI-SELECT APPLICATION STATUS FILTER BAR */}
-      <div 
-        className="glass-card" 
-        style={{ 
-          padding: '1rem 1.25rem', 
-          background: '#FFFFFF', 
-          borderRadius: 'var(--radius-md)',
-          boxShadow: 'var(--shadow-sm)',
-          border: '1px solid var(--border-color)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.75rem'
-        }}
+      {/* FILTERS (shared bar) & ROSTER METRICS */}
+      <ApplicantFilterBar
+        facets={GROUP_FACETS}
+        filters={filters}
+        setFilter={setFilter}
+        resetFilters={resetFilters}
+        statusCounts={statusCounts}
+        activeFilterCount={activeFilterCount}
+        retreat={retreatView}
+        resultCount={filteredMembers.length}
+        totalCount={retreatAllApplicants.length}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Filter size={15} color="var(--sky-blue)" />
-            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Filter Application Statuses:
-            </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              ({allManageableMembers.length} displayed of {retreatAllApplicants.length} applicants)
-            </span>
-          </div>
+        <button type="button" className="select-compact" onClick={() => setFilter('statuses', [])}>All statuses</button>
+      </ApplicantFilterBar>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <button
-              type="button"
-              onClick={handleSelectAllStatuses}
-              style={{
-                background: '#F1F5F9',
-                border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '0.25rem 0.6rem',
-                fontSize: '0.72rem',
-                fontWeight: 600,
-                color: 'var(--text-main)',
-                cursor: 'pointer'
-              }}
-            >
-              Select All
-            </button>
-            <button
-              type="button"
-              onClick={handleSelectApprovedOnly}
-              style={{
-                background: '#DCFCE7',
-                border: '1px solid #86EFAC',
-                borderRadius: 'var(--radius-sm)',
-                padding: '0.25rem 0.6rem',
-                fontSize: '0.72rem',
-                fontWeight: 600,
-                color: '#166534',
-                cursor: 'pointer'
-              }}
-            >
-              Approved Only
-            </button>
-            <button
-              type="button"
-              onClick={handleClearStatuses}
-              style={{
-                background: '#FEF2F2',
-                border: '1px solid #FCA5A5',
-                borderRadius: 'var(--radius-sm)',
-                padding: '0.25rem 0.6rem',
-                fontSize: '0.72rem',
-                fontWeight: 600,
-                color: '#DC2626',
-                cursor: 'pointer'
-              }}
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-
-        {/* Filter Pills with Checkboxes & Color Indicators */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-          
-          {/* Approved Pill (Green) */}
-          <label 
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.45rem',
-              padding: '0.35rem 0.75rem',
-              borderRadius: 'var(--radius-full)',
-              background: selectedStatuses.has('Approved') ? '#DCFCE7' : '#F8FAFC',
-              border: selectedStatuses.has('Approved') ? '1.5px solid #86EFAC' : '1px solid var(--border-color)',
-              color: selectedStatuses.has('Approved') ? '#166534' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              userSelect: 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={selectedStatuses.has('Approved')}
-              onChange={() => handleToggleStatus('Approved')}
-              style={{ accentColor: '#16A34A', cursor: 'pointer' }}
-            />
-            <span>Approved / Accepted</span>
-            <span style={{
-              background: selectedStatuses.has('Approved') ? '#BBF7D0' : '#E2E8F0',
-              padding: '0.1rem 0.45rem',
-              borderRadius: 'var(--radius-full)',
-              fontSize: '0.72rem'
-            }}>
-              {statusCounts.counts['Approved'] || 0}
-            </span>
-          </label>
-
-          {/* Volunteers Pill (Current Yellow) */}
-          <label 
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.45rem',
-              padding: '0.35rem 0.75rem',
-              borderRadius: 'var(--radius-full)',
-              background: showVolunteers ? 'var(--sky-sun-light)' : '#F8FAFC',
-              border: showVolunteers ? '1.5px solid rgba(250, 188, 29, 0.6)' : '1px solid var(--border-color)',
-              color: showVolunteers ? '#B45309' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              userSelect: 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={showVolunteers}
-              onChange={() => setShowVolunteers(prev => !prev)}
-              style={{ accentColor: '#FABC1D', cursor: 'pointer' }}
-            />
-            <span>Attending Volunteers</span>
-            <span style={{
-              background: showVolunteers ? 'rgba(250, 188, 29, 0.3)' : '#E2E8F0',
-              padding: '0.1rem 0.45rem',
-              borderRadius: 'var(--radius-full)',
-              fontSize: '0.72rem'
-            }}>
-              {statusCounts.volCount}
-            </span>
-          </label>
-
-          {/* Pending Pill (Blue) */}
-          <label 
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.45rem',
-              padding: '0.35rem 0.75rem',
-              borderRadius: 'var(--radius-full)',
-              background: selectedStatuses.has('Pending') ? '#DBEAFE' : '#F8FAFC',
-              border: selectedStatuses.has('Pending') ? '1.5px solid #93C5FD' : '1px solid var(--border-color)',
-              color: selectedStatuses.has('Pending') ? '#1E40AF' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              userSelect: 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={selectedStatuses.has('Pending')}
-              onChange={() => handleToggleStatus('Pending')}
-              style={{ accentColor: '#1F74F1', cursor: 'pointer' }}
-            />
-            <span>Pending</span>
-            <span style={{
-              background: selectedStatuses.has('Pending') ? '#BFDBFE' : '#E2E8F0',
-              padding: '0.1rem 0.45rem',
-              borderRadius: 'var(--radius-full)',
-              fontSize: '0.72rem'
-            }}>
-              {statusCounts.counts['Pending'] || 0}
-            </span>
-          </label>
-
-          {/* Did Not Reply Pill (Blue) */}
-          <label 
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.45rem',
-              padding: '0.35rem 0.75rem',
-              borderRadius: 'var(--radius-full)',
-              background: selectedStatuses.has('Did Not Reply') ? '#DBEAFE' : '#F8FAFC',
-              border: selectedStatuses.has('Did Not Reply') ? '1.5px solid #93C5FD' : '1px solid var(--border-color)',
-              color: selectedStatuses.has('Did Not Reply') ? '#1E40AF' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              userSelect: 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={selectedStatuses.has('Did Not Reply')}
-              onChange={() => handleToggleStatus('Did Not Reply')}
-              style={{ accentColor: '#1F74F1', cursor: 'pointer' }}
-            />
-            <span>Did Not Reply</span>
-            <span style={{
-              background: selectedStatuses.has('Did Not Reply') ? '#BFDBFE' : '#E2E8F0',
-              padding: '0.1rem 0.45rem',
-              borderRadius: 'var(--radius-full)',
-              fontSize: '0.72rem'
-            }}>
-              {statusCounts.counts['Did Not Reply'] || 0}
-            </span>
-          </label>
-
-          {/* Uncontacted Pill (Blue) */}
-          <label 
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.45rem',
-              padding: '0.35rem 0.75rem',
-              borderRadius: 'var(--radius-full)',
-              background: selectedStatuses.has('Uncontacted') ? '#DBEAFE' : '#F8FAFC',
-              border: selectedStatuses.has('Uncontacted') ? '1.5px solid #93C5FD' : '1px solid var(--border-color)',
-              color: selectedStatuses.has('Uncontacted') ? '#1E40AF' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              userSelect: 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={selectedStatuses.has('Uncontacted')}
-              onChange={() => handleToggleStatus('Uncontacted')}
-              style={{ accentColor: '#1F74F1', cursor: 'pointer' }}
-            />
-            <span>Uncontacted</span>
-            <span style={{
-              background: selectedStatuses.has('Uncontacted') ? '#BFDBFE' : '#E2E8F0',
-              padding: '0.1rem 0.45rem',
-              borderRadius: 'var(--radius-full)',
-              fontSize: '0.72rem'
-            }}>
-              {statusCounts.counts['Uncontacted'] || 0}
-            </span>
-          </label>
-
-          {/* Withdrawn Pill (Red) */}
-          <label 
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.45rem',
-              padding: '0.35rem 0.75rem',
-              borderRadius: 'var(--radius-full)',
-              background: selectedStatuses.has('Withdrawn') ? '#FEE2E2' : '#F8FAFC',
-              border: selectedStatuses.has('Withdrawn') ? '1.5px solid #FCA5A5' : '1px solid var(--border-color)',
-              color: selectedStatuses.has('Withdrawn') ? '#991B1B' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              userSelect: 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={selectedStatuses.has('Withdrawn')}
-              onChange={() => handleToggleStatus('Withdrawn')}
-              style={{ accentColor: '#DC2626', cursor: 'pointer' }}
-            />
-            <span>Withdrawn</span>
-            <span style={{
-              background: selectedStatuses.has('Withdrawn') ? '#FECACA' : '#E2E8F0',
-              padding: '0.1rem 0.45rem',
-              borderRadius: 'var(--radius-full)',
-              fontSize: '0.72rem'
-            }}>
-              {statusCounts.counts['Withdrawn'] || 0}
-            </span>
-          </label>
-
-        </div>
-      </div>
-
-      {/* QUICK SEARCH & ROSTER METRICS */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', minWidth: '260px', flex: '1 1 300px' }}>
-          <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)' }} />
-          <input
-            type="text"
-            placeholder="Search applicants by name, email, role, or status..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '0.6rem 0.85rem 0.6rem 2.4rem',
-              background: '#FFFFFF',
-              border: '1px solid rgba(35, 39, 95, 0.15)',
-              color: 'var(--text-main)',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: '0.88rem',
-              boxShadow: 'var(--shadow-sm)'
-            }}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              style={{
-                position: 'absolute',
-                right: '0.75rem',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-muted)',
-                cursor: 'pointer'
-              }}
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-
+      <div className="row-between">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.82rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--sky-blue)' }} />

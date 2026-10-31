@@ -106,10 +106,15 @@ export function countByStatus(registrations, filters, ctx = {}) {
   return counts;
 }
 
-/** Number of facets that differ from their defaults (excluding sort). */
-export function countActiveFilters(filters) {
+/** Number of facets that differ from the screen's baseline (FILTER_DEFAULTS by default; sort excluded). */
+export function countActiveFilters(filters, baseline = FILTER_DEFAULTS) {
   return Object.keys(FACET_MATCHERS).filter((f) => {
     const v = filters[f];
-    return Array.isArray(v) ? v.length > 0 : v !== undefined && v !== FILTER_DEFAULTS[f];
+    const base = baseline[f];
+    if (Array.isArray(v)) {
+      const b = Array.isArray(base) ? base : [];
+      return v.length !== b.length || v.some(x => !b.includes(x));
+    }
+    return v !== undefined && v !== base;
   }).length;
 }

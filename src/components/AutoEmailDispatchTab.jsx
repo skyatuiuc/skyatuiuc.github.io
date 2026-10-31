@@ -79,7 +79,9 @@ export default function AutoEmailDispatchTab() {
   const userEmailLower = (currentUser?.email || '').toLowerCase().trim();
   const { filters, setFilter, resetFilters, filtered: displayedApplicants, statusCounts, activeFilterCount } = useApplicantFilters(
     registrations,
-    { userEmail: userEmailLower, retreat: activeRetreat }
+    { userEmail: userEmailLower, retreat: activeRetreat },
+    undefined,
+    'dispatch'
   );
 
   const [selectedApplicantIds, setSelectedApplicantIds] = useState(new Set());
