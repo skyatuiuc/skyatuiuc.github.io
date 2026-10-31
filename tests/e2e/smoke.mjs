@@ -587,6 +587,20 @@ try {
     check('retreat added to the URL from the stored selection', page.url().includes('retreat='), page.url());
   });
 
+  await step('Phone width (390 px): key pages never scroll sideways (U25)', async () => {
+    await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
+    const paths = ['/', '/my-retreats', `/register/${upcoming.id}`, '/volunteer/orientation', '/volunteer/attendance', '/admin/groups', '/admin/emails', '/admin/settings'];
+    const overflowing = [];
+    for (const path of paths) {
+      await page.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded' });
+      await sleep(900);
+      const { scrollWidth, innerWidth } = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }));
+      if (scrollWidth > innerWidth + 1) overflowing.push(`${path} (${scrollWidth}px)`);
+    }
+    check('no horizontal page scroll at 390 px', overflowing.length === 0, overflowing.join(', '));
+    await page.setViewport({ width: 1400, height: 1000 });
+  });
+
   // ------------------------------------------------ non-admin volunteer
   const volunteer = seed.volunteers.find(v => v !== ADMIN);
   await signOut();
