@@ -186,6 +186,75 @@ function unauthorizedResponse_() {
 }
 
 /**
+ * Find the sheet row for (dateStr, tag) without reading the whole sheet when possible.
+ * Row numbers never change (rows are only appended), so the last known row for a key is cached
+ * and re-validated with a single-row read; on a miss we fall back to one full scan.
+ * Must be called while holding the script lock.
+ * @returns {number} 1-based row index, or -1 when the row does not exist yet
+ */
+function findCampaignRow_(sheet, dateStr, tag) {
+  var cache = CacheService.getScriptCache();
+  var cacheKey = "row_" + dateStr + "_" + tag;
+  var cachedRow = Number(cache.get(cacheKey));
+  var normalizeDate = function(value) {
+    return value instanceof Date ? Utilities.formatDate(value, "America/Chicago", "yyyy-MM-dd") : String(value);
+  };
+
+  if (cachedRow > 1 && cachedRow <= sheet.getLastRow()) {
+    var row = sheet.getRange(cachedRow, 1, 1, 2).getValues()[0];
+    if (normalizeDate(row[0]) === dateStr && String(row[1]).toLowerCase() === tag) {
+      return cachedRow;
+    }
+  }
+
+  var values = sheet.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    if (normalizeDate(values[i][0]) === dateStr && String(values[i][1]).toLowerCase() === tag) {
+      cache.put(cacheKey, String(i + 1), 21600);
+      return i + 1;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Increment the scan or conversion counter for (today, tag), creating the day's row if needed.
+ * @param {string} tag sanitized campaign tag
+ * @param {"scan"|"conversion"} kind
+ */
+function incrementCampaignCounter_(tag, kind) {
+  var now = new Date();
+  var dateStr = Utilities.formatDate(now, "America/Chicago", "yyyy-MM-dd");
+  var nowIso = now.toISOString();
+  var countCol = kind === "scan" ? 3 : 4; // C: Scans, D: Conversions
+  var timeCol = kind === "scan" ? 5 : 6;  // E: LastScannedAt, F: LastConvertedAt
+
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(5000);
+    var sheet = getOrCreateCampaignSheet();
+    var rowIndex = findCampaignRow_(sheet, dateStr, tag);
+
+    if (rowIndex > 0) {
+      var current = Number(sheet.getRange(rowIndex, countCol).getValue()) || 0;
+      sheet.getRange(rowIndex, countCol).setValue(current + 1);
+      sheet.getRange(rowIndex, timeCol).setValue(nowIso);
+    } else {
+      // [Date, Tag, Scans, Conversions, LastScannedAt, LastConvertedAt]
+      sheet.appendRow(kind === "scan" ? [dateStr, tag, 1, 0, nowIso, ""] : [dateStr, tag, 0, 1, "", nowIso]);
+      CacheService.getScriptCache().put("row_" + dateStr + "_" + tag, String(sheet.getLastRow()), 21600);
+    }
+
+    return createJsonResponse({ status: "success", action: kind + "_recorded", tag: tag, date: dateStr });
+  } catch (err) {
+    Logger.log("Error recording campaign " + kind + ": " + err.toString());
+    return createJsonResponse({ status: "error", message: err.toString() });
+  } finally {
+    try { lock.releaseLock(); } catch(e) {}
+  }
+}
+
+/**
  * Handle high-throughput campaign QR/Shortlink scan ingestion
  * @param {object} data { tag, fingerprint }
  */
@@ -196,9 +265,6 @@ function handleRecordScan(data) {
   }
 
   var fingerprint = (data.fingerprint || "anon").trim().substring(0, 64);
-  var now = new Date();
-  var dateStr = Utilities.formatDate(now, "America/Chicago", "yyyy-MM-dd");
-  var nowIso = now.toISOString();
 
   // Deduplication & Anti-Spam Rate Limiting via CacheService (5-minute window)
   var cache = CacheService.getScriptCache();
@@ -208,42 +274,7 @@ function handleRecordScan(data) {
   }
   cache.put(cacheKey, "1", 300); // 5 minutes TTL
 
-  var lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(5000); // Wait up to 5 seconds for lock
-    var sheet = getOrCreateCampaignSheet();
-    var values = sheet.getDataRange().getValues();
-    var rowIndex = -1;
-
-    // Search for existing row matching (Date, Tag)
-    for (var i = 1; i < values.length; i++) {
-      var rowDate = values[i][0];
-      if (rowDate instanceof Date) {
-        rowDate = Utilities.formatDate(rowDate, "America/Chicago", "yyyy-MM-dd");
-      }
-      if (rowDate === dateStr && String(values[i][1]).toLowerCase() === tag) {
-        rowIndex = i + 1; // 1-indexed for Sheet API
-        break;
-      }
-    }
-
-    if (rowIndex > 0) {
-      // Increment Scans column (Col 3: C), update LastScannedAt (Col 5: E)
-      var currentScans = Number(values[rowIndex - 1][2]) || 0;
-      sheet.getRange(rowIndex, 3).setValue(currentScans + 1);
-      sheet.getRange(rowIndex, 5).setValue(nowIso);
-    } else {
-      // Append new daily tag row: [Date, Tag, Scans, Conversions, LastScannedAt, LastConvertedAt]
-      sheet.appendRow([dateStr, tag, 1, 0, nowIso, ""]);
-    }
-
-    return createJsonResponse({ status: "success", action: "scan_recorded", tag: tag, date: dateStr });
-  } catch (err) {
-    Logger.log("Error recording campaign scan: " + err.toString());
-    return createJsonResponse({ status: "error", message: err.toString() });
-  } finally {
-    try { lock.releaseLock(); } catch(e) {}
-  }
+  return incrementCampaignCounter_(tag, "scan");
 }
 
 /**
@@ -257,9 +288,6 @@ function handleRecordConversion(data) {
   }
 
   var fingerprint = (data.fingerprint || "anon").trim().substring(0, 64);
-  var now = new Date();
-  var dateStr = Utilities.formatDate(now, "America/Chicago", "yyyy-MM-dd");
-  var nowIso = now.toISOString();
 
   // Deduplication & Anti-Spam Rate Limiting via CacheService (5-minute window)
   var cache = CacheService.getScriptCache();
@@ -269,41 +297,7 @@ function handleRecordConversion(data) {
   }
   cache.put(cacheKey, "1", 300); // 5 minutes TTL
 
-  var lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(5000);
-    var sheet = getOrCreateCampaignSheet();
-    var values = sheet.getDataRange().getValues();
-    var rowIndex = -1;
-
-    for (var i = 1; i < values.length; i++) {
-      var rowDate = values[i][0];
-      if (rowDate instanceof Date) {
-        rowDate = Utilities.formatDate(rowDate, "America/Chicago", "yyyy-MM-dd");
-      }
-      if (rowDate === dateStr && String(values[i][1]).toLowerCase() === tag) {
-        rowIndex = i + 1;
-        break;
-      }
-    }
-
-    if (rowIndex > 0) {
-      // Increment Conversions column (Col 4: D), update LastConvertedAt (Col 6: F)
-      var currentConv = Number(values[rowIndex - 1][3]) || 0;
-      sheet.getRange(rowIndex, 4).setValue(currentConv + 1);
-      sheet.getRange(rowIndex, 6).setValue(nowIso);
-    } else {
-      // Append row: [Date, Tag, Scans, Conversions, LastScannedAt, LastConvertedAt]
-      sheet.appendRow([dateStr, tag, 0, 1, "", nowIso]);
-    }
-
-    return createJsonResponse({ status: "success", action: "conversion_recorded", tag: tag, date: dateStr });
-  } catch (err) {
-    Logger.log("Error recording campaign conversion: " + err.toString());
-    return createJsonResponse({ status: "error", message: err.toString() });
-  } finally {
-    try { lock.releaseLock(); } catch(e) {}
-  }
+  return incrementCampaignCounter_(tag, "conversion");
 }
 
 /**

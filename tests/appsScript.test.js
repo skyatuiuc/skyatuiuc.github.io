@@ -124,3 +124,60 @@ describe('Apps Script relay authentication', () => {
     expect(getRes.status).toBe('error');
   });
 });
+
+describe('Apps Script campaign scan ingestion', () => {
+  // Minimal in-memory Sheet: rows[0] is the header
+  const makeSheet = () => {
+    const rows = [['Date', 'Tag', 'Scans', 'Conversions', 'LastScannedAt', 'LastConvertedAt']];
+    const stats = { fullReads: 0 };
+    const sheet = {
+      rows,
+      stats,
+      getLastRow: () => rows.length,
+      getDataRange: () => ({ getValues: () => { stats.fullReads++; return rows.map(r => [...r]); } }),
+      getRange: (row, col, numRows = 1, numCols = 1) => ({
+        getValues: () => rows.slice(row - 1, row - 1 + numRows).map(r => r.slice(col - 1, col - 1 + numCols)),
+        getValue: () => rows[row - 1][col - 1],
+        setValue: (v) => { rows[row - 1][col - 1] = v; }
+      }),
+      appendRow: (r) => rows.push([...r])
+    };
+    return sheet;
+  };
+
+  const setup = () => {
+    const env = loadScript({ firestoreCodeFor: () => 404 });
+    const sheet = makeSheet();
+    env.ctx.getOrCreateCampaignSheet = () => sheet;
+    env.ctx.LockService = { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) };
+    return { ...env, sheet };
+  };
+
+  it('creates a row, then increments it via the cached row without re-reading the sheet', () => {
+    const { ctx, sheet } = setup();
+    expect(post(ctx, { action: 'scan', tag: 'quad', fingerprint: 'a' }).status).toBe('success');
+    expect(post(ctx, { action: 'scan', tag: 'quad', fingerprint: 'b' }).status).toBe('success');
+    expect(post(ctx, { action: 'conversion', tag: 'quad', fingerprint: 'a' }).status).toBe('success');
+    expect(sheet.rows).toHaveLength(2);
+    expect(sheet.rows[1].slice(1, 4)).toEqual(['quad', 2, 1]);
+    expect(sheet.stats.fullReads).toBe(1); // only the very first lookup scanned the sheet
+  });
+
+  it('keeps separate rows per tag and ignores duplicate scans in the same session window', () => {
+    const { ctx, sheet } = setup();
+    post(ctx, { action: 'scan', tag: 'quad', fingerprint: 'a' });
+    expect(post(ctx, { action: 'scan', tag: 'quad', fingerprint: 'a' }).status).toBe('ignored');
+    post(ctx, { action: 'scan', tag: 'insta', fingerprint: 'a' });
+    expect(sheet.rows.map(r => r[1])).toEqual(['Tag', 'quad', 'insta']);
+    expect(sheet.rows[1][2]).toBe(1);
+  });
+
+  it('falls back to a full scan when the cached row no longer matches', () => {
+    const { ctx, sheet, cacheStore } = setup();
+    post(ctx, { action: 'scan', tag: 'quad', fingerprint: 'a' });
+    for (const key of cacheStore.keys()) if (key.startsWith('row_')) cacheStore.set(key, '1'); // stale/garbage pointer
+    post(ctx, { action: 'scan', tag: 'quad', fingerprint: 'b' });
+    expect(sheet.rows).toHaveLength(2);
+    expect(sheet.rows[1][2]).toBe(2);
+  });
+});
