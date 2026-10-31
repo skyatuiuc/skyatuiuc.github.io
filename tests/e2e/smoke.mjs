@@ -281,6 +281,30 @@ try {
     await waitForText(`of ${retreatRegs.length} applicant records`);
   });
 
+  await step('Retreat Management: counts, duplicate, date check (U19)', async () => {
+    await page.goto(`${BASE}/admin/retreats`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('details.retreat-past summary');
+    check('past retreats start collapsed', !(await page.$eval('details.retreat-past', el => el.open)));
+    await page.click('details.retreat-past summary');
+    await waitForText(`${retreatRegs.length} applicants`);
+    check('applicant count shown per retreat', true);
+    await clickByText('button', 'Duplicate');
+    await sleep(300);
+    check('duplicate prefills everything except dates', (await page.$eval('#retreat-start', el => el.value)) === '' && (await bodyText()).includes('Set the new dates'));
+    const setDate = (sel, v) => page.$eval(sel, (el, val) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, val);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }, v);
+    await setDate('#retreat-start', '2027-03-05');
+    await setDate('#retreat-end', '2027-03-07');
+    const before = (await readAll('retreat_history')).length;
+    await clickByText('button', 'Create Retreat Record');
+    await sleep(1200);
+    const all = await readAll('retreat_history');
+    const created = all.find(r => r.startDate === '2027-03-05');
+    check('duplicated retreat created with the copied venue', all.length === before + 1 && created?.location === upcoming.location, created?.location);
+  });
+
   await step('Email Dispatch: quota, test send, eligibility and quota cap (U18)', async () => {
     await page.goto(`${BASE}/admin/emails`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => /2 of 100 emails left/.test(document.querySelector('[data-testid="email-quota"]')?.textContent || ''), { timeout: 10000 });

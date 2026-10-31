@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { db, isFirebaseConfigured } from '../../firebase/config';
-import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, collection, query, where, getCountFromServer } from 'firebase/firestore';
 import { useRoster } from '../../context/RosterContext';
 import { formatDirectImageUrl } from '../../services/emailService';
 import { todayChicago } from '../../utils/dateUtils';
-import { Trash2, Calendar, Plus, Edit3, Save, X } from 'lucide-react';
+import { Trash2, Calendar, Plus, Edit3, Save, X, Copy } from 'lucide-react';
 import { useToast } from '../ui/ToastProvider';
 import { useConfirm } from '../ui/ConfirmProvider';
 import { formatRetreatDates } from '../../models/retreat';
@@ -44,6 +44,43 @@ export default function RetreatsTab() {
     toast.info(`Editing retreat record: ${ret.title}`);
   };
 
+  // Start a new retreat from an existing one: same venue, times and teachers, new dates
+  const handleDuplicateRetreat = (ret) => {
+    handleStartEditRetreat(ret);
+    setEditingRetreatId(null);
+    setStartDate('');
+    setEndDate('');
+    setGroupPhotoUrl('');
+    toast.info(`Copied "${ret.title}". Set the new dates (and title if needed), then create it.`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Applicants per retreat: one count query each, only while this tab is open
+  const [applicantCounts, setApplicantCounts] = useState({});
+  const retreatIdsKey = retreats.map(r => r.id).sort().join(',');
+  useEffect(() => {
+    if (!isFirebaseConfigured || !db || !retreatIdsKey) return undefined;
+    let cancelled = false;
+    Promise.all(retreatIdsKey.split(',').map(async (id) => {
+      try {
+        const snap = await getCountFromServer(query(collection(db, 'registrations'), where('retreatId', '==', id)));
+        return [id, snap.data().count];
+      } catch {
+        return [id, null];
+      }
+    })).then((entries) => { if (!cancelled) setApplicantCounts(Object.fromEntries(entries)); });
+    return () => { cancelled = true; };
+  }, [retreatIdsKey]);
+
+  const today = todayChicago();
+  const { upcomingRetreats, pastRetreats } = useMemo(() => {
+    const byStart = [...retreats].sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
+    return {
+      upcomingRetreats: byStart.filter(r => (r.endDate || '') >= today).reverse(),
+      pastRetreats: byStart.filter(r => (r.endDate || '') < today)
+    };
+  }, [retreats, today]);
+
   const handleCancelEditRetreat = () => {
     setEditingRetreatId(null);
     setTitle('');
@@ -63,6 +100,10 @@ export default function RetreatsTab() {
     e.preventDefault();
     if (!title.trim() || !startDate || !endDate || !location.trim()) {
       toast.error('Please fill in Title, Start Date, End Date, and Location.');
+      return;
+    }
+    if (endDate < startDate) {
+      toast.error('The end date is before the start date.');
       return;
     }
 
@@ -154,6 +195,103 @@ export default function RetreatsTab() {
     toast.success('Deleted retreat record.');
   };
 
+  const renderRetreatRow = (ret) => {
+    const isUpcoming = (ret.endDate || '') >= today;
+    const isCurrentlyEditing = editingRetreatId === ret.id;
+    return (
+      <div key={ret.id} style={{
+        padding: '1rem 1.15rem',
+        background: isCurrentlyEditing ? 'var(--sky-sun-light)' : '#F8FAFC',
+        borderRadius: 'var(--radius-sm)',
+        border: isCurrentlyEditing 
+          ? '1px solid var(--sky-sun)' 
+          : (isUpcoming ? '1px solid var(--sky-blue)' : '1px solid var(--border-color)'),
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '1rem',
+        transition: 'var(--transition-fast)'
+      }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)' }}>{ret.title}</span>
+            <span className={`badge ${isUpcoming ? 'badge-sky' : 'badge-earth'}`} style={{ fontSize: '0.65rem' }}>
+              {isUpcoming ? 'UPCOMING' : 'PAST'}
+            </span>
+            {ret.groupPhotoUrl && (
+              <span className="badge badge-sky" style={{ fontSize: '0.65rem' }}>📸 PHOTO</span>
+            )}
+            {isCurrentlyEditing && (
+              <span className="badge badge-sun" style={{ fontSize: '0.65rem' }}>EDITING</span>
+            )}
+            {typeof applicantCounts[ret.id] === 'number' && (
+              <span className="muted text-xs fw-bold">{applicantCounts[ret.id]} applicant{applicantCounts[ret.id] === 1 ? '' : 's'}</span>
+            )}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span>📅 {formatRetreatDates(ret)}</span>
+            <span>•</span>
+            <span>📍 {ret.location || 'UIUC Campus'}{ret.address ? ` (${ret.address})` : ''}</span>
+          </div>
+          {ret.teachers && (
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+              Instructors: {ret.teachers}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+          <button 
+            onClick={() => handleStartEditRetreat(ret)}
+            style={{
+              background: isCurrentlyEditing ? 'var(--sky-sun-light)' : '#FFFFFF',
+              border: isCurrentlyEditing ? '1px solid var(--sky-sun)' : '1px solid var(--border-color)',
+              borderRadius: 'var(--radius-sm)',
+              color: isCurrentlyEditing ? '#B45309' : 'var(--text-main)',
+              cursor: 'pointer',
+              padding: '0.35rem 0.65rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.3rem',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              transition: 'var(--transition-fast)'
+            }}
+            title="Edit Retreat Data"
+          >
+            <Edit3 size={13} /> Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDuplicateRetreat(ret)}
+            className="btn btn-secondary btn-sm"
+            title="Start a new retreat with this venue, times and teachers"
+          >
+            <Copy size={13} /> Duplicate
+          </button>
+          <button 
+            onClick={() => handleDeleteRetreat(ret.id, ret.title)}
+            style={{
+              background: '#FEF2F2',
+              border: '1px solid #F87171',
+              borderRadius: 'var(--radius-sm)',
+              color: '#DC2626',
+              cursor: 'pointer',
+              padding: '0.35rem 0.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'var(--transition-fast)'
+            }}
+            title="Delete Retreat"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="animate-fade-in" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '2.5rem' }}>
       
@@ -213,6 +351,7 @@ export default function RetreatsTab() {
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>START DATE *</label>
               <input 
+                id="retreat-start"
                 type="date"
                 required
                 value={startDate}
@@ -223,8 +362,10 @@ export default function RetreatsTab() {
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>END DATE *</label>
               <input 
+                id="retreat-end"
                 type="date"
                 required
+                min={startDate || undefined}
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 style={{ width: '100%', padding: '0.75rem 1rem', background: '#FFFFFF', border: '1px solid rgba(35, 39, 95, 0.15)', borderRadius: 'var(--radius-sm)', color: 'var(--text-main)', fontSize: '0.9rem' }}
@@ -433,91 +574,19 @@ export default function RetreatsTab() {
               No retreat records found. Use the form to create your first retreat.
             </div>
           ) : (
-            retreats.map((ret) => {
-              const isUpcoming = ret.endDate >= todayChicago();
-              const isCurrentlyEditing = editingRetreatId === ret.id;
-              return (
-                <div key={ret.id} style={{
-                  padding: '1rem 1.15rem',
-                  background: isCurrentlyEditing ? 'var(--sky-sun-light)' : '#F8FAFC',
-                  borderRadius: 'var(--radius-sm)',
-                  border: isCurrentlyEditing 
-                    ? '1px solid var(--sky-sun)' 
-                    : (isUpcoming ? '1px solid var(--sky-blue)' : '1px solid var(--border-color)'),
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '1rem',
-                  transition: 'var(--transition-fast)'
-                }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)' }}>{ret.title}</span>
-                      <span className={`badge ${isUpcoming ? 'badge-sky' : 'badge-earth'}`} style={{ fontSize: '0.65rem' }}>
-                        {isUpcoming ? 'UPCOMING' : 'PAST'}
-                      </span>
-                      {ret.groupPhotoUrl && (
-                        <span className="badge badge-sky" style={{ fontSize: '0.65rem' }}>📸 PHOTO</span>
-                      )}
-                      {isCurrentlyEditing && (
-                        <span className="badge badge-sun" style={{ fontSize: '0.65rem' }}>EDITING</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span>📅 {formatRetreatDates(ret)}</span>
-                      <span>•</span>
-                      <span>📍 {ret.location || 'UIUC Campus'}{ret.address ? ` (${ret.address})` : ''}</span>
-                    </div>
-                    {ret.teachers && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                        Instructors: {ret.teachers}
-                      </div>
-                    )}
+            <>
+              {upcomingRetreats.map(renderRetreatRow)}
+              {pastRetreats.length > 0 && (
+                <details className="retreat-past">
+                  <summary className="fw-bold text-sm text-secondary" style={{ cursor: 'pointer', padding: '0.4rem 0' }}>
+                    Past retreats ({pastRetreats.length})
+                  </summary>
+                  <div className="stack-sm" style={{ marginTop: '0.5rem' }}>
+                    {pastRetreats.map(renderRetreatRow)}
                   </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
-                    <button 
-                      onClick={() => handleStartEditRetreat(ret)}
-                      style={{
-                        background: isCurrentlyEditing ? 'var(--sky-sun-light)' : '#FFFFFF',
-                        border: isCurrentlyEditing ? '1px solid var(--sky-sun)' : '1px solid var(--border-color)',
-                        borderRadius: 'var(--radius-sm)',
-                        color: isCurrentlyEditing ? '#B45309' : 'var(--text-main)',
-                        cursor: 'pointer',
-                        padding: '0.35rem 0.65rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.3rem',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        transition: 'var(--transition-fast)'
-                      }}
-                      title="Edit Retreat Data"
-                    >
-                      <Edit3 size={13} /> Edit
-                    </button>
-                    <button 
-                      onClick={() => handleDeleteRetreat(ret.id, ret.title)}
-                      style={{
-                        background: '#FEF2F2',
-                        border: '1px solid #F87171',
-                        borderRadius: 'var(--radius-sm)',
-                        color: '#DC2626',
-                        cursor: 'pointer',
-                        padding: '0.35rem 0.5rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'var(--transition-fast)'
-                      }}
-                      title="Delete Retreat"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })
+                </details>
+              )}
+            </>
           )}
         </div>
       </div>
