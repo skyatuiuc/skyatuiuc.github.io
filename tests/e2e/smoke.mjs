@@ -77,6 +77,23 @@ seed.registrations.push(
   interestBase(DUP, 'general'),
   { ...interestBase(DUP, upcoming.id), status: 'Uncontacted' }
 );
+// ---------------------------------------------------------------- app server (needed to load app modules)
+Object.assign(process.env, {
+  VITE_USE_FIREBASE_EMULATORS: 'true',
+  VITE_FIREBASE_API_KEY: 'demo-api-key',
+  VITE_FIREBASE_PROJECT_ID: PROJECT_ID,
+  VITE_FIREBASE_AUTH_DOMAIN: 'localhost',
+  VITE_FIREBASE_APP_ID: 'demo-app',
+  // Campaign beacons target a non-existent relay (and are intercepted anyway): never production
+  VITE_CAMPAIGN_WEBHOOK_URL: 'https://script.google.com/macros/s/E2E-FAKE-RELAY/exec'
+});
+const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'error' });
+await server.listen();
+// App modules (extensionless imports) are loaded through Vite, exactly as the browser sees them
+// Production is on schema v3, so seeds (synthetic v1 data or an older snapshot) are converted with the
+// legacy migrator before they are written, exactly as the one-time production migration did.
+const { migrateRegistration, applyMigrationToObject } = await server.ssrLoadModule('/scripts/legacy/migrateRegistration.js');
+
 await env.withSecurityRulesDisabled(async (ctx) => {
   const db = ctx.firestore();
   for (const r of [...seed.retreats, upcoming]) {
@@ -91,11 +108,17 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   });
   for (const r of seed.registrations) {
     const { id, ...data } = r;
-    await setDoc(doc(db, 'registrations', id), { id, ...data });
+    const result = migrateRegistration(data, { volunteerEmails: seed.volunteers });
+    const v3 = applyMigrationToObject(data, result);
+    await setDoc(doc(db, 'registrations', id), v3);
+    if (result.privateNotes) {
+      await setDoc(doc(db, 'registration_private', id), { retreatId: v3.retreatId, notes: result.privateNotes, updatedAt: v3.updatedAt || '', updatedBy: 'seed' });
+    }
   }
+  await setDoc(doc(db, 'system_settings', 'schema'), { registrationsVersion: 3, migratedAt: '2026-10-31T20:00:00.000Z', migratedBy: ADMIN });
 });
 const pastRetreat = seed.retreats[0];
-console.log(`Seeded ${seed.registrations.length} v1 registrations (${seed.source}), retreat ${pastRetreat.id}`);
+console.log(`Seeded ${seed.registrations.length} registrations converted to v3 (${seed.source}), retreat ${pastRetreat.id}`);
 
 const readAll = async (name) => {
   let docs = [];
@@ -114,20 +137,6 @@ const readOne = async (name, id) => {
   return data;
 };
 
-// ---------------------------------------------------------------- app + browser
-Object.assign(process.env, {
-  VITE_USE_FIREBASE_EMULATORS: 'true',
-  VITE_FIREBASE_API_KEY: 'demo-api-key',
-  VITE_FIREBASE_PROJECT_ID: PROJECT_ID,
-  VITE_FIREBASE_AUTH_DOMAIN: 'localhost',
-  VITE_FIREBASE_APP_ID: 'demo-app',
-  // Campaign beacons target a non-existent relay (and are intercepted anyway): never production
-  VITE_CAMPAIGN_WEBHOOK_URL: 'https://script.google.com/macros/s/E2E-FAKE-RELAY/exec'
-});
-const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'error' });
-await server.listen();
-// App modules (extensionless imports) are loaded through Vite, exactly as the browser sees them
-const { migrateRegistration } = await server.ssrLoadModule('/src/models/migrateRegistration.js');
 
 // Back/forward cache would keep earlier test pages (and their Firestore channels to the HTTP/1.1
 // emulator) alive until Chrome's 6-connections-per-host limit stalls new pages. Production Firestore
@@ -238,39 +247,34 @@ try {
     await waitForText('Authorize New Volunteer');
   });
 
-  await step('Admin migration: dry run + apply', async () => {
-    await clickByText('button', 'Data, Usage & Backups');
-    await waitForText('Data Maintenance');
-    await clickByText('button', 'Dry run');
-    await waitForText('need migration');
-    await clickByText('button', 'Apply migration');
-    await confirmDialog();
-    await waitForText('Migrated', 20000);
-  });
-
   const migrated = await readAll('registrations');
-  const notesDocs = await readAll('registration_private');
-  const legacyLeft = migrated.filter(({ id, ...data }) => migrateRegistration(data).changed);
-  check('every registration is on schema v2 after the UI migration', legacyLeft.length === 0, `${legacyLeft.length} left`);
-  check('no literal sentEmails.* fields remain', migrated.every(r => Object.keys(r).every(k => !k.startsWith('sentEmails.'))));
-  const expectedNotes = seed.registrations.filter(r => (r.orientationNotes || r.interviewNotes || '').trim()).length;
-  check('volunteer notes moved to registration_private', notesDocs.length === expectedNotes, `${notesDocs.length}/${expectedNotes}`);
-  const sampleWithDnr = seed.registrations.find(r => r.orientationStatus === 'Did Not Reply');
-  if (sampleWithDnr) {
-    check('detailed status preserved ("Did Not Reply")', migrated.find(r => r.id === sampleWithDnr.id)?.status === 'Did Not Reply');
-  }
-  const schema = await readOne('system_settings', 'schema');
-  check('schema version stamped', schema?.registrationsVersion === 3);
   const listedVolunteerRegs = migrated.filter(r => seed.volunteers.includes(r.email));
-  check('v3: listed volunteers\' registrations carry the Volunteer status (unless withdrawn)',
-    listedVolunteerRegs.length > 0 && listedVolunteerRegs.every(r => r.status === 'Volunteer' || r.status === 'Withdrawn'),
-    listedVolunteerRegs.map(r => r.status).join(','));
-  check('v3: nobody else became a Volunteer', migrated.filter(r => r.status === 'Volunteer').every(r => seed.volunteers.includes(r.email)));
+  check('seeds converted to v3: listed volunteers carry the Volunteer status (unless withdrawn)',
+    listedVolunteerRegs.length > 0 && listedVolunteerRegs.every(r => r.status === 'Volunteer' || r.status === 'Withdrawn'));
 
-  await step('Re-running the dry run after v3 finds nothing to do', async () => {
-    await clickByText('button', 'Dry run');
-    await sleep(1500);
-    check('dry run shows 0 to migrate', (await bodyText()).includes('scanned · 0 need migration'));
+  await step('Data health check, snapshot record (U21)', async () => {
+    await page.goto(`${BASE}/admin/data`, { waitUntil: 'domcontentloaded' });
+    await clickByText('button', 'Run health check');
+    await waitForText(`All ${migrated.length} registrations match schema v3`, 15000);
+    check('health check passes on v3 data', true);
+    // A planted legacy document is reported (and removed again)
+    const bad = `legacy@illinois.edu_${pastRetreat.id}`;
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'registrations', bad), { email: 'legacy@illinois.edu', retreatId: pastRetreat.id, fullName: 'Old Shape', status: 'Accepted' });
+    });
+    await clickByText('button', 'Run health check');
+    await waitForText(`1 of ${migrated.length + 1} registrations need attention`, 15000);
+    check('health check flags a legacy-shaped document', (await bodyText()).includes(bad));
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const { deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(doc(ctx.firestore(), 'registrations', bad));
+    });
+    check('no snapshot recorded yet', (await page.$eval('[data-testid="last-snapshot"]', el => el.textContent)).includes('No full snapshot recorded yet'));
+    await clickByText('button', 'Full System Snapshot');
+    await sleep(2500);
+    const record = await readOne('system_settings', 'backups');
+    check('snapshot time recorded', Boolean(record?.lastSnapshotAt) && record?.lastSnapshotBy === ADMIN);
+    check('last snapshot shown', (await page.$eval('[data-testid="last-snapshot"]', el => el.textContent)).includes('Last full snapshot'));
   });
 
   // Make sure the past retreat is the active one in the selector

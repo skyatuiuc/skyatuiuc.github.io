@@ -1,8 +1,11 @@
-// Registration schema migration (pure transform; Firestore I/O lives in the Admin Data Maintenance
-// panel). v1 -> v2 collapses redundant fields; v2 -> v3 marks listed volunteers' registrations with
+// LEGACY (kept out of the app bundle since production reached schema v3 on 2026-10-31).
+// Used only by tests to load pre-v3 snapshots (e.g. the e2e harness with SKY_BACKUP_PATH).
+//
+// Registration schema migration (pure transform; the Firestore I/O lived in the Admin Data
+// Maintenance panel, now a read-only schema health check). v1 -> v2 collapses redundant fields; v2 -> v3 marks listed volunteers' registrations with
 // the Volunteer status. Idempotent: running it on an already-migrated document yields no changes.
 
-import { STATUS, STATUS_OPTIONS, getGroupNumber } from './applicant';
+import { STATUS, STATUS_OPTIONS, getGroupNumber } from '../../src/models/applicant.js';
 
 // Redundant or derived v1 fields that v2 no longer stores
 export const REMOVED_FIELDS = [

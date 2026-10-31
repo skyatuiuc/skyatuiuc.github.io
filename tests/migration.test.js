@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
-import { migrateRegistration, applyMigrationToObject, REMOVED_FIELDS } from '../src/models/migrateRegistration';
+import { migrateRegistration, applyMigrationToObject, REMOVED_FIELDS } from '../scripts/legacy/migrateRegistration.js';
 import { getStatus, getPayment, getGroupName, getAttendance, getDisplayName, STATUS_OPTIONS } from '../src/models/applicant';
 
 // Synthetic v1 documents covering every field combination seen in the Oct-2026 production backup
@@ -156,5 +156,33 @@ describe.runIf(backupPath && fs.existsSync(backupPath))('migration against produ
       for (const key of Object.keys(doc.sentEmails || {})) expect(out.sentEmails[key]).toEqual(doc.sentEmails[key]);
       expect(migrateRegistration(out).changed).toBe(false);
     }
+  });
+});
+
+import { checkSchemaHealth, checkRegistration } from '../src/models/schemaHealth';
+
+describe('schema health check', () => {
+  const retreats = new Set(['retreat-1']);
+  it('passes a migrated v3 document and flags legacy or malformed ones', () => {
+    const migrated = applyMigrationToObject(v1(), migrateRegistration(v1()));
+    expect(checkRegistration('a@illinois.edu_retreat-1', migrated, retreats)).toEqual([]);
+    const problems = checkRegistration('wrong-id', { ...migrated, fullName: 'x', status: 'Accepted', groupId: 'g1' }, retreats);
+    expect(problems.join(' | ')).toMatch(/unexpected fields: fullName.*id does not match.*invalid status.*invalid groupId/);
+    expect(checkRegistration('a@illinois.edu_gone', { ...migrated, retreatId: 'gone' }, retreats)[0]).toMatch(/no longer exists/);
+  });
+  it('reports notes whose registration is gone', () => {
+    const migrated = applyMigrationToObject(v1(), migrateRegistration(v1()));
+    const report = checkSchemaHealth([{ id: 'a@illinois.edu_retreat-1', data: migrated }], [{ id: 'a@illinois.edu_retreat-1' }, { id: 'ghost' }], retreats);
+    expect(report).toEqual({ total: 1, issues: [], orphanNotes: ['ghost'] });
+  });
+});
+
+describe.runIf(backupPath && fs.existsSync(backupPath))('schema health of the migrated production backup', () => {
+  it('finds no issues once every document is migrated to v3', () => {
+    const backup = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
+    const retreatIds = new Set(backup.collections.retreat_history.map(r => r.id));
+    const regs = backup.collections.registrations.map(({ id, ...data }) => ({ id, data: applyMigrationToObject(data, migrateRegistration(data)) }));
+    const report = checkSchemaHealth(regs, [], retreatIds);
+    expect(report.issues).toEqual([]);
   });
 });

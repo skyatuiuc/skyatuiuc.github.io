@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, getCountFromServer, getDocs } from 'firebase/firestore';
+import { collection, doc, getCountFromServer, getDoc, getDocs, setDoc } from 'firebase/firestore';
 import { app, db, isFirebaseConfigured } from '../../firebase/config';
 import { useAuth } from '../../context/AuthContext';
 import { useRoster } from '../../context/RosterContext';
 import { todayChicago } from '../../utils/dateUtils';
 import { downloadBlob, registrationsToCsv } from '../../utils/exportUtils';
-import DataMigrationPanel from './DataMigrationPanel';
+import SchemaHealthPanel from './SchemaHealthPanel';
 import { Activity, Database, Download, ExternalLink, FileText, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useToast } from '../ui/ToastProvider';
 
@@ -94,6 +94,18 @@ export default function DataTab() {
     refreshCounts();
   }, [refreshCounts]);
 
+  // When the last full snapshot was downloaded (system_settings/backups), so it is obvious when one is due
+  const [lastSnapshot, setLastSnapshot] = useState(undefined);
+  useEffect(() => {
+    if (!isFirebaseConfigured || !db) return;
+    getDoc(doc(db, 'system_settings', 'backups'))
+      .then(snap => setLastSnapshot(snap.exists() ? snap.data() : null))
+      .catch(() => setLastSnapshot(null));
+  }, []);
+  const snapshotAgeDays = lastSnapshot?.lastSnapshotAt
+    ? Math.floor((Date.now() - Date.parse(lastSnapshot.lastSnapshotAt)) / 86400000)
+    : null;
+
   // Full snapshot reads every document once (an explicit admin action, not a listener)
   const handleFullBackup = async () => {
     setBusy('backup');
@@ -117,6 +129,10 @@ export default function DataTab() {
       };
       downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `skyatuiuc_full_backup_${todayChicago()}.json`);
       toast.success(`Full backup downloaded (${countsByName.registrations} registrations, ${countsByName.retreat_history} retreats).`);
+      const record = { lastSnapshotAt: payload.meta.exportedAt, lastSnapshotBy: currentUser?.email || '', counts: countsByName };
+      setLastSnapshot(record);
+      setDoc(doc(db, 'system_settings', 'backups'), record, { merge: true })
+        .catch(err => console.warn('Could not record the snapshot time:', err));
     } catch (err) {
       console.error('Backup failed:', err);
       toast.error(`Backup failed: ${err.message}`);
@@ -205,6 +221,17 @@ export default function DataTab() {
             <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.35rem', maxWidth: '680px', lineHeight: 1.5 }}>
               The full snapshot reads every document once ({BACKUP_COLLECTIONS.length} collections, all retreats). Take one before any migration or bulk change.
             </p>
+            {lastSnapshot !== undefined && (
+              <p
+                data-testid="last-snapshot"
+                className={`notice ${snapshotAgeDays === null || snapshotAgeDays > 30 ? 'notice-warning' : 'notice-info'}`}
+                style={{ marginTop: '0.75rem', padding: '0.5rem 0.8rem', fontSize: '0.82rem' }}
+              >
+                {snapshotAgeDays === null
+                  ? 'No full snapshot recorded yet. Take one now.'
+                  : `Last full snapshot: ${new Date(lastSnapshot.lastSnapshotAt).toLocaleString()} by ${lastSnapshot.lastSnapshotBy} (${snapshotAgeDays === 0 ? 'today' : `${snapshotAgeDays} day${snapshotAgeDays === 1 ? '' : 's'} ago`})${snapshotAgeDays > 30 ? '. Consider taking a new one.' : '.'}`}
+              </p>
+            )}
           </div>
         </div>
 
@@ -238,7 +265,7 @@ export default function DataTab() {
         </div>
       </div>
 
-      <DataMigrationPanel />
+      <SchemaHealthPanel />
     </div>
   );
 }
