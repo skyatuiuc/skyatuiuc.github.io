@@ -32,8 +32,8 @@ export default function DataMigrationPanel() {
   const [preview, setPreview] = useState(null);
   const [status, setStatus] = useState({ busy: false, error: '', done: '' });
 
-  const runDryRun = async () => {
-    setStatus({ busy: true, error: '', done: '' });
+  const runDryRun = async (doneMessage = '') => {
+    setStatus({ busy: true, error: '', done: doneMessage });
     try {
       const [snap, schemaSnap] = await Promise.all([
         getDocs(collection(db, 'registrations')),
@@ -41,9 +41,9 @@ export default function DataMigrationPanel() {
       ]);
       setSchemaInfo(schemaSnap.exists() ? schemaSnap.data() : null);
       setPreview(planMigration(snap));
-      setStatus({ busy: false, error: '', done: '' });
+      setStatus({ busy: false, error: '', done: doneMessage });
     } catch (err) {
-      setStatus({ busy: false, error: `Dry run failed: ${err.message}`, done: '' });
+      setStatus({ busy: false, error: `Dry run failed: ${err.message}`, done: doneMessage });
     }
   };
 
@@ -91,8 +91,7 @@ export default function DataMigrationPanel() {
       ops += 1;
       await flush();
 
-      setStatus({ busy: false, error: '', done: `Migrated ${plan.length} registrations.` });
-      await runDryRun();
+      await runDryRun(`Migrated ${plan.length} registrations.`);
     } catch (err) {
       setStatus({ busy: false, error: `Migration stopped: ${err.message}. Already-committed batches are safe; re-run to finish.`, done: '' });
     }
@@ -113,7 +112,7 @@ export default function DataMigrationPanel() {
       </p>
 
       <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-        <button type="button" className="btn" onClick={runDryRun} disabled={status.busy}>
+        <button type="button" className="btn" onClick={() => runDryRun()} disabled={status.busy}>
           {status.busy ? 'Working…' : 'Dry run (read only)'}
         </button>
         <button type="button" className="btn btn-primary" onClick={applyMigration} disabled={status.busy || !pending}>

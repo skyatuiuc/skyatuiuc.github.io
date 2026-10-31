@@ -125,11 +125,13 @@ export function AuthProvider({ children }) {
       try {
         const volunteersRef = collection(db, 'authorized_volunteers');
         unsubscribeFirestore = onSnapshot(volunteersRef, (snapshot) => {
-          const emails = [ADMIN_EMAIL.toLowerCase()];
+          // The super admin may also be listed in the collection; keep each email once
+          const emailSet = new Set([ADMIN_EMAIL.toLowerCase()]);
           snapshot.forEach((d) => {
             const data = d.data();
-            if (data.email) emails.push(data.email.toLowerCase());
+            if (data.email) emailSet.add(data.email.toLowerCase());
           });
+          const emails = [...emailSet];
           setAuthorizedEmails(emails);
           localStorage.setItem('sky_authorized_emails', JSON.stringify(emails));
         }, (error) => {

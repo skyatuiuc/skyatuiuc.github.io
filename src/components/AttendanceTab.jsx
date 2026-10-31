@@ -579,6 +579,8 @@ export default function AttendanceTab() {
                   <div style={{ display: 'flex', alignItems: 'center' }}>
                     <button
                       type="button"
+                      aria-pressed={isPresent}
+                      aria-label={`${member.name}: ${activeDayObj.label} attendance`}
                       onClick={() => handleToggleAttendance(member)}
                       style={{
                         display: 'inline-flex',

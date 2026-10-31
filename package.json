@@ -19,7 +19,8 @@
     "clasp:push": "clasp push",
     "clasp:deploy": "clasp push && clasp deploy -i AKfycbyHJFonGIbqaZfADEed5QgzodmE65hTDLYp_iY-Tn_Nemg9k-eAUQV4s5mYMMRV3zDT",
     "test": "vitest run --exclude tests/rules/**",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-skyatuiuc 'vitest run tests/rules'"
+    "test:rules": "firebase emulators:exec --only firestore --project demo-skyatuiuc 'vitest run tests/rules'",
+    "test:e2e": "firebase emulators:exec --only auth,firestore --project demo-skyatuiuc 'node tests/e2e/smoke.mjs'"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
@@ -45,6 +46,7 @@
     "firebase-tools": "^15.27.0",
     "gh-pages": "^6.1.1",
     "globals": "^17.11.0",
+    "puppeteer-core": "^23.11.1",
     "vite": "^5.2.11",
     "vitest": "^2.1.9"
   }

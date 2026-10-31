@@ -1,7 +1,7 @@
 // Firebase Configuration & Initialization for SKY at UIUC
 import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut as firebaseSignOut } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut as firebaseSignOut, connectAuthEmulator, signInWithCredential } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 
 // Firebase Project Credentials for skyatuiuc-web
 const firebaseConfig = {
@@ -31,6 +31,17 @@ if (isFirebaseConfigured) {
     googleProvider.setCustomParameters({
       prompt: 'select_account'
     });
+
+    // Local end-to-end testing only (npm run test:e2e): talk to the Auth/Firestore emulators and
+    // allow scripted sign-in. Never enabled in production builds.
+    if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true') {
+      connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+      connectFirestoreEmulator(db, '127.0.0.1', 8080);
+      window.__skyEmulatorSignIn = (email) => signInWithCredential(
+        auth,
+        GoogleAuthProvider.credential(JSON.stringify({ sub: email, email, email_verified: true, name: email.split('@')[0] }))
+      );
+    }
   } catch (error) {
     console.warn("Firebase initialization notice:", error.message);
   }
