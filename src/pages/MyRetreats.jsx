@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { db, isFirebaseConfigured } from '../firebase/config';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { INITIAL_RETREATS } from '../data/retreatData';
-import { Calendar, CheckCircle2, Clock, User, LogIn, ArrowRight, Sparkles } from 'lucide-react';
+import { Calendar, CheckCircle2, Clock, User, LogIn, ArrowRight, Sparkles, HeartHandshake } from 'lucide-react';
 import { loadCachedRetreats } from '../utils/retreatUtils';
 import { getStatus, getAttendance, STATUS, GENERAL_RETREAT } from '../models/applicant';
 import { getFeeTierLabel } from '../data/pricingData';
@@ -142,7 +142,8 @@ export default function MyRetreats() {
 
                   const status = getStatus(reg);
                   const isApproved = status === STATUS.APPROVED;
-                  const isCompleted = getAttendance(reg).isComplete;
+                  const isVolunteer = status === STATUS.VOLUNTEER;
+                  const isCompleted = !isVolunteer && getAttendance(reg).isComplete;
 
                   return (
                     <div key={reg.id} className="glass-card animate-fade-in" style={{
@@ -168,7 +169,11 @@ export default function MyRetreats() {
 
                         {/* Completion Badge */}
                         <div>
-                          {isCompleted ? (
+                          {isVolunteer ? (
+                            <span className="badge badge-sun" style={{ fontSize: '0.85rem', padding: '0.45rem 0.9rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <HeartHandshake size={16} /> Volunteering
+                            </span>
+                          ) : isCompleted ? (
                             <span className="badge badge-earth" style={{ fontSize: '0.85rem', padding: '0.45rem 0.9rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                               <CheckCircle2 size={16} /> Completed & Graduated
                             </span>

@@ -17,13 +17,13 @@ const thStyle = { padding: '0.75rem 1rem', color: 'var(--text-muted)', fontWeigh
 const tdStyle = { padding: '0.75rem 1rem' };
 
 export default function OrientationTab() {
-  const { currentUser, isAdmin, authorizedEmails } = useAuth();
+  const { currentUser, isAdmin } = useAuth();
   const { registrations, activeRetreat, updateRegistration, deleteRegistration } = useRoster();
   const userEmailLower = (currentUser?.email || '').toLowerCase();
 
   const { filters, setFilter, resetFilters, filtered, statusCounts, activeFilterCount } = useApplicantFilters(
     registrations,
-    { userEmail: userEmailLower, retreat: activeRetreat, authorizedEmails }
+    { userEmail: userEmailLower, retreat: activeRetreat }
   );
 
   const [selectedId, setSelectedId] = useState(null);
@@ -82,7 +82,7 @@ export default function OrientationTab() {
   };
 
   const handleExportCsv = () => {
-    const csv = registrationsToCsv(filtered, activeRetreat, authorizedEmails);
+    const csv = registrationsToCsv(filtered, activeRetreat);
     downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `skyatuiuc_${activeRetreat?.id || 'roster'}_filtered_${todayChicago()}.csv`);
   };
 

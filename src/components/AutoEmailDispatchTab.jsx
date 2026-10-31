@@ -5,7 +5,7 @@ import { useAuth, ADMIN_EMAIL } from '../context/AuthContext';
 import { useRoster } from '../context/RosterContext';
 import { useApplicantFilters } from '../hooks/useApplicantFilters';
 import ApplicantFilterBar from './ApplicantFilterBar';
-import { getDisplayName, getStatus, getGroupId, getGroupName, STATUS } from '../models/applicant';
+import { getDisplayName, getStatus, getGroupId, getGroupName, STATUS_STYLES } from '../models/applicant';
 import {
   Mail,
   Send,
@@ -37,7 +37,7 @@ import ParticipantDetailsModal from './ParticipantDetailsModal';
 const DISPATCH_FACETS = ['search', 'statuses', 'claim', 'payment', 'iahv', 'email', 'role', 'sort'];
 
 export default function AutoEmailDispatchTab() {
-  const { currentUser, authorizedEmails } = useAuth();
+  const { currentUser } = useAuth();
   const { activeRetreat, registrations, updateRegistration } = useRoster();
 
   // Email Settings State
@@ -76,7 +76,7 @@ export default function AutoEmailDispatchTab() {
   const userEmailLower = (currentUser?.email || '').toLowerCase().trim();
   const { filters, setFilter, resetFilters, filtered: displayedApplicants, statusCounts, activeFilterCount } = useApplicantFilters(
     registrations,
-    { userEmail: userEmailLower, retreat: activeRetreat, authorizedEmails }
+    { userEmail: userEmailLower, retreat: activeRetreat }
   );
 
   const [selectedApplicantIds, setSelectedApplicantIds] = useState(new Set());
@@ -673,7 +673,7 @@ export default function AutoEmailDispatchTab() {
             {displayedApplicants.map(applicant => {
               const isSelected = selectedApplicantIds.has(applicant.id);
               const initial = (applicant.firstName?.[0] || applicant.email?.[0] || 'U').toUpperCase();
-              const isApproved = getStatus(applicant) === STATUS.APPROVED;
+              const statusStyle = STATUS_STYLES[getStatus(applicant)];
               const feeInfo = parseFeeAndPayment(applicant);
               const isPaypalSaved = savedPaypalLinks[applicant.id];
 
@@ -758,9 +758,9 @@ export default function AutoEmailDispatchTab() {
                     <span 
                       className="badge" 
                       style={{
-                        background: isApproved ? '#DCFCE7' : '#FEF3C7',
-                        color: isApproved ? '#166534' : '#B45309',
-                        border: isApproved ? '1px solid #86EFAC' : '1px solid #FCD34D',
+                        background: statusStyle.bg,
+                        color: statusStyle.color,
+                        border: `1px solid ${statusStyle.border}`,
                         fontSize: '0.72rem',
                         fontWeight: 700
                       }}
@@ -919,7 +919,6 @@ export default function AutoEmailDispatchTab() {
         <ParticipantDetailsModal
           participant={inspectParticipant}
           groupName={getGroupName(getGroupId(inspectParticipant, activeRetreat), activeRetreat)}
-          isVolunteer={false}
           onClose={() => setInspectParticipant(null)}
         />
       )}

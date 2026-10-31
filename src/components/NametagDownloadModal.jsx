@@ -22,7 +22,7 @@ import {
   resolveParticipantTeamName,
   convertLength
 } from '../utils/nametagPdfUtils';
-import { getStatus, STATUS, STATUS_OPTIONS } from '../models/applicant';
+import { getStatus, STATUS, STATUS_OPTIONS, STATUS_STYLES } from '../models/applicant';
 
 export default function NametagDownloadModal({
   isOpen,
@@ -128,7 +128,7 @@ export default function NametagDownloadModal({
 
   const handleApplyPreset = (preset) => {
     if (preset === 'all') selectStatuses(availableStatuses);
-    else if (preset === 'approved') selectStatuses([STATUS.APPROVED]);
+    else if (preset === 'approved') selectStatuses([STATUS.APPROVED, STATUS.VOLUNTEER]);
     else if (preset === 'pending') selectStatuses([STATUS.PENDING, STATUS.UNCONTACTED]);
   };
 
@@ -539,7 +539,7 @@ export default function NametagDownloadModal({
                     className="btn btn-secondary"
                     style={{ padding: '0.25rem 0.55rem', fontSize: '0.72rem', fontWeight: 700 }}
                   >
-                    Approved Only
+                    Approved + Volunteers
                   </button>
                   <button
                     type="button"
@@ -556,7 +556,7 @@ export default function NametagDownloadModal({
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                 {availableStatuses.map(status => {
                   const isChecked = selectedStatusSet.has(status);
-                  const count = allApplicants.filter(a => (a.orientationStatus || a.interviewStatus || a.status || 'Uncontacted').trim() === status).length;
+                  const count = allApplicants.filter(a => getStatus(a) === status).length;
                   return (
                     <label
                       key={status}
@@ -655,7 +655,9 @@ export default function NametagDownloadModal({
                       const isSelected = selectedCandidateIds.has(applicant.id);
                       const dispName = resolveParticipantDisplayName(applicant, allApplicants);
                       const teamName = resolveParticipantTeamName(applicant, groupNames);
-                      const status = applicant.orientationStatus || applicant.interviewStatus || applicant.status || 'Uncontacted';
+                      const status = getStatus(applicant);
+                      const statusStyle = STATUS_STYLES[status];
+                      const isVolunteer = status === STATUS.VOLUNTEER;
 
                       return (
                         <div
@@ -669,7 +671,7 @@ export default function NametagDownloadModal({
                             justifyContent: 'space-between',
                             gap: '0.75rem',
                             cursor: 'pointer',
-                            background: isSelected ? '#F8FAFC' : '#FFFFFF',
+                            background: isVolunteer ? 'var(--sky-sun-light)' : isSelected ? '#F8FAFC' : '#FFFFFF',
                             fontSize: '0.8rem'
                           }}
                         >
@@ -690,7 +692,7 @@ export default function NametagDownloadModal({
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
                             {teamName && (
-                              <span style={{ fontSize: '0.7rem', color: '#D97706', background: '#FEF3C7', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>
+                              <span style={{ fontSize: '0.7rem', color: '#0369A1', background: '#E0F2FE', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>
                                 {teamName}
                               </span>
                             )}
@@ -699,8 +701,8 @@ export default function NametagDownloadModal({
                               padding: '0.1rem 0.4rem',
                               borderRadius: '4px',
                               fontWeight: 600,
-                              background: status.toLowerCase().includes('approved') ? '#DCFCE7' : '#F1F5F9',
-                              color: status.toLowerCase().includes('approved') ? '#166534' : 'var(--text-secondary)'
+                              background: statusStyle.bg,
+                              color: statusStyle.color
                             }}>
                               {status}
                             </span>

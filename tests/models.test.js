@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { dateKeyChicago, daysBetweenKeys, addDaysToKey } from '../src/utils/dateUtils';
-import { getRoleCategory, ROLE_CATEGORY, getPayment, getGroupId, getGroupName, matchesSearch, getStatus, compareByAppliedAt } from '../src/models/applicant';
+import { getRoleCategory, ROLE_CATEGORY, getPayment, getGroupId, getGroupName, matchesSearch, getStatus, compareByAppliedAt, isAttending, isVolunteerRegistration } from '../src/models/applicant';
 import { ACADEMIC_ROLE_OPTIONS } from '../src/data/pricingData';
 
 describe('dateUtils', () => {
@@ -55,6 +55,11 @@ describe('applicant model', () => {
     expect(matchesSearch(reg, '')).toBe(true);
   });
 
+  it('treats Approved and Volunteer as attending; only Volunteer as a volunteer', () => {
+    expect(['Approved', 'Volunteer', 'Pending', 'Withdrawn'].map(status => isAttending({ status }))).toEqual([true, true, false, false]);
+    expect(['Approved', 'Volunteer'].map(status => isVolunteerRegistration({ status }))).toEqual([false, true]);
+  });
+
   it('treats unknown status as Uncontacted and sorts oldest first', () => {
     expect(getStatus({ status: 'weird' })).toBe('Uncontacted');
     const a = { firstName: 'B', appliedAt: '2026-09-01T00:00:00Z' };
@@ -76,7 +81,7 @@ describe('CSV export', () => {
     const csv = registrationsToCsv([{
       firstName: 'Ada', lastName: 'L', email: 'ada@x.edu', academicRole: 'UIUC Faculty / Staff', status: 'Approved',
       paymentStatus: 'Paid', groupId: 'group-2', attendance: { day1: true, day2: true, day3: true }, notes: 'note', appliedAt: '2026-09-01T00:00:00Z'
-    }], retreat, ['ada@x.edu']);
+    }], retreat);
     const [header, row] = csv.split('\n');
     expect(header).toContain('"Volunteer Notes"');
     expect(row).toContain('"Ada L"');

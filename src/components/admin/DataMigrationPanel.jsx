@@ -3,27 +3,45 @@ import { collection, doc, getDoc, getDocs, writeBatch, deleteField, FieldPath } 
 import { db } from '../../firebase/config';
 import { useAuth } from '../../context/AuthContext';
 import { migrateRegistration } from '../../models/migrateRegistration';
-import { SCHEMA_VERSION } from '../../models/applicant';
+import { SCHEMA_VERSION, STATUS } from '../../models/applicant';
 import { AlertTriangle, CheckCircle2, Wrench } from 'lucide-react';
 
-// One-time registrations v1 -> v2 migration (see docs/HARDENING_PLAN_2026.md, Phase 4).
+// Registration schema migration (see docs/HARDENING_PLAN_2026.md, Phase 4 and round 2 / R2).
 // Dry run first; Apply re-reads the collection so it always works on fresh data.
+// The v3 step (listed volunteers -> Volunteer status) only runs while the stored version is below 3.
 
 const MAX_OPS_PER_BATCH = 400;
 
-const planMigration = (snapshot) => {
+const planMigration = (snapshot, volunteerEmails) => {
   const plan = [];
   const removedFieldCounts = {};
   let notesToMove = 0;
+  let toVolunteer = 0;
   snapshot.docs.forEach((d) => {
     const data = d.data();
-    const result = migrateRegistration(data);
+    const result = migrateRegistration(data, { volunteerEmails });
     if (!result.changed && !result.privateNotes) return;
     result.remove.forEach((f) => { removedFieldCounts[f] = (removedFieldCounts[f] || 0) + 1; });
     if (result.privateNotes) notesToMove += 1;
+    if (result.set.status === STATUS.VOLUNTEER) toVolunteer += 1;
     plan.push({ id: d.id, retreatId: data.retreatId, result });
   });
-  return { total: snapshot.size, plan, removedFieldCounts, notesToMove };
+  return { total: snapshot.size, plan, removedFieldCounts, notesToMove, toVolunteer };
+};
+
+// Reads everything a plan needs. The access list is only consulted for the one-time v3 step.
+const loadMigrationInputs = async () => {
+  const [snap, schemaSnap] = await Promise.all([
+    getDocs(collection(db, 'registrations')),
+    getDoc(doc(db, 'system_settings', 'schema'))
+  ]);
+  const schemaInfo = schemaSnap.exists() ? schemaSnap.data() : null;
+  let volunteerEmails = [];
+  if ((schemaInfo?.registrationsVersion || 0) < 3) {
+    const volSnap = await getDocs(collection(db, 'authorized_volunteers'));
+    volunteerEmails = volSnap.docs.map(d => d.id);
+  }
+  return { snap, schemaInfo, volunteerEmails };
 };
 
 export default function DataMigrationPanel() {
@@ -35,12 +53,9 @@ export default function DataMigrationPanel() {
   const runDryRun = async (doneMessage = '') => {
     setStatus({ busy: true, error: '', done: doneMessage });
     try {
-      const [snap, schemaSnap] = await Promise.all([
-        getDocs(collection(db, 'registrations')),
-        getDoc(doc(db, 'system_settings', 'schema'))
-      ]);
-      setSchemaInfo(schemaSnap.exists() ? schemaSnap.data() : null);
-      setPreview(planMigration(snap));
+      const { snap, schemaInfo: info, volunteerEmails } = await loadMigrationInputs();
+      setSchemaInfo(info);
+      setPreview(planMigration(snap, volunteerEmails));
       setStatus({ busy: false, error: '', done: doneMessage });
     } catch (err) {
       setStatus({ busy: false, error: `Dry run failed: ${err.message}`, done: doneMessage });
@@ -52,7 +67,8 @@ export default function DataMigrationPanel() {
     setStatus({ busy: true, error: '', done: '' });
     try {
       // Recompute from fresh data, never from the (possibly stale) preview
-      const { plan } = planMigration(await getDocs(collection(db, 'registrations')));
+      const { snap, volunteerEmails } = await loadMigrationInputs();
+      const { plan } = planMigration(snap, volunteerEmails);
       const now = new Date().toISOString();
       let batch = writeBatch(db);
       let ops = 0;
@@ -98,6 +114,8 @@ export default function DataMigrationPanel() {
   };
 
   const pending = preview?.plan.length ?? null;
+  // Even with nothing to rewrite, the version must be stamped so the one-time v3 step stops running
+  const versionBehind = preview !== null && (schemaInfo?.registrationsVersion || 0) < SCHEMA_VERSION;
 
   return (
     <div className="glass-card" style={{ padding: '2rem', background: '#FFFFFF', boxShadow: 'var(--shadow-md)', border: '1px solid rgba(245, 158, 11, 0.35)' }}>
@@ -107,16 +125,17 @@ export default function DataMigrationPanel() {
       </div>
       <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.55, maxWidth: '760px' }}>
         Collapses duplicate status / notes / payment / group fields into one canonical field each, moves volunteer
-        notes to a volunteer-only document, and deletes stray <code>sentEmails.*</code> fields. Safe to re-run:
-        already-migrated registrations are skipped.
+        notes to a volunteer-only document, and deletes stray <code>sentEmails.*</code> fields. Once (v3), it also
+        gives registrations from people on the Volunteer Access list the <strong>Volunteer</strong> status. Safe to
+        re-run: already-migrated registrations are skipped.
       </p>
 
       <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
         <button type="button" className="btn" onClick={() => runDryRun()} disabled={status.busy}>
           {status.busy ? 'Working…' : 'Dry run (read only)'}
         </button>
-        <button type="button" className="btn btn-primary" onClick={applyMigration} disabled={status.busy || !pending}>
-          Apply migration{pending ? ` (${pending} documents)` : ''}
+        <button type="button" className="btn btn-primary" onClick={applyMigration} disabled={status.busy || (!pending && !versionBehind)}>
+          Apply migration{pending ? ` (${pending} documents)` : versionBehind ? ` (stamp v${SCHEMA_VERSION})` : ''}
         </button>
       </div>
 
@@ -135,7 +154,9 @@ export default function DataMigrationPanel() {
         <div style={{ marginTop: '1.25rem', fontSize: '0.85rem', color: 'var(--text-main)' }}>
           <p>
             <strong>{preview.total}</strong> registrations scanned · <strong>{preview.plan.length}</strong> need migration ·
-            {' '}<strong>{preview.notesToMove}</strong> notes to move.
+            {' '}<strong>{preview.notesToMove}</strong> notes to move ·
+            {' '}<strong>{preview.toVolunteer}</strong> set to Volunteer.
+            {' '}Stored schema: v{schemaInfo?.registrationsVersion || 1}.
             {schemaInfo?.migratedAt && <> Last migrated {new Date(schemaInfo.migratedAt).toLocaleString()} by {schemaInfo.migratedBy}.</>}
           </p>
           {Object.keys(preview.removedFieldCounts).length > 0 && (

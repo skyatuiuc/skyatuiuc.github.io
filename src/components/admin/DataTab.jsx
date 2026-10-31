@@ -54,7 +54,7 @@ const exportButtonStyle = {
 };
 
 export default function DataTab() {
-  const { currentUser, authorizedEmails } = useAuth();
+  const { currentUser } = useAuth();
   const { retreats, activeRetreat, registrations } = useRoster();
   const [counts, setCounts] = useState(null);
   const [countsError, setCountsError] = useState('');
@@ -134,7 +134,7 @@ export default function DataTab() {
       flash('No registrations in the active retreat to export.');
       return;
     }
-    const csv = registrationsToCsv(registrations, activeRetreat, authorizedEmails);
+    const csv = registrationsToCsv(registrations, activeRetreat);
     downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `skyatuiuc_${activeRetreat?.id || 'roster'}_${todayChicago()}.csv`);
     flash(`Exported ${registrations.length} registrations for ${activeRetreat?.title || 'the active retreat'}.`);
   };

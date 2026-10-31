@@ -98,6 +98,24 @@ describe('migrateRegistration', () => {
     for (const f of ['attendedDaysCount', 'attendanceStatus', 'completed']) expect(out).not.toHaveProperty(f);
   });
 
+  it('keeps a hand-set Volunteer status (v2 re-runs must not reset it)', () => {
+    const doc = applyMigrationToObject(v1(), migrateRegistration(v1()));
+    const volunteer = { ...doc, status: 'Volunteer' };
+    expect(migrateRegistration(volunteer).changed).toBe(false);
+  });
+
+  it('v3: gives listed volunteers the Volunteer status, except when withdrawn', () => {
+    const volunteerEmails = ['A@illinois.edu'];
+    const approved = applyMigrationToObject(v1(), migrateRegistration(v1()));
+    const marked = migrateRegistration(approved, { volunteerEmails });
+    expect(marked.set).toEqual({ status: 'Volunteer' });
+    expect(migrateRegistration(applyMigrationToObject(approved, marked), { volunteerEmails }).changed).toBe(false);
+    expect(migrateRegistration({ ...approved, status: 'Withdrawn' }, { volunteerEmails }).changed).toBe(false);
+    expect(migrateRegistration({ ...approved, email: 'b@illinois.edu' }, { volunteerEmails }).changed).toBe(false);
+    // Straight from v1 in one pass
+    expect(applyMigrationToObject(v1(), migrateRegistration(v1(), { volunteerEmails })).status).toBe('Volunteer');
+  });
+
   it('is idempotent', () => {
     const doc = v1({ orientationNotes: 'n', isPaid: true, paymentStatus: 'Paid', paidAt: 'x', groupId: 'group-1', assignedGroup: 'Group 1' });
     const once = applyMigrationToObject(doc, migrateRegistration(doc));

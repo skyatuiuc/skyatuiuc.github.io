@@ -4,23 +4,23 @@ import { FILTER_DEFAULTS, filterApplicants, countByStatus, countActiveFilters } 
 /**
  * Filter/sort state for a roster screen.
  * @param {object[]} registrations
- * @param {{userEmail?: string, retreat?: object, authorizedEmails?: string[]}} ctx
+ * @param {{userEmail?: string, retreat?: object}} ctx
  * @param {object} [initial] overrides of FILTER_DEFAULTS for this screen
  */
 export function useApplicantFilters(registrations, ctx, initial) {
   const [filters, setFilters] = useState(() => ({ ...FILTER_DEFAULTS, ...initial }));
-  const { userEmail, retreat, authorizedEmails } = ctx;
+  const { userEmail, retreat } = ctx;
 
   const setFilter = useCallback((key, value) => setFilters(prev => ({ ...prev, [key]: value })), []);
   const resetFilters = useCallback(() => setFilters(prev => ({ ...FILTER_DEFAULTS, ...initial, sort: prev.sort })), [initial]);
 
   const filtered = useMemo(
-    () => filterApplicants(registrations, filters, { userEmail, retreat, authorizedEmails }),
-    [registrations, filters, userEmail, retreat, authorizedEmails]
+    () => filterApplicants(registrations, filters, { userEmail, retreat }),
+    [registrations, filters, userEmail, retreat]
   );
   const statusCounts = useMemo(
-    () => countByStatus(registrations, filters, { userEmail, retreat, authorizedEmails }),
-    [registrations, filters, userEmail, retreat, authorizedEmails]
+    () => countByStatus(registrations, filters, { userEmail, retreat }),
+    [registrations, filters, userEmail, retreat]
   );
 
   return { filters, setFilter, resetFilters, filtered, statusCounts, activeFilterCount: countActiveFilters(filters) };

@@ -3,7 +3,7 @@
 // same filter means the same thing everywhere.
 
 import {
-  matchesSearch, getStatus, getPayment, PAYMENT, getGroupId, getRoleCategory, isVolunteerEmail,
+  matchesSearch, getStatus, getPayment, PAYMENT, getGroupId, getRoleCategory, isVolunteerRegistration,
   hasSentEmail, getAttendance, compareByAppliedAt, compareByName, compareByStatus, STATUS_OPTIONS
 } from './applicant';
 
@@ -49,9 +49,9 @@ const FACET_MATCHERS = {
     return v === 'unassigned' ? !groupId : groupId === v;
   },
   role: (r, v) => v === 'all' || getRoleCategory(r) === v,
-  people: (r, v, ctx) => {
+  people: (r, v) => {
     if (v === 'all') return true;
-    const isVol = isVolunteerEmail(r.email, ctx.authorizedEmails);
+    const isVol = isVolunteerRegistration(r);
     return v === 'volunteers' ? isVol : !isVol;
   },
   email: (r, v) => {
@@ -90,7 +90,7 @@ export const SORTERS = {
 /**
  * @param {object[]} registrations
  * @param {object} filters FILTER_DEFAULTS-shaped
- * @param {{userEmail?: string, retreat?: object, authorizedEmails?: string[]}} ctx
+ * @param {{userEmail?: string, retreat?: object}} ctx
  * @param {string[]} [skipFacets] facets to ignore (used to compute per-status counts)
  */
 export function filterApplicants(registrations, filters, ctx = {}, skipFacets = []) {

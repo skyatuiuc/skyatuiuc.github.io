@@ -1,6 +1,6 @@
 // File export helpers shared by the Admin Data tab and roster screens.
 import {
-  getDisplayName, getStatus, getPayment, getGroupId, getGroupName, getAttendance, isVolunteerEmail
+  getDisplayName, getStatus, getPayment, getGroupId, getGroupName, getAttendance
 } from '../models/applicant';
 
 export const downloadBlob = (blob, filename) => {
@@ -27,7 +27,6 @@ const ROSTER_COLUMNS = [
   ['Email', (r) => r.email],
   ['Phone', (r) => r.phone],
   ['Academic Role', (r) => r.academicRole],
-  ['Volunteer', (r, ctx) => (isVolunteerEmail(r.email, ctx.authorizedEmails) ? 'Yes' : '')],
   ['Status', (r) => getStatus(r)],
   ['Fee', (r) => getPayment(r).formattedFee],
   ['Payment', (r) => getPayment(r).status],
@@ -50,8 +49,8 @@ const ROSTER_COLUMNS = [
 ];
 
 /** CSV of the given registrations (one retreat), using the canonical applicant model. */
-export const registrationsToCsv = (registrations, retreat, authorizedEmails = []) => {
-  const ctx = { retreat, authorizedEmails };
+export const registrationsToCsv = (registrations, retreat) => {
+  const ctx = { retreat };
   const header = ROSTER_COLUMNS.map(([name]) => escapeCsvCell(name)).join(',');
   const rows = registrations.map(r => ROSTER_COLUMNS.map(([, get]) => escapeCsvCell(get(r, ctx))).join(','));
   return [header, ...rows].join('\n');

@@ -1,5 +1,6 @@
-// One-time v1 -> v2 registration migration (pure transform; Firestore I/O lives in the Admin
-// Data Maintenance panel). Idempotent: running it on an already-migrated document yields no changes.
+// Registration schema migration (pure transform; Firestore I/O lives in the Admin Data Maintenance
+// panel). v1 -> v2 collapses redundant fields; v2 -> v3 marks listed volunteers' registrations with
+// the Volunteer status. Idempotent: running it on an already-migrated document yields no changes.
 
 import { STATUS, STATUS_OPTIONS, getGroupNumber } from './applicant';
 
@@ -28,6 +29,7 @@ export const REMOVED_FIELDS = [
 const normalizeStatus = (raw) => {
   const lower = String(raw || '').trim().toLowerCase();
   if (!lower) return null;
+  if (lower.includes('volunteer')) return STATUS.VOLUNTEER;
   if (lower.includes('approve') || lower.includes('accept')) return STATUS.APPROVED;
   if (lower.includes('withdraw')) return STATUS.WITHDRAWN;
   if (lower.includes('did not reply') || lower.includes('no reply')) return STATUS.DID_NOT_REPLY;
@@ -39,10 +41,12 @@ const normalizeStatus = (raw) => {
 const SETTLED_PAYMENT_VALUES = ['paid', 'completed', 'waived', 'exempt'];
 
 /**
- * @param {object} data registration document data (v1 or v2)
+ * @param {object} data registration document data (v1, v2 or v3)
+ * @param {{volunteerEmails?: string[]}} [options] the access list, passed only while the stored schema
+ *   version is below 3; afterwards Volunteer is an ordinary, hand-set status that must not be re-derived
  * @returns {{ set: object, remove: string[], privateNotes: string|null, changed: boolean }}
  */
-export function migrateRegistration(data) {
+export function migrateRegistration(data, { volunteerEmails = [] } = {}) {
   const set = {};
   const remove = [];
   const assign = (field, value) => {
@@ -51,8 +55,13 @@ export function migrateRegistration(data) {
 
   // Status: orientationStatus is the field volunteers actually edited; it carries "Did Not Reply"
   // where the legacy `status` mirror only said "Pending".
-  const status = normalizeStatus(data.orientationStatus) || normalizeStatus(data.interviewStatus) ||
+  let status = normalizeStatus(data.orientationStatus) || normalizeStatus(data.interviewStatus) ||
     normalizeStatus(data.status) || STATUS.UNCONTACTED;
+  // v3: before the Volunteer status existed, anyone on the access list was shown as a volunteer
+  const email = String(data.email || '').trim().toLowerCase();
+  if (status !== STATUS.WITHDRAWN && volunteerEmails.some(v => String(v).trim().toLowerCase() === email)) {
+    status = STATUS.VOLUNTEER;
+  }
   if (!STATUS_OPTIONS.includes(data.status) || data.status !== status) assign('status', status);
 
   // Payment

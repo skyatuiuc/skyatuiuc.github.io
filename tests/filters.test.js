@@ -3,7 +3,6 @@ import { filterApplicants, countByStatus, countActiveFilters, FILTER_DEFAULTS } 
 
 const ctx = {
   userEmail: 'me@x.edu',
-  authorizedEmails: ['vol@x.edu', 'me@x.edu'],
   retreat: { groupConfig: { numGroups: 3, groupNames: {} } }
 };
 const regs = [
@@ -32,11 +31,16 @@ describe('filterApplicants', () => {
     expect(run({ group: 'unassigned' })).toEqual(['2', '3', '4']);
     expect(run({ group: 'group-1' })).toEqual(['1']);
   });
-  it('filters role categories, volunteers and IAHV', () => {
+  it('filters role categories and IAHV', () => {
     expect(run({ role: 'graduate' })).toEqual(['3']);
-    expect(run({ people: 'volunteers' })).toEqual(['3']);
-    expect(run({ people: 'participants' })).toEqual(['2', '1', '4']);
     expect(run({ iahv: 'yes' })).toEqual(['3']);
+  });
+  it('identifies volunteers by the Volunteer status, not by email', () => {
+    const withVolunteer = [...regs, { id: '5', firstName: 'Eve', email: 'eve@x.edu', status: 'Volunteer', appliedAt: '2026-09-05T00:00:00Z' }];
+    const people = (v) => ids(filterApplicants(withVolunteer, { ...FILTER_DEFAULTS, people: v }, ctx));
+    expect(people('volunteers')).toEqual(['5']);
+    expect(people('participants')).toEqual(['2', '3', '1', '4']);
+    expect(ids(filterApplicants(withVolunteer, { ...FILTER_DEFAULTS, statuses: ['Volunteer'] }, ctx))).toEqual(['5']);
   });
   it('filters email dispatch state (both acceptance templates share one key)', () => {
     expect(run({ email: 'unsent:welcome' })).toEqual(['2', '3', '4']);
@@ -56,7 +60,7 @@ describe('filterApplicants', () => {
   });
   it('counts statuses ignoring the status facet but honouring the others', () => {
     expect(countByStatus(regs, { ...FILTER_DEFAULTS, statuses: ['Approved'], claim: 'unclaimed' }, ctx))
-      .toEqual({ Uncontacted: 0, Pending: 0, 'Did Not Reply': 1, Approved: 0, Withdrawn: 1 });
+      .toEqual({ Uncontacted: 0, Pending: 0, 'Did Not Reply': 1, Approved: 0, Volunteer: 0, Withdrawn: 1 });
     expect(countActiveFilters({ ...FILTER_DEFAULTS, statuses: ['Approved'], claim: 'mine', sort: 'name' })).toBe(2);
   });
 });

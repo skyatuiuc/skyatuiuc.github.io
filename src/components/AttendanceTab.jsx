@@ -17,7 +17,7 @@ import { useAuth } from '../context/AuthContext';
 import { useRoster } from '../context/RosterContext';
 import ParticipantDetailsModal from './ParticipantDetailsModal';
 import {
-  getDisplayName, getStatus, STATUS, getGroupId, getGroupName, groupIdFor, isVolunteerEmail, matchesSearch, RETREAT_DAYS
+  getDisplayName, getStatus, STATUS, getGroupId, getGroupName, groupIdFor, isAttending, matchesSearch, RETREAT_DAYS
 } from '../models/applicant';
 import { todayChicago, addDaysToKey } from '../utils/dateUtils';
 
@@ -27,7 +27,7 @@ const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 // Volunteer tab: check participants (approved applicants + volunteers registered for the active
 // retreat) in and out for each of the three retreat days.
 export default function AttendanceTab() {
-  const { currentUser, authorizedEmails } = useAuth();
+  const { currentUser } = useAuth();
   const { activeRetreat, registrations, updateRegistration } = useRoster();
 
   // 1. The 3 retreat days (club-local calendar dates)
@@ -85,15 +85,8 @@ export default function AttendanceTab() {
     setSelectedMyGroup(userAssignedGroupId);
   }, [userAssignedGroupId]);
 
-  // 3. Approved participants and volunteers registered for this retreat
-  const retreatApprovedParticipants = useMemo(() => registrations.filter(r =>
-    getStatus(r) === STATUS.APPROVED || isVolunteerEmail(r.email, authorizedEmails)
-  ), [registrations, authorizedEmails]);
-
-  // Volunteers without a registration for this retreat cannot be tracked here (see plan Q6)
-  const unregisteredVolunteerCount = useMemo(() => authorizedEmails.filter(email =>
-    !registrations.some(r => (r.email || '').toLowerCase() === email)
-  ).length, [authorizedEmails, registrations]);
+  // 3. Approved participants and volunteers (Volunteer status) registered for this retreat
+  const retreatApprovedParticipants = useMemo(() => registrations.filter(isAttending), [registrations]);
 
   // 4. Roster for the active view
   const displayRoster = useMemo(() => {
@@ -107,7 +100,7 @@ export default function AttendanceTab() {
         attendance: r.attendance || {},
         groupId: groupId || 'unassigned',
         assignedGroup: getGroupName(groupId, activeRetreat),
-        isVolunteer: isVolunteerEmail(r.email, authorizedEmails),
+        isVolunteer: getStatus(r) === STATUS.VOLUNTEER,
         rawRecord: r
       };
     });
@@ -126,7 +119,7 @@ export default function AttendanceTab() {
 
     // Volunteers first, then alphabetical
     return filtered.sort((a, b) => (Number(b.isVolunteer) - Number(a.isVolunteer)) || a.name.localeCompare(b.name));
-  }, [retreatApprovedParticipants, activeRetreat, authorizedEmails, activeView, selectedMyGroup, userAssignedGroupId, everyoneGroupFilter, searchQuery]);
+  }, [retreatApprovedParticipants, activeRetreat, activeView, selectedMyGroup, userAssignedGroupId, everyoneGroupFilter, searchQuery]);
 
   // 5. Toggle attendance: only this day's flag is written (dot path), so two volunteers checking
   // people in at the same time never overwrite each other's marks.
@@ -246,12 +239,6 @@ export default function AttendanceTab() {
           </div>
 
         </div>
-
-        {unregisteredVolunteerCount > 0 && (
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <Info size={14} /> {unregisteredVolunteerCount} authorized volunteer{unregisteredVolunteerCount === 1 ? ' has' : 's have'} no registration for this retreat, so their attendance isn&apos;t tracked here.
-          </div>
-        )}
 
         {/* =========================================================================
             3 DAY TABS: DAY 1, DAY 2, DAY 3 (SMART AUTO-DEFAULT CLOSEST DATE)
@@ -686,7 +673,6 @@ export default function AttendanceTab() {
         <ParticipantDetailsModal
           participant={inspectParticipant.rawRecord}
           groupName={inspectParticipant.assignedGroup}
-          isVolunteer={inspectParticipant.isVolunteer}
           onClose={() => setInspectParticipant(null)}
         />
       )}

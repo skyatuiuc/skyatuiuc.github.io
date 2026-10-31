@@ -8,7 +8,7 @@
 // Registration document (registrations/{email}_{retreatId}):
 //   email, retreatId, firstName, lastName, phone, academicRole, isOver18, completedSkyBefore,
 //   healthConditions[], otherHealthConditions, foodAllergies, referralSource,
-//   status, paymentStatus?, paidAt?, paypalLink?, iahvRegistered?, groupId?,
+//   status (see STATUS; 'Volunteer' marks retreat volunteers), paymentStatus?, paidAt?, paypalLink?, iahvRegistered?, groupId?,
 //   attendance? {day1, day2, day3, updatedBy, lastUpdated}, sentEmails? {key: record},
 //   claimedBy?, claimedByName?, lastContactedDate?, appliedAt, updatedAt
 // Volunteer notes live in registration_private/{same id} {retreatId, notes, updatedAt, updatedBy}
@@ -16,7 +16,8 @@
 
 import { getFeeAmount } from '../data/pricingData';
 
-export const SCHEMA_VERSION = 2;
+// v3: volunteers are identified by `status: 'Volunteer'` on their registration, not the access list
+export const SCHEMA_VERSION = 3;
 
 // Pseudo-retreat for applications submitted while no retreat was open
 export const GENERAL_RETREAT_ID = 'general';
@@ -37,12 +38,6 @@ export const getAppliedAtMs = (reg) => {
   return Number.isNaN(ms) ? 0 : ms;
 };
 
-export const isVolunteerEmail = (email, authorizedEmails = []) => {
-  if (!email) return false;
-  const clean = String(email).trim().toLowerCase();
-  return authorizedEmails.some(e => String(e).trim().toLowerCase() === clean);
-};
-
 // ---------- Status ----------
 
 export const STATUS = Object.freeze({
@@ -50,21 +45,28 @@ export const STATUS = Object.freeze({
   PENDING: 'Pending',
   DID_NOT_REPLY: 'Did Not Reply',
   APPROVED: 'Approved',
+  VOLUNTEER: 'Volunteer', // helping at the retreat (volunteers register for every retreat they help at)
   WITHDRAWN: 'Withdrawn'
 });
 
 // Workflow order, used for dropdowns and sorting
-export const STATUS_OPTIONS = [STATUS.UNCONTACTED, STATUS.PENDING, STATUS.DID_NOT_REPLY, STATUS.APPROVED, STATUS.WITHDRAWN];
+export const STATUS_OPTIONS = [STATUS.UNCONTACTED, STATUS.PENDING, STATUS.DID_NOT_REPLY, STATUS.APPROVED, STATUS.VOLUNTEER, STATUS.WITHDRAWN];
 
 export const STATUS_STYLES = Object.freeze({
   [STATUS.UNCONTACTED]: { bg: '#F1F5F9', color: '#475569', border: '#CBD5E1' },
   [STATUS.PENDING]: { bg: '#DBEAFE', color: '#1D4ED8', border: '#93C5FD' },
   [STATUS.DID_NOT_REPLY]: { bg: '#FFEDD5', color: '#C2410C', border: '#FDBA74' },
   [STATUS.APPROVED]: { bg: '#DCFCE7', color: '#166534', border: '#86EFAC' },
+  [STATUS.VOLUNTEER]: { bg: '#FEF3C7', color: '#B45309', border: '#FCD34D' },
   [STATUS.WITHDRAWN]: { bg: '#FEE2E2', color: '#B91C1C', border: '#FCA5A5' }
 });
 
 export const getStatus = (reg) => (STATUS_OPTIONS.includes(reg?.status) ? reg.status : STATUS.UNCONTACTED);
+
+export const isVolunteerRegistration = (reg) => getStatus(reg) === STATUS.VOLUNTEER;
+
+// Approved participants plus volunteers: the people expected at the retreat (attendance, nametags)
+export const isAttending = (reg) => [STATUS.APPROVED, STATUS.VOLUNTEER].includes(getStatus(reg));
 
 // ---------- Academic role ----------
 

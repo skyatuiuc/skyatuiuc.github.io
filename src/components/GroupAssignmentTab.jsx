@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase/config';
 import { doc, setDoc, deleteField } from 'firebase/firestore';
-import { useAuth } from '../context/AuthContext';
 import { useRoster } from '../context/RosterContext';
 import {
   Users,
@@ -24,25 +23,26 @@ import ParticipantDetailsModal from './ParticipantDetailsModal';
 import NametagDownloadModal from './NametagDownloadModal';
 import {
   STATUS, STATUS_OPTIONS, getStatus, getDisplayName, getAppliedAtMs, getGroupId, getGroupName, groupIdFor,
-  getRoleCategory, ROLE_CATEGORY, isVolunteerEmail, matchesSearch
+  getRoleCategory, ROLE_CATEGORY, matchesSearch
 } from '../models/applicant';
 
 // Priority sort: volunteers, then approved, pending, did not reply, uncontacted, withdrawn;
 // within a rank, oldest application first.
 const STATUS_RANK = {
+  [STATUS.VOLUNTEER]: 1,
   [STATUS.APPROVED]: 2,
   [STATUS.PENDING]: 3,
   [STATUS.DID_NOT_REPLY]: 4,
   [STATUS.UNCONTACTED]: 5,
   [STATUS.WITHDRAWN]: 6
 };
-const getMemberSortRank = (member) => (member.isVolunteer ? 1 : STATUS_RANK[member.status] || 7);
+const getMemberSortRank = (member) => STATUS_RANK[member.status] || 7;
 
 const sortMembers = (members) => [...members].sort((a, b) =>
   getMemberSortRank(a) - getMemberSortRank(b) || a.appliedAtMs - b.appliedAtMs || a.name.localeCompare(b.name)
 );
 
-// Member chip colours: Approved green, Withdrawn red, Volunteers yellow, everyone else blue
+// Member chip colours: Approved green, Withdrawn red, Volunteer status yellow, everyone else blue
 const getMemberTheme = (member) => {
   if (member.isVolunteer) {
     return {
@@ -100,7 +100,6 @@ const AUTO_ARRANGE_ROLE_CATEGORIES = {
 };
 
 export default function GroupAssignmentTab() {
-  const { authorizedEmails } = useAuth();
   const { activeRetreat, registrations: retreatAllApplicants, updateRegistrations } = useRoster();
 
   // Number of groups N (min 1, max 20, default 4 or from retreat config)
@@ -109,7 +108,7 @@ export default function GroupAssignmentTab() {
   // Custom Group Names map: { 'group-1': 'Lotus', ... } (draft while typing; saved on blur)
   const [groupNames, setGroupNames] = useState(() => activeRetreat?.groupConfig?.groupNames || {});
 
-  // Multi-Select Application Status Filter & Volunteers Visibility
+  // Multi-Select Application Status Filter & Volunteers Visibility (the Volunteer status has its own pill)
   const [selectedStatuses, setSelectedStatuses] = useState(() => new Set([STATUS.APPROVED]));
   const [showVolunteers, setShowVolunteers] = useState(true);
 
@@ -148,13 +147,9 @@ export default function GroupAssignmentTab() {
   // Status counts across all retreat applicants
   const statusCounts = useMemo(() => {
     const counts = Object.fromEntries(STATUS_OPTIONS.map(s => [s, 0]));
-    let volCount = 0;
-    retreatAllApplicants.forEach((reg) => {
-      if (isVolunteerEmail(reg.email, authorizedEmails)) volCount++;
-      counts[getStatus(reg)] += 1;
-    });
-    return { counts, volCount };
-  }, [retreatAllApplicants, authorizedEmails]);
+    retreatAllApplicants.forEach((reg) => { counts[getStatus(reg)] += 1; });
+    return { counts, volCount: counts[STATUS.VOLUNTEER] };
+  }, [retreatAllApplicants]);
 
   // Status toggle handlers
   const handleToggleStatus = (statusName) => {
@@ -184,8 +179,8 @@ export default function GroupAssignmentTab() {
   // Manageable members: retreat applicants matching the selected statuses (+ volunteers if shown)
   const allManageableMembers = useMemo(() => retreatAllApplicants
     .filter((reg) => {
-      if (isVolunteerEmail(reg.email, authorizedEmails) && showVolunteers) return true;
-      return selectedStatuses.has(getStatus(reg));
+      const status = getStatus(reg);
+      return status === STATUS.VOLUNTEER ? showVolunteers : selectedStatuses.has(status);
     })
     .map((reg) => {
       const groupId = getGroupId(reg, retreatView);
@@ -198,12 +193,12 @@ export default function GroupAssignmentTab() {
         academicRole: reg.academicRole,
         status: getStatus(reg),
         appliedAtMs: getAppliedAtMs(reg),
-        isVolunteer: isVolunteerEmail(reg.email, authorizedEmails),
+        isVolunteer: getStatus(reg) === STATUS.VOLUNTEER,
         groupId: groupId || 'unassigned',
         assignedGroup: groupId ? getGroupName(groupId, retreatView) : '',
         rawRecord: reg
       };
-    }), [retreatAllApplicants, authorizedEmails, selectedStatuses, showVolunteers, retreatView]);
+    }), [retreatAllApplicants, selectedStatuses, showVolunteers, retreatView]);
 
   // Filtered members based on search query, sorted by rank
   const filteredMembers = useMemo(() => {
@@ -1387,7 +1382,6 @@ export default function GroupAssignmentTab() {
         <ParticipantDetailsModal
           participant={inspectParticipant.rawRecord}
           groupName={inspectParticipant.assignedGroup}
-          isVolunteer={inspectParticipant.isVolunteer}
           onClose={() => setInspectParticipant(null)}
         />
       )}

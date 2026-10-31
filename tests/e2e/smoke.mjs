@@ -202,7 +202,18 @@ try {
     check('detailed status preserved ("Did Not Reply")', migrated.find(r => r.id === sampleWithDnr.id)?.status === 'Did Not Reply');
   }
   const schema = await readOne('system_settings', 'schema');
-  check('schema version stamped', schema?.registrationsVersion === 2);
+  check('schema version stamped', schema?.registrationsVersion === 3);
+  const listedVolunteerRegs = migrated.filter(r => seed.volunteers.includes(r.email));
+  check('v3: listed volunteers\' registrations carry the Volunteer status (unless withdrawn)',
+    listedVolunteerRegs.length > 0 && listedVolunteerRegs.every(r => r.status === 'Volunteer' || r.status === 'Withdrawn'),
+    listedVolunteerRegs.map(r => r.status).join(','));
+  check('v3: nobody else became a Volunteer', migrated.filter(r => r.status === 'Volunteer').every(r => seed.volunteers.includes(r.email)));
+
+  await step('Re-running the dry run after v3 finds nothing to do', async () => {
+    await clickByText('button', 'Dry run');
+    await sleep(1500);
+    check('dry run shows 0 to migrate', (await bodyText()).includes('scanned · 0 need migration'));
+  });
 
   // Make sure the past retreat is the active one in the selector
   await page.evaluate((id) => localStorage.setItem('sky_active_retreat_id', id), pastRetreat.id);

@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Award, Layers, Mail, Phone, DollarSign, Clock, X } from 'lucide-react';
-import { getDisplayName, getStatus, getPayment, STATUS } from '../models/applicant';
+import { getDisplayName, getStatus, getPayment, STATUS, STATUS_STYLES } from '../models/applicant';
 
-export default function ParticipantDetailsModal({ participant, onClose, groupName, isVolunteer = false }) {
+export default function ParticipantDetailsModal({ participant, onClose, groupName }) {
   // Handle ESC key to close & lock body scroll
   useEffect(() => {
     if (!participant) return;
@@ -26,7 +26,8 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
   const initial = (fullName[0] || 'U').toUpperCase();
   const photoUrl = participant.photoURL || participant.photoUrl || null;
   const status = getStatus(participant);
-  const isApproved = status === STATUS.APPROVED;
+  const isVolunteer = status === STATUS.VOLUNTEER;
+  const statusStyle = STATUS_STYLES[status];
 
   const formatDateTime = (isoStr) => {
     if (!isoStr) return 'N/A';
@@ -185,9 +186,9 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
             </div>
           </div>
           <span className="badge" style={{
-            background: isApproved ? '#DCFCE7' : '#FEF3C7',
-            color: isApproved ? '#166534' : '#B45309',
-            border: isApproved ? '1px solid #86EFAC' : '1px solid #FCD34D'
+            background: statusStyle.bg,
+            color: statusStyle.color,
+            border: `1px solid ${statusStyle.border}`
           }}>
             {status}
           </span>
