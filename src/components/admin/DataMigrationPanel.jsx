@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { migrateRegistration } from '../../models/migrateRegistration';
 import { SCHEMA_VERSION, STATUS } from '../../models/applicant';
 import { AlertTriangle, CheckCircle2, Wrench } from 'lucide-react';
+import { useConfirm } from '../ui/ConfirmProvider';
 
 // Registration schema migration (see docs/HARDENING_PLAN_2026.md, Phase 4 and round 2 / R2).
 // Dry run first; Apply re-reads the collection so it always works on fresh data.
@@ -46,6 +47,7 @@ const loadMigrationInputs = async () => {
 
 export default function DataMigrationPanel() {
   const { currentUser } = useAuth();
+  const confirm = useConfirm();
   const [schemaInfo, setSchemaInfo] = useState(null);
   const [preview, setPreview] = useState(null);
   const [status, setStatus] = useState({ busy: false, error: '', done: '' });
@@ -63,7 +65,7 @@ export default function DataMigrationPanel() {
   };
 
   const applyMigration = async () => {
-    if (!window.confirm('Apply the registration schema migration now? Download a Full System Snapshot first.')) return;
+    if (!(await confirm({ title: 'Apply the schema migration?', message: 'Download a Full System Snapshot first. Already-migrated registrations are skipped.', confirmLabel: 'Apply migration' }))) return;
     setStatus({ busy: true, error: '', done: '' });
     try {
       // Recompute from fresh data, never from the (possibly stale) preview

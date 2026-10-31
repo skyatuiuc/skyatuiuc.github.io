@@ -9,13 +9,12 @@ import {
   Clock,
   Info,
   Filter,
-  CheckCircle2,
-  AlertCircle,
   X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useRoster } from '../context/RosterContext';
 import ParticipantDetailsModal from './ParticipantDetailsModal';
+import { useToast } from './ui/ToastProvider';
 import {
   getDisplayName, getStatus, STATUS, getGroupId, getGroupName, groupIdFor, isAttending, matchesSearch, RETREAT_DAYS
 } from '../models/applicant';
@@ -28,6 +27,7 @@ const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 // retreat) in and out for each of the three retreat days.
 export default function AttendanceTab() {
   const { currentUser } = useAuth();
+  const toast = useToast();
   const { activeRetreat, registrations, updateRegistration } = useRoster();
 
   // 1. The 3 retreat days (club-local calendar dates)
@@ -123,53 +123,34 @@ export default function AttendanceTab() {
 
   // 5. Toggle attendance: only this day's flag is written (dot path), so two volunteers checking
   // people in at the same time never overwrite each other's marks.
-  const [toastMessage, setToastMessage] = useState(null);
+  const writeAttendance = (memberId, dayKey, present) => updateRegistration(memberId, {
+    [`attendance.${dayKey}`]: present,
+    'attendance.updatedBy': currentUser?.email || '',
+    'attendance.lastUpdated': new Date().toISOString()
+  });
 
   const handleToggleAttendance = async (member) => {
-    const nextAtt = !member.attendance?.[activeDayKey];
+    const dayKey = activeDayKey;
+    const dayLabel = activeDayObj.label;
+    const nextAtt = !member.attendance?.[dayKey];
     try {
-      await updateRegistration(member.id, {
-        [`attendance.${activeDayKey}`]: nextAtt,
-        'attendance.updatedBy': currentUser?.email || '',
-        'attendance.lastUpdated': new Date().toISOString()
+      await writeAttendance(member.id, dayKey, nextAtt);
+      toast.success(`${member.name}: ${dayLabel} marked ${nextAtt ? 'present' : 'absent'}`, {
+        action: {
+          label: 'Undo',
+          onClick: () => writeAttendance(member.id, dayKey, !nextAtt)
+            .catch(err => toast.error(`Undo failed: ${err.code || err.message}`))
+        }
       });
-      setToastMessage({
-        type: 'success',
-        text: `${member.name}: ${activeDayObj.label} marked as ${nextAtt ? 'Present (✓)' : 'Absent (—)'}`
-      });
-      setTimeout(() => setToastMessage(null), 3000);
     } catch (err) {
       console.error('Attendance toggle error:', err);
-      setToastMessage({ type: 'error', text: `Failed to save attendance: ${err.code || err.message}` });
-      setTimeout(() => setToastMessage(null), 4000);
+      toast.error(`Failed to save attendance: ${err.code || err.message}`);
     }
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
-      {/* TOAST ALERT BANNER */}
-      {toastMessage && (
-        <div 
-          className="animate-fade-in"
-          style={{
-            padding: '0.85rem 1.25rem',
-            borderRadius: 'var(--radius-md)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            background: toastMessage.type === 'error' ? '#FEF2F2' : toastMessage.type === 'info' ? '#EFF6FF' : '#DCFCE7',
-            border: toastMessage.type === 'error' ? '1px solid #F87171' : toastMessage.type === 'info' ? '1px solid #93C5FD' : '1px solid #86EFAC',
-            color: toastMessage.type === 'error' ? '#DC2626' : toastMessage.type === 'info' ? '#1D4ED8' : '#166534',
-            fontSize: '0.9rem',
-            fontWeight: 600,
-            boxShadow: 'var(--shadow-sm)'
-          }}
-        >
-          {toastMessage.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
-          <span>{toastMessage.text}</span>
-        </div>
-      )}
 
       {/* TOP HEADER CONTROLS: RETREAT SELECTOR, VIEW SWITCHER & DAY TABS */}
       <div className="glass-card" style={{ padding: '1.5rem', background: '#FFFFFF', boxShadow: 'var(--shadow-md)' }}>

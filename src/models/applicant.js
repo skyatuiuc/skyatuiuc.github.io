@@ -61,6 +61,14 @@ export const STATUS_STYLES = Object.freeze({
   [STATUS.WITHDRAWN]: { bg: '#FEE2E2', color: '#B91C1C', border: '#FCA5A5' }
 });
 
+// Display labels where the stored value is not the best wording ('Volunteer' = present at the retreat
+// as a volunteer, distinct from Volunteer Access to the portal)
+export const STATUS_LABELS = Object.freeze({
+  [STATUS.VOLUNTEER]: 'Attending Volunteer'
+});
+
+export const getStatusLabel = (status) => STATUS_LABELS[status] || status;
+
 export const getStatus = (reg) => (STATUS_OPTIONS.includes(reg?.status) ? reg.status : STATUS.UNCONTACTED);
 
 export const isVolunteerRegistration = (reg) => getStatus(reg) === STATUS.VOLUNTEER;

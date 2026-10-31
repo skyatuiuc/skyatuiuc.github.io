@@ -5,9 +5,13 @@ import { useRoster } from '../../context/RosterContext';
 import { formatDirectImageUrl } from '../../services/emailService';
 import { todayChicago } from '../../utils/dateUtils';
 import { Trash2, Calendar, Plus, Edit3, Save, X } from 'lucide-react';
+import { useToast } from '../ui/ToastProvider';
+import { useConfirm } from '../ui/ConfirmProvider';
 
 // Admin tab: schedule retreats and edit retreat history
-export default function RetreatsTab({ setMessage }) {
+export default function RetreatsTab() {
+  const toast = useToast();
+  const confirm = useConfirm();
   const { retreats } = useRoster();
 
   const [editingRetreatId, setEditingRetreatId] = useState(null);
@@ -36,7 +40,7 @@ export default function RetreatsTab({ setMessage }) {
     setSaturdayTime(ret.saturdayTime || ret.day2Time || '');
     setSundayTime(ret.sundayTime || ret.day3Time || '');
     setGroupPhotoUrl(ret.groupPhotoUrl || '');
-    setMessage({ type: 'info', text: `Editing retreat record: ${ret.title}` });
+    toast.info(`Editing retreat record: ${ret.title}`);
   };
 
   const handleCancelEditRetreat = () => {
@@ -57,7 +61,7 @@ export default function RetreatsTab({ setMessage }) {
   const handleSaveRetreat = async (e) => {
     e.preventDefault();
     if (!title.trim() || !startDate || !endDate || !location.trim()) {
-      setMessage({ type: 'error', text: 'Please fill in Title, Start Date, End Date, and Location.' });
+      toast.error('Please fill in Title, Start Date, End Date, and Location.');
       return;
     }
 
@@ -86,11 +90,13 @@ export default function RetreatsTab({ setMessage }) {
           await setDoc(doc(db, 'retreat_history', editingRetreatId), updatedRetreat, { merge: true });
         } catch (err) {
           console.warn("Firestore retreat update error:", err);
+          toast.error(`Retreat not saved: ${err.code || err.message}`);
+          return;
         }
       }
 
       handleCancelEditRetreat();
-      setMessage({ type: 'success', text: `Successfully updated retreat: ${updatedRetreat.title}` });
+      toast.success(`Successfully updated retreat: ${updatedRetreat.title}`);
     } else {
       const retreatId = `retreat-${Date.now()}`;
       const newRetreat = {
@@ -115,29 +121,36 @@ export default function RetreatsTab({ setMessage }) {
           await setDoc(doc(db, 'retreat_history', retreatId), newRetreat);
         } catch (err) {
           console.warn("Firestore retreat save error:", err);
+          toast.error(`Retreat not created: ${err.code || err.message}`);
+          return;
         }
       }
 
       handleCancelEditRetreat();
-      setMessage({ type: 'success', text: `Successfully created retreat: ${newRetreat.title}` });
+      toast.success(`Successfully created retreat: ${newRetreat.title}`);
     }
   };
 
   const handleDeleteRetreat = async (id, retreatTitle) => {
-    if (window.confirm(`Delete retreat record "${retreatTitle}"?`)) {
-      if (editingRetreatId === id) {
-        handleCancelEditRetreat();
-      }
-
-      if (isFirebaseConfigured && db) {
-        try {
-          await deleteDoc(doc(db, 'retreat_history', id));
-        } catch (e) {
-          console.warn("Firestore delete retreat error:", e);
-        }
-      }
-      setMessage({ type: 'success', text: `Deleted retreat record.` });
+    if (!(await confirm({
+      title: 'Delete retreat?',
+      message: `"${retreatTitle}" will be removed from the retreat list. Its registrations are not deleted.`,
+      confirmLabel: 'Delete retreat',
+      danger: true
+    }))) return;
+    if (editingRetreatId === id) {
+      handleCancelEditRetreat();
     }
+    if (isFirebaseConfigured && db) {
+      try {
+        await deleteDoc(doc(db, 'retreat_history', id));
+      } catch (e) {
+        console.warn("Firestore delete retreat error:", e);
+        toast.error(`Retreat not deleted: ${e.code || e.message}`);
+        return;
+      }
+    }
+    toast.success('Deleted retreat record.');
   };
 
   return (

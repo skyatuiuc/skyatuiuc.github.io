@@ -6,7 +6,7 @@ import TabBar from '../components/TabBar';
 import RetreatSelector from '../components/RetreatSelector';
 import VolunteersTab from '../components/admin/VolunteersTab';
 import RetreatsTab from '../components/admin/RetreatsTab';
-import { UserPlus, Calendar, Users, Mail, FileText, Tag, BarChart3, Database, CheckCircle2, AlertCircle, HeartHandshake, ArrowRight } from 'lucide-react';
+import { UserPlus, Calendar, Users, Mail, FileText, Tag, BarChart3, Database, HeartHandshake, ArrowRight } from 'lucide-react';
 
 // Heavy tabs (PDF/canvas tooling, charts) load only when opened
 const GroupAssignmentTab = lazy(() => import('../components/GroupAssignmentTab'));
@@ -24,7 +24,6 @@ export default function Admin() {
   const { currentUser, authorizedEmails } = useAuth();
   const { retreats } = useRoster();
   const [activeTab, setActiveTab] = useState('volunteers');
-  const [message, setMessage] = useState({ type: '', text: '' });
 
   const tabs = [
     { id: 'volunteers', label: `Volunteer Access (${authorizedEmails.length})`, Icon: UserPlus },
@@ -55,35 +54,17 @@ export default function Admin() {
           </Link>
         </div>
 
-        {/* Status Message Alert */}
-        {message.text && (
-          <div style={{
-            background: message.type === 'success' ? '#DCFCE7' : '#FEF2F2',
-            border: `1px solid ${message.type === 'success' ? '#86EFAC' : '#F87171'}`,
-            color: message.type === 'success' ? '#166534' : '#DC2626',
-            padding: '1rem 1.25rem',
-            borderRadius: 'var(--radius-md)',
-            marginBottom: '2rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem'
-          }}>
-            {message.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
-            <span style={{ fontWeight: 600 }}>{message.text}</span>
-          </div>
-        )}
-
         <RetreatSelector />
 
         <TabBar tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
 
-        {activeTab === 'volunteers' && <VolunteersTab setMessage={setMessage} />}
-        {activeTab === 'retreats' && <RetreatsTab setMessage={setMessage} />}
+        {activeTab === 'volunteers' && <VolunteersTab />}
+        {activeTab === 'retreats' && <RetreatsTab />}
 
         <Suspense fallback={<TabFallback />}>
           {activeTab === 'groups' && <GroupAssignmentTab />}
           {activeTab === 'emails' && <AutoEmailDispatchTab />}
-          {activeTab === 'flyer_templates' && <FlyerTemplateStudioTab setMessage={setMessage} />}
+          {activeTab === 'flyer_templates' && <FlyerTemplateStudioTab />}
           {activeTab === 'nametag_templates' && <NametagTemplateTab />}
           {activeTab === 'campaign_analytics' && <CampaignAnalyticsTab />}
           {activeTab === 'data' && <DataTab />}

@@ -132,7 +132,8 @@ page.on('pageerror', (err) => pageErrors.push(err.message));
 page.on('console', (msg) => {
   if (msg.type() === 'error' && !/favicon|Failed to load resource|ERR_FAILED|cleardot/.test(msg.text())) pageErrors.push(msg.text());
 });
-page.on('dialog', (d) => d.accept());
+// Native dialogs are no longer used; fail loudly if one appears
+page.on('dialog', (d) => { pageErrors.push(`Unexpected native dialog: ${d.message()}`); d.dismiss(); });
 await page.setRequestInterception(true);
 page.on('request', (req) => {
   // Never let the local app reach the production Apps Script or analytics
@@ -160,6 +161,11 @@ const clickByText = async (selector, text) => {
     return false;
   }, selector, text);
   if (!ok) throw new Error(`No ${selector} containing "${text}"`);
+};
+// In-app confirm dialog (useConfirm): click its confirm button
+const confirmDialog = async () => {
+  await page.waitForSelector('[data-confirm="ok"]', { timeout: 5000 });
+  await page.click('[data-confirm="ok"]');
 };
 const signInAs = async (email) => {
   await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
@@ -201,6 +207,7 @@ try {
     await clickByText('button', 'Dry run');
     await waitForText('need migration');
     await clickByText('button', 'Apply migration');
+    await confirmDialog();
     await waitForText('Migrated', 20000);
   });
 
@@ -339,6 +346,7 @@ try {
     const target = await page.$eval('#interest-move-target', el => el.value);
     check('move target defaults to the next retreat', target === upcoming.id, target);
     await clickByText('button', `Move ${generalBefore.length} shown`);
+    await confirmDialog();
     await waitForText('Moved ', 20000);
     check('duplicate applicant reported as skipped', (await bodyText()).includes('Skipped 1 already registered'));
 

@@ -5,14 +5,13 @@ import { useAuth, ADMIN_EMAIL } from '../context/AuthContext';
 import { useRoster } from '../context/RosterContext';
 import { useApplicantFilters } from '../hooks/useApplicantFilters';
 import ApplicantFilterBar from './ApplicantFilterBar';
-import { getDisplayName, getStatus, getGroupId, getGroupName, STATUS_STYLES } from '../models/applicant';
+import { getDisplayName, getGroupId, getGroupName } from '../models/applicant';
+import { StatusBadge } from './ui/StatusBadge';
 import {
   Mail,
   Send,
   Settings,
   Calendar,
-  CheckCircle2,
-  AlertCircle,
   CreditCard,
   Info,
   Check,
@@ -32,11 +31,15 @@ import { EMAIL_TEMPLATES } from '../templates/emailTemplates';
 import EmailPreviewModal from './EmailPreviewModal';
 import EmailSettingsModal from './EmailSettingsModal';
 import ParticipantDetailsModal from './ParticipantDetailsModal';
+import { useToast } from './ui/ToastProvider';
+import { useConfirm } from './ui/ConfirmProvider';
 
 // Admin tab: send templated emails (received / accepted / welcome / completion) to the active retreat
 const DISPATCH_FACETS = ['search', 'statuses', 'claim', 'payment', 'iahv', 'email', 'role', 'sort'];
 
 export default function AutoEmailDispatchTab() {
+  const toast = useToast();
+  const confirm = useConfirm();
   const { currentUser } = useAuth();
   const { activeRetreat, registrations, updateRegistration } = useRoster();
 
@@ -88,25 +91,17 @@ export default function AutoEmailDispatchTab() {
   const [previewModalConfig, setPreviewModalConfig] = useState(null); // { templateKey, participant }
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [inspectParticipant, setInspectParticipant] = useState(null);
-  const [toastMessage, setToastMessage] = useState({ type: '', text: '' });
 
   // PayPal Link saving indicators: { [participantId]: boolean }, and unsaved edits per row
   const [savedPaypalLinks, setSavedPaypalLinks] = useState({});
   const [paypalDrafts, setPaypalDrafts] = useState({});
-
-  const showToast = (type, text) => {
-    setToastMessage({ type, text });
-    setTimeout(() => {
-      setToastMessage({ type: '', text: '' });
-    }, 3500);
-  };
 
   const isSuperAdmin = userEmailLower === ADMIN_EMAIL.toLowerCase();
 
   // Save updated email settings (Super Admin only)
   const handleSaveSettings = (newSettings) => {
     if (!isSuperAdmin) {
-      showToast('error', 'Unauthorized: Only the Super Admin can modify global email settings.');
+      toast.error('Unauthorized: Only the Super Admin can modify global email settings.');
       return;
     }
     setEmailSettings(newSettings);
@@ -114,22 +109,22 @@ export default function AutoEmailDispatchTab() {
     if (isFirebaseConfigured && db) {
       setDoc(doc(db, 'system_settings', 'email_config'), newSettings, { merge: true }).catch(console.warn);
     }
-    showToast('success', 'Email settings and template links saved to cloud!');
+    toast.success('Email settings and template links saved to cloud!');
   };
 
   // Copy Email Roster Helper
   const handleCopyEmails = (listToCopy) => {
     const emails = listToCopy.map(r => r.email).filter(Boolean).join(', ');
     if (!emails) {
-      showToast('error', "No email addresses found in current list.");
+      toast.error("No email addresses found in current list.");
       return;
     }
     if (navigator?.clipboard?.writeText) {
       navigator.clipboard.writeText(emails)
-        .then(() => showToast('success', `Copied ${listToCopy.length} emails to clipboard!`))
-        .catch(() => showToast('error', "Clipboard permission denied."));
+        .then(() => toast.success(`Copied ${listToCopy.length} emails to clipboard!`))
+        .catch(() => toast.error("Clipboard permission denied."));
     } else {
-      showToast('info', `Emails ready: ${emails.substring(0, 30)}...`);
+      toast.info(`Emails ready: ${emails.substring(0, 30)}...`);
     }
   };
 
@@ -174,7 +169,7 @@ export default function AutoEmailDispatchTab() {
         setSavedPaypalLinks(prev => ({ ...prev, [participantId]: false }));
       }, 2000);
     } catch (err) {
-      showToast('error', `PayPal link not saved: ${err.code || err.message}`);
+      toast.error(`PayPal link not saved: ${err.code || err.message}`);
     }
   };
 
@@ -184,9 +179,9 @@ export default function AutoEmailDispatchTab() {
       await updateRegistration(participantId, isPaid
         ? { paymentStatus: 'Paid', paidAt: new Date().toISOString() }
         : { paymentStatus: deleteField(), paidAt: deleteField() });
-      showToast('success', `Payment status updated to ${isPaid ? 'Paid' : 'Unpaid'}`);
+      toast.success(`Payment status updated to ${isPaid ? 'Paid' : 'Unpaid'}`);
     } catch (err) {
-      showToast('error', `Payment status not saved: ${err.code || err.message}`);
+      toast.error(`Payment status not saved: ${err.code || err.message}`);
     }
   };
 
@@ -194,7 +189,7 @@ export default function AutoEmailDispatchTab() {
   const handleSendSingle = async (templateKey, participant) => {
     const result = await sendSingleEmail(templateKey, participant, activeRetreat, emailSettings);
     const emailSubject = result?.subject || EMAIL_TEMPLATES[templateKey]?.subject || 'Notification';
-    showToast('success', `✓ Email "${emailSubject}" sent to ${getDisplayName(participant)}!`);
+    toast.success(`✓ Email "${emailSubject}" sent to ${getDisplayName(participant)}!`);
   };
 
   // Send Batch Emails
@@ -206,18 +201,19 @@ export default function AutoEmailDispatchTab() {
     if (batchTemplateKey === 'application_accepted') {
       const missingPaypal = targets.filter(p => checkRequiresPayment(p) && !(p.paypalLink || '').trim());
       if (missingPaypal.length > 0) {
-        showToast(
-          'error', 
-          `Cannot batch send: ${missingPaypal.length} paying participant(s) do not have a PayPal invoice link. Please add PayPal links or deselect them.`
+        toast.error(`Cannot batch send: ${missingPaypal.length} paying participant(s) do not have a PayPal invoice link. Please add PayPal links or deselect them.`
         );
         return;
       }
     }
 
     const tplName = EMAIL_TEMPLATES[batchTemplateKey]?.name || batchTemplateKey;
-    if (!window.confirm(`Are you sure you want to dispatch "${tplName}" to ${targets.length} selected applicants from skyatuiuc@gmail.com?`)) {
-      return;
-    }
+    if (!(await confirm({
+      title: `Send "${tplName}"?`,
+      message: `${targets.length} email${targets.length === 1 ? '' : 's'} will be sent from skyatuiuc@gmail.com to:`,
+      details: targets.map(t => `${getDisplayName(t)} (${t.email})`),
+      confirmLabel: `Send ${targets.length}`
+    }))) return;
 
     setIsBatchSending(true);
     setBatchProgress({ current: 0, total: targets.length, recipient: '' });
@@ -237,9 +233,9 @@ export default function AutoEmailDispatchTab() {
     setSelectedApplicantIds(new Set());
 
     if (results.failures.length > 0) {
-      showToast('error', `Sent ${results.successes.length} emails. ${results.failures.length} failed.`);
+      toast.error(`Sent ${results.successes.length} emails. ${results.failures.length} failed.`);
     } else {
-      showToast('success', `🎉 Successfully dispatched ${results.successes.length} "${tplName}" emails!`);
+      toast.success(`🎉 Successfully dispatched ${results.successes.length} "${tplName}" emails!`);
     }
   };
 
@@ -358,28 +354,6 @@ export default function AutoEmailDispatchTab() {
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
-      {/* Toast Notification */}
-      {toastMessage.text && (
-        <div 
-          className="animate-fade-in"
-          style={{
-            padding: '0.85rem 1.25rem',
-            borderRadius: 'var(--radius-md)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            background: toastMessage.type === 'error' ? '#FEF2F2' : toastMessage.type === 'info' ? '#EFF6FF' : '#DCFCE7',
-            border: toastMessage.type === 'error' ? '1px solid #F87171' : toastMessage.type === 'info' ? '1px solid #93C5FD' : '1px solid #86EFAC',
-            color: toastMessage.type === 'error' ? '#DC2626' : toastMessage.type === 'info' ? '#1D4ED8' : '#166534',
-            fontSize: '0.9rem',
-            fontWeight: 600,
-            boxShadow: 'var(--shadow-sm)'
-          }}
-        >
-          {toastMessage.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
-          <span>{toastMessage.text}</span>
-        </div>
-      )}
 
       {/* Webhook Setup Warning Banner */}
       {!isWebhookConfigured && (
@@ -673,7 +647,6 @@ export default function AutoEmailDispatchTab() {
             {displayedApplicants.map(applicant => {
               const isSelected = selectedApplicantIds.has(applicant.id);
               const initial = (applicant.firstName?.[0] || applicant.email?.[0] || 'U').toUpperCase();
-              const statusStyle = STATUS_STYLES[getStatus(applicant)];
               const feeInfo = parseFeeAndPayment(applicant);
               const isPaypalSaved = savedPaypalLinks[applicant.id];
 
@@ -755,18 +728,7 @@ export default function AutoEmailDispatchTab() {
 
                   {/* Column 2: Application Status */}
                   <div>
-                    <span 
-                      className="badge" 
-                      style={{
-                        background: statusStyle.bg,
-                        color: statusStyle.color,
-                        border: `1px solid ${statusStyle.border}`,
-                        fontSize: '0.72rem',
-                        fontWeight: 700
-                      }}
-                    >
-                      {getStatus(applicant)}
-                    </span>
+                    <StatusBadge registration={applicant} />
                   </div>
 
                   {/* Column 3: Fee Amount & Super Admin Paid Toggle */}

@@ -12,7 +12,7 @@ import RetreatDetailsCard from '../components/RetreatDetailsCard';
 import { loadCachedRetreats } from '../utils/retreatUtils';
 import { getRetreatLabel } from '../models/retreat';
 import { todayChicago } from '../utils/dateUtils';
-import { getStatus, STATUS_STYLES, GENERAL_RETREAT_ID, registrationId } from '../models/applicant';
+import { getStatus, getStatusLabel, STATUS_STYLES, GENERAL_RETREAT_ID, registrationId } from '../models/applicant';
 
 export default function Register() {
   const { retreatId: paramRetreatId } = useParams();
@@ -477,7 +477,7 @@ export default function Register() {
                         color: statusStyle.color,
                         border: '1px solid rgba(35, 39, 95, 0.1)'
                       }}>
-                        Orientation Status: {appStatus}
+                        Application Status: {getStatusLabel(appStatus)}
                       </span>
                     );
                   })()}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Search, X, Filter } from 'lucide-react';
-import { STATUS_OPTIONS, STATUS_STYLES, ROLE_CATEGORY_LABELS, RETREAT_DAYS, getGroupName, groupIdFor } from '../models/applicant';
+import { StatusChips } from './ui/StatusBadge';
+import { ROLE_CATEGORY_LABELS, RETREAT_DAYS, getGroupName, groupIdFor } from '../models/applicant';
 
 // Shared filter bar for every roster screen. Pass the facets the screen needs, in display order:
 //   'search' | 'statuses' | 'claim' | 'payment' | 'iahv' | 'group' | 'role' | 'people' | 'email' | 'attendance' | 'sort'
@@ -116,33 +117,12 @@ export default function ApplicantFilterBar({
       </div>
 
       {has('statuses') && (
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <Filter size={14} color="var(--text-muted)" />
-          {STATUS_OPTIONS.map((status) => {
-            const selected = (filters.statuses || []).includes(status);
-            const style = STATUS_STYLES[status];
-            return (
-              <button
-                key={status}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => toggleStatus(status)}
-                style={{
-                  padding: '0.3rem 0.7rem',
-                  borderRadius: '999px',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  background: selected ? style.bg : '#FFFFFF',
-                  color: selected ? style.color : 'var(--text-secondary)',
-                  border: `1px solid ${selected ? style.border : 'var(--border-color)'}`
-                }}
-              >
-                {status}{statusCounts ? ` (${statusCounts[status] ?? 0})` : ''}
-              </button>
-            );
-          })}
-        </div>
+        <StatusChips
+          selected={filters.statuses || []}
+          counts={statusCounts}
+          onToggle={toggleStatus}
+          leading={<Filter size={14} color="var(--text-muted)" />}
+        />
       )}
 
       {facets.some(f => selectFacets[f]) && (

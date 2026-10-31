@@ -6,7 +6,8 @@ import { useRoster } from '../../context/RosterContext';
 import { todayChicago } from '../../utils/dateUtils';
 import { downloadBlob, registrationsToCsv } from '../../utils/exportUtils';
 import DataMigrationPanel from './DataMigrationPanel';
-import { Activity, CheckCircle2, Database, Download, ExternalLink, FileText, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Activity, Database, Download, ExternalLink, FileText, RefreshCw, ShieldCheck } from 'lucide-react';
+import { useToast } from '../ui/ToastProvider';
 
 // Admin tab: live document counts, links to Google's authoritative usage dashboards, backups/exports,
 // and the one-time schema migration. (Replaces the old self-reported telemetry charts, which counted
@@ -55,11 +56,11 @@ const exportButtonStyle = {
 
 export default function DataTab() {
   const { currentUser } = useAuth();
+  const toast = useToast();
   const { retreats, activeRetreat, registrations } = useRoster();
   const [counts, setCounts] = useState(null);
   const [countsError, setCountsError] = useState('');
   const [busy, setBusy] = useState('');
-  const [notice, setNotice] = useState('');
 
   const projectId = app?.options?.projectId || 'skyatuiuc-web';
   const usageLinks = [
@@ -93,11 +94,6 @@ export default function DataTab() {
     refreshCounts();
   }, [refreshCounts]);
 
-  const flash = (text) => {
-    setNotice(text);
-    setTimeout(() => setNotice(''), 6000);
-  };
-
   // Full snapshot reads every document once (an explicit admin action, not a listener)
   const handleFullBackup = async () => {
     setBusy('backup');
@@ -120,10 +116,10 @@ export default function DataTab() {
         counts: countsByName
       };
       downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `skyatuiuc_full_backup_${todayChicago()}.json`);
-      flash(`Full backup downloaded (${countsByName.registrations} registrations, ${countsByName.retreat_history} retreats).`);
+      toast.success(`Full backup downloaded (${countsByName.registrations} registrations, ${countsByName.retreat_history} retreats).`);
     } catch (err) {
       console.error('Backup failed:', err);
-      flash(`Backup failed: ${err.message}`);
+      toast.error(`Backup failed: ${err.message}`);
     } finally {
       setBusy('');
     }
@@ -131,18 +127,18 @@ export default function DataTab() {
 
   const handleRosterCsv = () => {
     if (registrations.length === 0) {
-      flash('No registrations in the active retreat to export.');
+      toast.info('No registrations in the active retreat to export.');
       return;
     }
     const csv = registrationsToCsv(registrations, activeRetreat);
     downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `skyatuiuc_${activeRetreat?.id || 'roster'}_${todayChicago()}.csv`);
-    flash(`Exported ${registrations.length} registrations for ${activeRetreat?.title || 'the active retreat'}.`);
+    toast.success(`Exported ${registrations.length} registrations for ${activeRetreat?.title || 'the active retreat'}.`);
   };
 
   const handleRetreatsJson = () => {
     const payload = { exportedAt: new Date().toISOString(), retreats };
     downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `skyatuiuc_retreats_${todayChicago()}.json`);
-    flash(`Exported ${retreats.length} retreat records.`);
+    toast.success(`Exported ${retreats.length} retreat records.`);
   };
 
   return (
@@ -210,11 +206,6 @@ export default function DataTab() {
               The full snapshot reads every document once ({BACKUP_COLLECTIONS.length} collections, all retreats). Take one before any migration or bulk change.
             </p>
           </div>
-          {notice && (
-            <div style={{ background: '#DCFCE7', color: '#166534', padding: '0.6rem 1rem', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #86EFAC' }}>
-              <CheckCircle2 size={16} /> {notice}
-            </div>
-          )}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>

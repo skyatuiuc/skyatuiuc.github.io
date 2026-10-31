@@ -5,12 +5,16 @@ import QRCode from 'qrcode';
 import { saveFlyerTemplateWithChunks, loadFlyerTemplateImage, deleteFlyerTemplateWithChunks } from '../../services/flyerChunkService';
 import { useRoster } from '../../context/RosterContext';
 import ColorPickerWithAlpha from './ColorPickerWithAlpha';
+import { useToast } from '../ui/ToastProvider';
+import { useConfirm } from '../ui/ConfirmProvider';
 import { getRetreatLabel } from '../../models/retreat';
 import { colorToQrHex, parsePixel } from '../../utils/graphicExportUtils';
-import { Trash2, CheckCircle2, AlertCircle, FileText, QrCode, Edit3 } from 'lucide-react';
+import { Trash2, AlertCircle, FileText, QrCode, Edit3 } from 'lucide-react';
 
 // Admin tab: flyer template studio (upload artwork, position the QR code and shortlink text)
-export default function FlyerTemplateStudioTab({ setMessage }) {
+export default function FlyerTemplateStudioTab() {
+  const toast = useToast();
+  const confirm = useConfirm();
   const { retreats } = useRoster();
 
   // Flyer Template Manager State
@@ -26,7 +30,6 @@ export default function FlyerTemplateStudioTab({ setMessage }) {
   const [tplWidth, setTplWidth] = useState(1200);
   const [tplHeight, setTplHeight] = useState(1600);
   
-  const [flyerStudioMessage, setFlyerStudioMessage] = useState({ type: '', text: '' });
 
 
 
@@ -296,15 +299,15 @@ export default function FlyerTemplateStudioTab({ setMessage }) {
   const handleSaveFlyerTemplate = async (e) => {
     e.preventDefault();
     if (!tplRetreatId) {
-      alert("Please select a retreat to associate this flyer template with.");
+      toast.error("Please select a retreat to associate this flyer template with.");
       return;
     }
     if (!tplImageBase64) {
-      alert("Please upload a flyer background image.");
+      toast.error("Please upload a flyer background image.");
       return;
     }
     if (!tplTitle.trim()) {
-      alert("Please enter a template title.");
+      toast.error("Please enter a template title.");
       return;
     }
 
@@ -352,6 +355,8 @@ export default function FlyerTemplateStudioTab({ setMessage }) {
         };
       } catch (err) {
         console.warn("Firestore flyer template save error:", err);
+        toast.error(`Flyer template not saved: ${err.code || err.message}`);
+        return;
       }
     }
 
@@ -362,30 +367,24 @@ export default function FlyerTemplateStudioTab({ setMessage }) {
 
     // Stay on the current flyer template edit view and display saved indicator
     setEditingTemplateId(templateId);
-    setFlyerStudioMessage({ type: 'success', text: `✨ Flyer template "${templateMetadata.templateName}" saved successfully!` });
-
-    // Auto dismiss message indicator after 3.5 seconds
-    setTimeout(() => {
-      setFlyerStudioMessage({ type: '', text: '' });
-    }, 3500);
+    toast.success(`Flyer template "${templateMetadata.templateName}" saved.`);
   };
 
   const handleDeleteFlyerTemplate = async (id, tplName) => {
-    if (window.confirm(`Delete flyer template "${tplName}"?`)) {
-      const updated = flyerTemplates.filter(t => t.id !== id);
-      setFlyerTemplates(updated);
-      localStorage.setItem('sky_flyer_templates', JSON.stringify(updated));
-
-      if (isFirebaseConfigured && db) {
-        try {
-          await deleteFlyerTemplateWithChunks(db, id);
-        } catch (e) {
-          console.warn("Firestore delete flyer template error:", e);
-        }
+    if (!(await confirm({ title: 'Delete flyer template?', message: `"${tplName}" and its image will be permanently deleted.`, confirmLabel: 'Delete', danger: true }))) return;
+    if (isFirebaseConfigured && db) {
+      try {
+        await deleteFlyerTemplateWithChunks(db, id);
+      } catch (e) {
+        console.warn("Firestore delete flyer template error:", e);
+        toast.error(`Flyer template not deleted: ${e.code || e.message}`);
+        return;
       }
-
-      setMessage({ type: 'success', text: `Deleted flyer template.` });
     }
+    const updated = flyerTemplates.filter(t => t.id !== id);
+    setFlyerTemplates(updated);
+    localStorage.setItem('sky_flyer_templates', JSON.stringify(updated));
+    toast.success('Deleted flyer template.');
   };
 
   return (
@@ -646,26 +645,6 @@ export default function FlyerTemplateStudioTab({ setMessage }) {
               </div>
             </div>
           </fieldset>
-
-          {/* Saved Pop-Up Toast Indicator */}
-          {flyerStudioMessage.text && (
-            <div style={{
-              padding: '0.75rem 1rem',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: '0.85rem',
-              fontWeight: 700,
-              background: flyerStudioMessage.type === 'success' ? '#DCFCE7' : '#FEF2F2',
-              color: flyerStudioMessage.type === 'success' ? '#166534' : '#DC2626',
-              border: flyerStudioMessage.type === 'success' ? '1px solid #86EFAC' : '1px solid #F87171',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              boxShadow: 'var(--shadow-sm)'
-            }}>
-              <CheckCircle2 size={18} />
-              {flyerStudioMessage.text}
-            </div>
-          )}
 
           {/* Submit / Update Button */}
           <div style={{ display: 'flex', gap: '0.75rem' }}>

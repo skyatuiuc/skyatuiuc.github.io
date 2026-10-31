@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useRoster } from '../../context/RosterContext';
 import { getDisplayName, getStatus, getPayment, getAppliedAtMs, STATUS_OPTIONS, PAYMENT } from '../../models/applicant';
 import { todayChicago } from '../../utils/dateUtils';
+import { useConfirm } from '../ui/ConfirmProvider';
 import { Mail, Phone, MessageSquare, Copy, X, FileText, CheckCircle2, Trash2, AlertTriangle } from 'lucide-react';
 
 // Orientation dossier for one applicant. Every control writes straight to Firestore and renders from
@@ -22,6 +23,7 @@ const copyToClipboard = (text) => {
 
 export default function OrientationDossierModal({ reg, onClose }) {
   const { currentUser, isAdmin, authorizedEmails } = useAuth();
+  const confirm = useConfirm();
   const { updateRegistration, saveNotes, deleteRegistration } = useRoster();
   const userEmailLower = (currentUser?.email || '').toLowerCase();
 
@@ -102,7 +104,7 @@ export default function OrientationDossierModal({ reg, onClose }) {
   });
 
   const handleDelete = async () => {
-    if (!window.confirm('Delete this registration (and its volunteer notes)? This cannot be undone.')) return;
+    if (!(await confirm({ title: 'Delete registration?', message: 'This registration and its volunteer notes will be permanently deleted.', confirmLabel: 'Delete', danger: true }))) return;
     try {
       pendingNotesRef.current = null;
       await deleteRegistration(reg.id);

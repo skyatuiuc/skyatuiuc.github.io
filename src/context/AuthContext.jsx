@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth, db, isFirebaseConfigured, signInWithPopup, getRedirectResult, firebaseSignOut } from '../firebase/config';
 import { onAuthStateChanged, GoogleAuthProvider } from 'firebase/auth';
 import { collection, doc, setDoc, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { useToast } from '../components/ui/ToastProvider';
 
 const AuthContext = createContext();
 
@@ -31,6 +32,7 @@ const toUserObj = (user) => {
 };
 
 export function AuthProvider({ children }) {
+  const toast = useToast();
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -154,7 +156,7 @@ export function AuthProvider({ children }) {
   const loginWithGoogle = async () => {
     if (!isFirebaseConfigured || !auth) {
       const msg = "Firebase Auth is not initialized properly. Please check configuration.";
-      alert(msg);
+      toast.error(msg);
       throw new Error(msg);
     }
     
@@ -180,7 +182,7 @@ export function AuthProvider({ children }) {
         return null;
       }
       console.error("Google Auth popup error:", error);
-      alert(`Sign In Error (${error.code || 'unknown'}): ${error.message}`);
+      toast.error(`Sign-in failed (${error.code || 'unknown'}): ${error.message}`);
       throw error;
     } finally {
       setLoading(false);

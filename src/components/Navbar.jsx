@@ -38,10 +38,8 @@ export default function Navbar() {
     try {
       await loginWithGoogle();
     } catch (err) {
+      // AuthContext already showed the error toast
       console.warn("Direct sign in error:", err);
-      if (err && err.message) {
-        alert(`Sign In Notice: ${err.message}`);
-      }
     } finally {
       window.removeEventListener('focus', onWindowFocus);
       setAuthLoading(false);

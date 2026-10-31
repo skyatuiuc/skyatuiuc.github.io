@@ -6,10 +6,12 @@ import { useRoster } from '../../context/RosterContext';
 import { loadFlyerTemplateImage } from '../../services/flyerChunkService';
 import { renderAndExportFlyer, calculateScaledDimensions, colorToQrHex, parsePixel } from '../../utils/graphicExportUtils';
 import { QrCode, Download, Copy } from 'lucide-react';
+import { useToast } from '../ui/ToastProvider';
 
 // Volunteer tab: generate a campaign flyer (template + QR code + shortlink) for outreach.
 // Mounted only while the tab is open, so its template listener costs nothing otherwise.
 export default function FlyerOutreachTab() {
+  const toast = useToast();
   const { activeRetreat } = useRoster();
 
   // Campaign Flyer Generator State
@@ -109,7 +111,7 @@ export default function FlyerOutreachTab() {
       });
     } catch (err) {
       console.error("Flyer export failed:", err);
-      alert("Failed to generate printable flyer. Please try again.");
+      toast.error(`Could not generate the flyer: ${err.message || 'unknown error'}. Please try again.`);
     } finally {
       setIsExporting(false);
     }
@@ -357,8 +359,9 @@ export default function FlyerOutreachTab() {
             <button 
               onClick={() => {
                 const cleanTag = (campaignTagInput || 'demo').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-                navigator.clipboard.writeText(`https://skyuiuc.org/${cleanTag}`);
-                alert(`Copied link (https://skyuiuc.org/${cleanTag}) to clipboard!`);
+                navigator.clipboard.writeText(`https://skyuiuc.org/${cleanTag}`)
+                  .then(() => toast.success(`Copied https://skyuiuc.org/${cleanTag}`))
+                  .catch(() => toast.error('Clipboard permission denied.'));
               }}
               className="btn btn-secondary"
               style={{ padding: '0.85rem 1rem', gap: '0.4rem', fontSize: '0.9rem' }}

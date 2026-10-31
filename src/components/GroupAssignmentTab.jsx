@@ -9,8 +9,6 @@ import {
   RotateCcw,
   Search,
   Info,
-  CheckCircle2,
-  AlertCircle,
   Move,
   Calendar,
   Plus,
@@ -21,6 +19,8 @@ import {
 } from 'lucide-react';
 import ParticipantDetailsModal from './ParticipantDetailsModal';
 import NametagDownloadModal from './NametagDownloadModal';
+import { useToast } from './ui/ToastProvider';
+import { useConfirm } from './ui/ConfirmProvider';
 import {
   STATUS, STATUS_OPTIONS, getStatus, getDisplayName, getAppliedAtMs, getGroupId, getGroupName, groupIdFor,
   getRoleCategory, ROLE_CATEGORY, matchesSearch
@@ -100,6 +100,8 @@ const AUTO_ARRANGE_ROLE_CATEGORIES = {
 };
 
 export default function GroupAssignmentTab() {
+  const toast = useToast();
+  const confirm = useConfirm();
   const { activeRetreat, registrations: retreatAllApplicants, updateRegistrations } = useRoster();
 
   // Number of groups N (min 1, max 20, default 4 or from retreat config)
@@ -121,7 +123,6 @@ export default function GroupAssignmentTab() {
   const [draggedChip, setDraggedChip] = useState(null);
   const [activeDropZone, setActiveDropZone] = useState(null);
   const [inspectParticipant, setInspectParticipant] = useState(null);
-  const [toastMessage, setToastMessage] = useState({ type: '', text: '' });
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
   const [showNametagModal, setShowNametagModal] = useState(false);
 
@@ -130,13 +131,6 @@ export default function GroupAssignmentTab() {
     setNumGroups(activeRetreat?.groupConfig?.numGroups || 4);
     setGroupNames(activeRetreat?.groupConfig?.groupNames || {});
   }, [activeRetreat?.id, activeRetreat?.groupConfig?.numGroups, activeRetreat?.groupConfig?.groupNames]);
-
-  const showToast = (type, text) => {
-    setToastMessage({ type, text });
-    setTimeout(() => {
-      setToastMessage({ type: '', text: '' });
-    }, 3500);
-  };
 
   // Retreat view with this screen's (possibly unsaved) group count/names applied
   const retreatView = useMemo(() => ({
@@ -244,7 +238,7 @@ export default function GroupAssignmentTab() {
       }, { merge: true });
     } catch (err) {
       console.warn('Error saving group config to Firestore:', err);
-      showToast('error', `Could not save group settings: ${err.code || err.message}`);
+      toast.error(`Could not save group settings: ${err.code || err.message}`);
     }
   };
 
@@ -266,12 +260,12 @@ export default function GroupAssignmentTab() {
     try {
       if (overflow.length > 0) {
         await saveGroupAssignments(Object.fromEntries(overflow.map(r => [r.id, 'unassigned'])));
-        showToast('info', `Reduced to ${validN} groups. Unassigned ${overflow.length} members from removed groups.`);
+        toast.info(`Reduced to ${validN} groups. Unassigned ${overflow.length} members from removed groups.`);
       }
       setNumGroups(validN);
       await persistRetreatGroupConfig(validN, groupNames);
     } catch (err) {
-      showToast('error', `Could not change group count: ${err.code || err.message}`);
+      toast.error(`Could not change group count: ${err.code || err.message}`);
     }
   };
 
@@ -280,16 +274,16 @@ export default function GroupAssignmentTab() {
     const isUnassigning = targetGroupId === 'unassigned';
     try {
       await saveGroupAssignments({ [member.regId]: targetGroupId });
-      showToast('success', `Moved ${member.name} to ${isUnassigning ? 'Unassigned' : getGroupName(targetGroupId, retreatView)}`);
+      toast.success(`Moved ${member.name} to ${isUnassigning ? 'Unassigned' : getGroupName(targetGroupId, retreatView)}`);
     } catch (err) {
-      showToast('error', `Could not move ${member.name}: ${err.code || err.message}`);
+      toast.error(`Could not move ${member.name}: ${err.code || err.message}`);
     }
   };
 
   // Auto-Arrange selected members into the groups with the FEWEST total members, oldest applicants first
   const handleAutoArrange = async () => {
     if (!activeRetreat || activeRetreat.isGeneral) {
-      showToast('error', 'Please select a scheduled retreat first.');
+      toast.error('Please select a scheduled retreat first.');
       return;
     }
 
@@ -304,7 +298,7 @@ export default function GroupAssignmentTab() {
 
     if (candidateMembers.length === 0) {
       const roleName = autoArrangeRole === 'participants' ? 'non-volunteer participants' : autoArrangeRole === 'volunteers' ? 'volunteers' : `${autoArrangeRole} members`;
-      showToast('error', `No matching ${roleName} found to auto-arrange.`);
+      toast.error(`No matching ${roleName} found to auto-arrange.`);
       return;
     }
 
@@ -333,9 +327,9 @@ export default function GroupAssignmentTab() {
       await saveGroupAssignments(assignments);
       await persistRetreatGroupConfig(numGroups, groupNames);
       const roleLabel = autoArrangeRole === 'participants' ? 'participants' : autoArrangeRole === 'volunteers' ? 'volunteers' : 'members';
-      showToast('success', `Balanced & arranged ${sortedCandidates.length} ${roleLabel} across ${numGroups} groups by fewest total participants!`);
+      toast.success(`Balanced & arranged ${sortedCandidates.length} ${roleLabel} across ${numGroups} groups by fewest total participants!`);
     } catch (err) {
-      showToast('error', `Auto-arrange failed (no changes saved): ${err.code || err.message}`);
+      toast.error(`Auto-arrange failed (no changes saved): ${err.code || err.message}`);
     } finally {
       setIsAutoAssigning(false);
     }
@@ -345,15 +339,15 @@ export default function GroupAssignmentTab() {
   const handleClearGroup = async (groupId, groupTitle) => {
     const memberIds = retreatAllApplicants.filter(r => r.groupId === groupId).map(r => r.id);
     if (memberIds.length === 0) {
-      showToast('info', 'Group is already empty.');
+      toast.info('Group is already empty.');
       return;
     }
-    if (!window.confirm(`Unassign all ${memberIds.length} members from ${groupTitle || groupId}?`)) return;
+    if (!(await confirm({ title: 'Clear this group?', message: `Unassign all ${memberIds.length} members from ${groupTitle || groupId}?`, confirmLabel: 'Unassign all' }))) return;
     try {
       await saveGroupAssignments(Object.fromEntries(memberIds.map(id => [id, 'unassigned'])));
-      showToast('info', `Unassigned all ${memberIds.length} members from ${groupTitle || groupId}.`);
+      toast.info(`Unassigned all ${memberIds.length} members from ${groupTitle || groupId}.`);
     } catch (err) {
-      showToast('error', `Could not clear group: ${err.code || err.message}`);
+      toast.error(`Could not clear group: ${err.code || err.message}`);
     }
   };
 
@@ -361,15 +355,15 @@ export default function GroupAssignmentTab() {
   const handleResetAll = async () => {
     const assignedIds = retreatAllApplicants.filter(r => r.groupId).map(r => r.id);
     if (assignedIds.length === 0) {
-      showToast('info', 'No members are currently assigned.');
+      toast.info('No members are currently assigned.');
       return;
     }
-    if (!window.confirm(`Are you sure you want to unassign all ${assignedIds.length} members for this retreat?`)) return;
+    if (!(await confirm({ title: 'Reset all groups?', message: `Unassign all ${assignedIds.length} members for this retreat?`, confirmLabel: 'Reset groups', danger: true }))) return;
     try {
       await saveGroupAssignments(Object.fromEntries(assignedIds.map(id => [id, 'unassigned'])));
-      showToast('info', `Unassigned all ${assignedIds.length} members.`);
+      toast.info(`Unassigned all ${assignedIds.length} members.`);
     } catch (err) {
-      showToast('error', `Could not reset groups: ${err.code || err.message}`);
+      toast.error(`Could not reset groups: ${err.code || err.message}`);
     }
   };
 
@@ -558,28 +552,6 @@ export default function GroupAssignmentTab() {
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
-      {/* Toast Notification */}
-      {toastMessage.text && (
-        <div 
-          className="animate-fade-in"
-          style={{
-            padding: '0.85rem 1.25rem',
-            borderRadius: 'var(--radius-md)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            background: toastMessage.type === 'error' ? '#FEF2F2' : toastMessage.type === 'info' ? '#EFF6FF' : '#DCFCE7',
-            border: toastMessage.type === 'error' ? '1px solid #F87171' : toastMessage.type === 'info' ? '1px solid #93C5FD' : '1px solid #86EFAC',
-            color: toastMessage.type === 'error' ? '#DC2626' : toastMessage.type === 'info' ? '#1D4ED8' : '#166534',
-            fontSize: '0.9rem',
-            fontWeight: 600,
-            boxShadow: 'var(--shadow-sm)'
-          }}
-        >
-          {toastMessage.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
-          <span>{toastMessage.text}</span>
-        </div>
-      )}
 
       {/* TOP CONTROL BAR: RETREAT SELECTOR, N GROUPS INPUT, AUTO-ARRANGE & RESET BUTTONS */}
       <div className="glass-card" style={{ padding: '1.5rem', background: '#FFFFFF', boxShadow: 'var(--shadow-md)' }}>

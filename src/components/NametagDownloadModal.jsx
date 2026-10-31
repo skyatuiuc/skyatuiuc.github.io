@@ -22,7 +22,8 @@ import {
   resolveParticipantTeamName,
   convertLength
 } from '../utils/nametagPdfUtils';
-import { getStatus, STATUS, STATUS_OPTIONS, STATUS_STYLES } from '../models/applicant';
+import { getStatus, STATUS, STATUS_OPTIONS } from '../models/applicant';
+import { StatusBadge } from './ui/StatusBadge';
 
 export default function NametagDownloadModal({
   isOpen,
@@ -656,7 +657,6 @@ export default function NametagDownloadModal({
                       const dispName = resolveParticipantDisplayName(applicant, allApplicants);
                       const teamName = resolveParticipantTeamName(applicant, groupNames);
                       const status = getStatus(applicant);
-                      const statusStyle = STATUS_STYLES[status];
                       const isVolunteer = status === STATUS.VOLUNTEER;
 
                       return (
@@ -696,16 +696,7 @@ export default function NametagDownloadModal({
                                 {teamName}
                               </span>
                             )}
-                            <span style={{
-                              fontSize: '0.68rem',
-                              padding: '0.1rem 0.4rem',
-                              borderRadius: '4px',
-                              fontWeight: 600,
-                              background: statusStyle.bg,
-                              color: statusStyle.color
-                            }}>
-                              {status}
-                            </span>
+                            <StatusBadge status={status} />
                           </div>
                         </div>
                       );

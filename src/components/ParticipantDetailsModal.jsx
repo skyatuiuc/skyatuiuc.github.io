@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Award, Layers, Mail, Phone, DollarSign, Clock, X } from 'lucide-react';
-import { getDisplayName, getStatus, getPayment, STATUS, STATUS_STYLES } from '../models/applicant';
+import { getDisplayName, getStatus, getPayment, STATUS } from '../models/applicant';
+import { StatusBadge } from './ui/StatusBadge';
 
 export default function ParticipantDetailsModal({ participant, onClose, groupName }) {
   // Handle ESC key to close & lock body scroll
@@ -27,7 +28,6 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
   const photoUrl = participant.photoURL || participant.photoUrl || null;
   const status = getStatus(participant);
   const isVolunteer = status === STATUS.VOLUNTEER;
-  const statusStyle = STATUS_STYLES[status];
 
   const formatDateTime = (isoStr) => {
     if (!isoStr) return 'N/A';
@@ -185,13 +185,7 @@ export default function ParticipantDetailsModal({ participant, onClose, groupNam
               </div>
             </div>
           </div>
-          <span className="badge" style={{
-            background: statusStyle.bg,
-            color: statusStyle.color,
-            border: `1px solid ${statusStyle.border}`
-          }}>
-            {status}
-          </span>
+          <StatusBadge status={status} />
         </div>
 
         {/* Contact & Registration Information Grid */}

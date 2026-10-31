@@ -4,7 +4,10 @@ import { useRoster } from '../../context/RosterContext';
 import { useApplicantFilters } from '../../hooks/useApplicantFilters';
 import ApplicantFilterBar from '../ApplicantFilterBar';
 import OrientationDossierModal from './OrientationDossierModal';
-import { getDisplayName, getStatus, getPayment, getAppliedAtMs, STATUS_STYLES, PAYMENT } from '../../models/applicant';
+import { useToast } from '../ui/ToastProvider';
+import { useConfirm } from '../ui/ConfirmProvider';
+import { getDisplayName, getPayment, getAppliedAtMs, PAYMENT } from '../../models/applicant';
+import { StatusBadge } from '../ui/StatusBadge';
 import { downloadBlob, registrationsToCsv } from '../../utils/exportUtils';
 import { todayChicago } from '../../utils/dateUtils';
 import { getRetreatLabel, getUpcomingRetreats } from '../../models/retreat';
@@ -19,6 +22,8 @@ const tdStyle = { padding: '0.75rem 1rem' };
 
 export default function OrientationTab() {
   const { currentUser, isAdmin } = useAuth();
+  const toast = useToast();
+  const confirm = useConfirm();
   const { registrations, activeRetreat, retreats, updateRegistration, deleteRegistration, moveRegistrations } = useRoster();
   const userEmailLower = (currentUser?.email || '').toLowerCase();
 
@@ -28,13 +33,7 @@ export default function OrientationTab() {
   );
 
   const [selectedId, setSelectedId] = useState(null);
-  const [notice, setNotice] = useState({ kind: '', text: '' });
   const selectedReg = selectedId ? registrations.find(r => r.id === selectedId) : null;
-
-  const flash = (kind, text, ms = 3500) => {
-    setNotice({ kind, text });
-    setTimeout(() => setNotice({ kind: '', text: '' }), ms);
-  };
 
   // General Interest List -> retreat moves (super admin; defaults to the next retreat by start date)
   const canMove = isAdmin && Boolean(activeRetreat?.isGeneral);
@@ -47,16 +46,21 @@ export default function OrientationTab() {
     if (!moveTarget || regs.length === 0 || moving) return;
     const label = getRetreatLabel(moveTarget);
     const who = regs.length === 1 ? getDisplayName(regs[0]) : `${regs.length} applicants`;
-    if (!window.confirm(`Move ${who} to ${label}?\n\nAnswers, status, claim and notes move with them; they leave the General Interest List.`)) return;
+    if (!(await confirm({
+      title: `Move ${who} to ${label}?`,
+      message: 'Answers, status, claim and notes move with them; they leave the General Interest List.',
+      details: regs.length > 1 ? regs.map(getDisplayName) : [],
+      confirmLabel: 'Move'
+    }))) return;
     setMoving(true);
     try {
       const { moved, skipped } = await moveRegistrations(regs, moveTarget.id, currentUser?.email);
       const skippedText = skipped.length
         ? ` Skipped ${skipped.length} already registered there: ${skipped.map(getDisplayName).join(', ')}.`
         : '';
-      flash(skipped.length ? 'error' : 'success', `Moved ${moved.length} to ${label}.${skippedText}`, 8000);
+      (skipped.length ? toast.error : toast.success)(`Moved ${moved.length} to ${label}.${skippedText}`);
     } catch (err) {
-      flash('error', `Move stopped: ${err.code || err.message}. Anyone already moved is safe; re-run for the rest.`, 8000);
+      toast.error(`Move stopped: ${err.code || err.message}. Anyone already moved is safe; re-run for the rest.`);
     } finally {
       setMoving(false);
     }
@@ -66,14 +70,14 @@ export default function OrientationTab() {
     try {
       await updateRegistration(reg.id, claim);
     } catch (err) {
-      flash('error', `Could not update claim: ${err.code || err.message}`);
+      toast.error(`Could not update claim: ${err.code || err.message}`);
     }
   };
 
   const handleClaim = (reg) => {
     if (!userEmailLower) return;
     if (reg.claimedBy && reg.claimedBy.toLowerCase() !== userEmailLower && !isAdmin) {
-      flash('error', `Already claimed by ${reg.claimedBy}.`);
+      toast.error(`Already claimed by ${reg.claimedBy}.`);
       return;
     }
     writeClaim(reg, {
@@ -84,7 +88,7 @@ export default function OrientationTab() {
 
   const handleUnclaim = (reg) => {
     if (reg.claimedBy && reg.claimedBy.toLowerCase() !== userEmailLower && !isAdmin) {
-      flash('error', `Only ${reg.claimedBy} or the Super Admin can unclaim this applicant.`);
+      toast.error(`Only ${reg.claimedBy} or the Super Admin can unclaim this applicant.`);
       return;
     }
     writeClaim(reg, { claimedBy: null, claimedByName: null });
@@ -92,20 +96,20 @@ export default function OrientationTab() {
 
   const handleDelete = async (reg) => {
     if (!isAdmin) return;
-    if (!window.confirm(`Delete ${getDisplayName(reg)}'s registration (and volunteer notes)? This cannot be undone.`)) return;
+    if (!(await confirm({ title: 'Delete registration?', message: `${getDisplayName(reg)}'s registration and volunteer notes will be permanently deleted.`, confirmLabel: 'Delete', danger: true }))) return;
     try {
       await deleteRegistration(reg.id);
     } catch (err) {
-      flash('error', `Delete failed: ${err.code || err.message}`);
+      toast.error(`Delete failed: ${err.code || err.message}`);
     }
   };
 
   const handleCopyEmails = () => {
     const emails = filtered.map(r => r.email).filter(Boolean).join(', ');
-    if (!emails) return flash('error', 'No email addresses in the current list.');
+    if (!emails) return toast.error('No email addresses in the current list.');
     navigator.clipboard?.writeText(emails)
-      .then(() => flash('success', `Copied ${filtered.length} emails to clipboard.`))
-      .catch(() => flash('error', 'Clipboard permission denied.'));
+      .then(() => toast.success(`Copied ${filtered.length} emails to clipboard.`))
+      .catch(() => toast.error('Clipboard permission denied.'));
   };
 
   const handleExportCsv = () => {
@@ -161,18 +165,6 @@ export default function OrientationTab() {
         </div>
       )}
 
-      {notice.text && (
-        <div style={{
-          background: notice.kind === 'error' ? '#FEF2F2' : '#DCFCE7',
-          border: `1px solid ${notice.kind === 'error' ? '#F87171' : '#86EFAC'}`,
-          color: notice.kind === 'error' ? '#DC2626' : '#166534',
-          padding: '0.75rem 1.25rem',
-          borderRadius: 'var(--radius-md)',
-          fontWeight: 600
-        }}>
-          {notice.text}
-        </div>
-      )}
 
       <div className="glass-card" style={{ padding: 0, overflow: 'hidden', background: '#FFFFFF', boxShadow: 'var(--shadow-md)' }}>
         {filtered.length === 0 ? (
@@ -195,8 +187,6 @@ export default function OrientationTab() {
               </thead>
               <tbody>
                 {filtered.map((reg) => {
-                  const status = getStatus(reg);
-                  const statusStyle = STATUS_STYLES[status];
                   const payment = getPayment(reg).status;
                   const isClaimedByMe = Boolean(reg.claimedBy) && reg.claimedBy.toLowerCase() === userEmailLower;
                   const appliedMs = getAppliedAtMs(reg);
@@ -229,7 +219,7 @@ export default function OrientationTab() {
                       </td>
 
                       <td style={tdStyle}>
-                        <span className="badge" style={{ background: statusStyle.bg, color: statusStyle.color, border: `1px solid ${statusStyle.border}` }}>{status}</span>
+                        <StatusBadge registration={reg} />
                       </td>
 
                       <td style={tdStyle}>

@@ -1,48 +1,49 @@
 import React, { useState } from 'react';
 import { useAuth, ADMIN_EMAIL } from '../../context/AuthContext';
 import { UserPlus, Trash2, Mail } from 'lucide-react';
+import { useToast } from '../ui/ToastProvider';
+import { useConfirm } from '../ui/ConfirmProvider';
 
 // Admin tab: grant / revoke volunteer portal access
-export default function VolunteersTab({ setMessage }) {
+export default function VolunteersTab() {
+  const toast = useToast();
+  const confirm = useConfirm();
   const { authorizedEmails, addVolunteerEmail, removeVolunteerEmail } = useAuth();
   const [newEmail, setNewEmail] = useState('');
 
   const handleAddVolunteer = async (e) => {
     e.preventDefault();
-    setMessage({ type: '', text: '' });
 
     if (!newEmail.trim()) {
-      setMessage({ type: 'error', text: 'Please enter an email address.' });
+      toast.error('Please enter an email address.');
       return;
     }
 
     const cleanEmail = newEmail.trim().toLowerCase();
     if (authorizedEmails.includes(cleanEmail)) {
-      setMessage({ type: 'error', text: `Email ${cleanEmail} is already authorized.` });
+      toast.error(`Email ${cleanEmail} is already authorized.`);
       return;
     }
 
     const success = await addVolunteerEmail(cleanEmail);
     if (success) {
-      setMessage({ type: 'success', text: `Successfully authorized volunteer: ${cleanEmail}` });
+      toast.success(`Successfully authorized volunteer: ${cleanEmail}`);
       setNewEmail('');
     } else {
-      setMessage({ type: 'error', text: 'Failed to authorize email.' });
+      toast.error('Failed to authorize email.');
     }
   };
 
   const handleRemoveVolunteer = async (emailToRemove) => {
     if (emailToRemove.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-      setMessage({ type: 'error', text: 'Cannot revoke Super Admin privileges.' });
+      toast.error('Cannot revoke Super Admin privileges.');
       return;
     }
 
-    if (window.confirm(`Are you sure you want to revoke volunteer access for ${emailToRemove}?`)) {
-      const success = await removeVolunteerEmail(emailToRemove);
-      if (success) {
-        setMessage({ type: 'success', text: `Revoked access for ${emailToRemove}` });
-      }
-    }
+    if (!(await confirm({ title: 'Revoke volunteer access?', message: `${emailToRemove} will no longer be able to open the volunteer portal.`, confirmLabel: 'Revoke', danger: true }))) return;
+    const success = await removeVolunteerEmail(emailToRemove);
+    if (success) toast.success(`Revoked access for ${emailToRemove}`);
+    else toast.error(`Could not revoke access for ${emailToRemove}.`);
   };
 
   return (

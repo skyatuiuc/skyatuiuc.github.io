@@ -3,8 +3,6 @@ import { db } from '../firebase/config';
 import {
   Tag,
   Upload,
-  CheckCircle2,
-  AlertCircle,
   Trash2,
   Edit3,
   Eye,
@@ -20,6 +18,8 @@ import {
   getNametagTemplates
 } from '../services/nametagChunkService';
 import { drawFittedTextOnCanvas } from '../utils/nametagPdfUtils';
+import { useToast } from './ui/ToastProvider';
+import { useConfirm } from './ui/ConfirmProvider';
 
 // Helper: ColorPicker with Alpha
 function ColorPickerWithAlpha({ label, value, onChange }) {
@@ -111,12 +111,13 @@ function ColorPickerWithAlpha({ label, value, onChange }) {
 }
 
 export default function NametagTemplateTab() {
+  const toast = useToast();
+  const confirm = useConfirm();
   // Saved templates from Firestore
   const [templates, setTemplates] = useState([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
   const [editingTemplateId, setEditingTemplateId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [studioToast, setStudioToast] = useState({ type: '', text: '' });
 
   // Form Fields
   const [title, setTitle] = useState('');
@@ -172,11 +173,6 @@ export default function NametagTemplateTab() {
   const canvasContainerRef = useRef(null);
   const cachedBgImageRef = useRef(null);
 
-  const showToast = (type, text) => {
-    setStudioToast({ type, text });
-    setTimeout(() => setStudioToast({ type: '', text: '' }), 4000);
-  };
-
   // 1. Fetch saved templates on mount
   const fetchTemplates = useCallback(async () => {
     setIsLoadingTemplates(true);
@@ -185,11 +181,11 @@ export default function NametagTemplateTab() {
       setTemplates(list);
     } catch (err) {
       console.warn("Failed to load nametag templates:", err);
-      showToast('error', 'Failed to load templates from Firestore.');
+      toast.error('Failed to load templates from Firestore.');
     } finally {
       setIsLoadingTemplates(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchTemplates();
@@ -201,7 +197,7 @@ export default function NametagTemplateTab() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      showToast('error', 'Please upload a valid image file (PNG, JPG, or WebP).');
+      toast.error('Please upload a valid image file (PNG, JPG, or WebP).');
       return;
     }
 
@@ -247,7 +243,7 @@ export default function NametagTemplateTab() {
           maxFontSize: Math.round(h * 0.045)
         }));
 
-        showToast('success', `Image loaded (${w}×${h}px, Aspect Ratio ${ratio}:1)`);
+        toast.success(`Image loaded (${w}×${h}px, Aspect Ratio ${ratio}:1)`);
       };
       img.src = dataUrl;
     };
@@ -467,11 +463,11 @@ export default function NametagTemplateTab() {
   const handleSaveTemplate = async (e) => {
     e.preventDefault();
     if (!title.trim()) {
-      showToast('error', 'Please enter a template title.');
+      toast.error('Please enter a template title.');
       return;
     }
     if (!imageBase64) {
-      showToast('error', 'Please upload a background image for this template.');
+      toast.error('Please upload a background image for this template.');
       return;
     }
 
@@ -509,14 +505,14 @@ export default function NametagTemplateTab() {
       };
 
       await saveNametagTemplateWithChunks(db, metadata, imageBase64);
-      showToast('success', editingTemplateId ? 'Template updated successfully!' : 'Nametag template saved!');
+      toast.success(editingTemplateId ? 'Template updated successfully!' : 'Nametag template saved!');
 
       // Reset form
       handleCancelEdit();
       await fetchTemplates();
     } catch (err) {
       console.error("Error saving nametag template:", err);
-      showToast('error', 'Failed to save template: ' + (err.message || 'Unknown error'));
+      toast.error('Failed to save template: ' + (err.message || 'Unknown error'));
     } finally {
       setIsSaving(false);
     }
@@ -544,7 +540,7 @@ export default function NametagTemplateTab() {
     }
 
     // Fetch full image chunks
-    showToast('info', 'Loading high-resolution template artwork...');
+    toast.info('Loading high-resolution template artwork...');
     try {
       const fullImg = await loadNametagTemplateImage(db, template.id);
       if (fullImg) {
@@ -554,13 +550,13 @@ export default function NametagTemplateTab() {
           cachedBgImageRef.current = img;
         };
         img.src = fullImg;
-        showToast('success', 'Template ready for editing.');
+        toast.success('Template ready for editing.');
       } else if (template.thumbnailBase64) {
         setImageBase64(template.thumbnailBase64);
       }
     } catch (err) {
       console.warn("Failed to load full image for editing:", err);
-      showToast('error', 'Could not load full template image.');
+      toast.error('Could not load full template image.');
     }
 
     // Scroll editor into view
@@ -578,20 +574,20 @@ export default function NametagTemplateTab() {
 
   // 9. Delete Template
   const handleDeleteTemplate = async (templateId, templateTitle) => {
-    if (!window.confirm(`Are you sure you want to permanently delete template "${templateTitle}"?`)) {
+    if (!(await confirm({ title: 'Delete nametag template?', message: `"${templateTitle}" and its artwork will be permanently deleted.`, confirmLabel: 'Delete', danger: true }))) {
       return;
     }
 
     try {
       await deleteNametagTemplateWithChunks(db, templateId);
-      showToast('success', `Deleted "${templateTitle}"`);
+      toast.success(`Deleted "${templateTitle}"`);
       if (editingTemplateId === templateId) {
         handleCancelEdit();
       }
       await fetchTemplates();
     } catch (err) {
       console.error("Error deleting template:", err);
-      showToast('error', 'Failed to delete template.');
+      toast.error('Failed to delete template.');
     }
   };
 
@@ -641,25 +637,6 @@ export default function NametagTemplateTab() {
         </div>
       </div>
 
-      {/* TOAST MESSAGE */}
-      {studioToast.text && (
-        <div style={{
-          padding: '0.85rem 1.25rem',
-          borderRadius: 'var(--radius-sm)',
-          fontSize: '0.88rem',
-          fontWeight: 700,
-          background: studioToast.type === 'error' ? '#FEF2F2' : '#DCFCE7',
-          color: studioToast.type === 'error' ? '#DC2626' : '#166534',
-          border: studioToast.type === 'error' ? '1px solid #F87171' : '1px solid #86EFAC',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.6rem',
-          boxShadow: 'var(--shadow-sm)'
-        }}>
-          {studioToast.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
-          {studioToast.text}
-        </div>
-      )}
 
       {/* MAIN TWO-COLUMN STUDIO EDITOR */}
       <div style={{
