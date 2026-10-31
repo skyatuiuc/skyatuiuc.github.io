@@ -3,10 +3,9 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db, isFirebaseConfigured } from '../firebase/config';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { INITIAL_RETREATS } from '../data/retreatData';
-import { Calendar, CheckCircle2, Clock, User, LogIn, ArrowRight, Sparkles, HeartHandshake } from 'lucide-react';
+import { Calendar, CheckCircle2, Clock, User, LogIn, ArrowRight, Sparkles, HeartHandshake, AlertTriangle, ListChecks } from 'lucide-react';
 import { loadCachedRetreats } from '../utils/retreatUtils';
-import { getStatus, getStatusLabel, getAttendance, STATUS, GENERAL_RETREAT } from '../models/applicant';
+import { getStatus, getStatusLabel, getAttendance, getAppliedAtMs, STATUS, GENERAL_RETREAT } from '../models/applicant';
 import { formatRetreatDates } from '../models/retreat';
 import { getFeeTierLabel } from '../data/pricingData';
 
@@ -14,10 +13,15 @@ export default function MyRetreats() {
   const { currentUser, loginWithGoogle } = useAuth();
   const [userRegistrations, setUserRegistrations] = useState([]);
   const [allRetreats, setAllRetreats] = useState(() => {
-    const saved = localStorage.getItem('sky_retreat_history');
-    return saved ? JSON.parse(saved) : INITIAL_RETREATS;
+    try {
+      return JSON.parse(localStorage.getItem('sky_retreat_history') || '[]');
+    } catch {
+      return [];
+    }
   });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Sync retreats with local caching (0 reads on repeated visits)
   useEffect(() => {
@@ -30,38 +34,37 @@ export default function MyRetreats() {
     }
   }, []);
 
-  // Fetch registrations for current user
+  // Fetch registrations for current user (newest first). A failed load is shown as an error with
+  // Retry, never as "no records".
   useEffect(() => {
     if (!currentUser) {
       setUserRegistrations([]);
       setLoading(false);
       return;
     }
-
     const userEmail = currentUser.email?.trim().toLowerCase();
-    if (!userEmail) return;
-
-    if (isFirebaseConfigured && db) {
-      try {
-        const regRef = collection(db, 'registrations');
-        const q = query(regRef, where('email', '==', userEmail));
-        getDocs(q).then((snapshot) => {
-          const fetched = [];
-          snapshot.forEach((d) => fetched.push({ id: d.id, ...d.data() }));
-          setUserRegistrations(fetched);
-          setLoading(false);
-        }).catch((e) => {
-          console.warn("Firestore user retreats fetch notice:", e);
-          setLoading(false);
-        });
-      } catch (e) {
-        console.warn("Firestore setup notice:", e);
-        setLoading(false);
-      }
-    } else {
+    if (!userEmail || !isFirebaseConfigured || !db) {
       setLoading(false);
+      return;
     }
-  }, [currentUser]);
+    let cancelled = false;
+    setLoading(true);
+    setLoadError('');
+    getDocs(query(collection(db, 'registrations'), where('email', '==', userEmail)))
+      .then((snapshot) => {
+        if (cancelled) return;
+        const fetched = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        setUserRegistrations(fetched.sort((a, b) => getAppliedAtMs(b) - getAppliedAtMs(a)));
+      })
+      .catch((e) => {
+        console.warn('My Retreats fetch failed:', e);
+        if (!cancelled) setLoadError(e.code || e.message || 'unknown error');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [currentUser, reloadKey]);
 
   return (
     <div style={{ padding: '3.5rem 0 6rem 0' }}>
@@ -117,6 +120,15 @@ export default function MyRetreats() {
                 <Clock size={36} color="var(--sky-blue)" style={{ marginBottom: '1rem', opacity: 0.8 }} />
                 <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-main)' }}>Loading Your Retreat Records...</h3>
               </div>
+            ) : loadError ? (
+              <div className="glass-card" style={{ padding: '3rem 2rem', textAlign: 'center', background: '#FFFFFF' }}>
+                <AlertTriangle size={40} color="#B45309" style={{ marginBottom: '1rem' }} />
+                <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-main)' }}>We couldn&apos;t load your applications</h3>
+                <p className="text-secondary" style={{ marginBottom: '1.5rem' }}>
+                  Your applications are safe; this page just couldn&apos;t reach the server ({loadError}).
+                </p>
+                <button type="button" className="btn btn-primary" onClick={() => setReloadKey(k => k + 1)}>Try again</button>
+              </div>
             ) : userRegistrations.length === 0 ? (
               <div className="glass-card" style={{ padding: '3.5rem 2rem', textAlign: 'center', background: '#FFFFFF' }}>
                 <Calendar size={48} color="var(--sky-blue)" style={{ marginBottom: '1rem', opacity: 0.8 }} />
@@ -133,12 +145,10 @@ export default function MyRetreats() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 
                 {userRegistrations.map((reg) => {
+                  const isGeneral = reg.retreatId === GENERAL_RETREAT.id;
                   const retreatDetail = allRetreats.find(r => r.id === reg.retreatId) || {
-                    title: reg.retreatId === GENERAL_RETREAT.id ? 'SKY Happiness Retreat (next available)' : 'SKY Happiness Retreat',
-                    startDate: '',
-                    endDate: '',
-                    location: '',
-                    teachers: ''
+                    title: isGeneral ? GENERAL_RETREAT.title : 'SKY Happiness Retreat',
+                    location: ''
                   };
 
                   const status = getStatus(reg);
@@ -162,15 +172,28 @@ export default function MyRetreats() {
                             </h3>
                           </div>
                           <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                            <span>📅 {formatRetreatDates(retreatDetail) || 'Dates to be announced'}</span>
-                            <span>•</span>
-                            <span>📍 {retreatDetail.location}</span>
+                            {isGeneral ? (
+                              <span>You&apos;re on our interest list. We&apos;ll email you when the next retreat opens.</span>
+                            ) : (
+                              <>
+                                <span>📅 {formatRetreatDates(retreatDetail) || 'Dates to be announced'}</span>
+                                {retreatDetail.location && <><span>•</span><span>📍 {retreatDetail.location}</span></>}
+                              </>
+                            )}
                           </div>
                         </div>
 
                         {/* Completion Badge */}
                         <div>
-                          {isVolunteer ? (
+                          {status === STATUS.WITHDRAWN ? (
+                            <span style={{ background: '#F1F5F9', color: 'var(--text-muted)', fontSize: '0.85rem', padding: '0.45rem 0.9rem', borderRadius: 'var(--radius-full)', fontWeight: 600, border: '1px solid var(--border-color)' }}>
+                              Withdrawn
+                            </span>
+                          ) : isGeneral ? (
+                            <span className="badge badge-sky" style={{ fontSize: '0.85rem', padding: '0.45rem 0.9rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <ListChecks size={16} /> On the Interest List
+                            </span>
+                          ) : isVolunteer ? (
                             <span className="badge badge-sun" style={{ fontSize: '0.85rem', padding: '0.45rem 0.9rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                               <HeartHandshake size={16} /> Volunteering
                             </span>
@@ -181,10 +204,6 @@ export default function MyRetreats() {
                           ) : isApproved ? (
                             <span className="badge badge-sky" style={{ fontSize: '0.85rem', padding: '0.45rem 0.9rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                               <Sparkles size={16} /> Enrolled & Confirmed
-                            </span>
-                          ) : status === STATUS.WITHDRAWN ? (
-                            <span style={{ background: '#F1F5F9', color: 'var(--text-muted)', fontSize: '0.85rem', padding: '0.45rem 0.9rem', borderRadius: 'var(--radius-full)', fontWeight: 600, border: '1px solid var(--border-color)' }}>
-                              Withdrawn
                             </span>
                           ) : (
                             <span className="badge badge-sun" style={{ fontSize: '0.85rem', padding: '0.45rem 0.9rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>

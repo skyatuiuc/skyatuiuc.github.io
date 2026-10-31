@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import { createServer } from 'vite';
 import puppeteer from 'puppeteer-core';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, getDocs, collection } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, updateDoc, collection } from 'firebase/firestore';
 
 const PROJECT_ID = 'demo-skyatuiuc';
 const PORT = 5199;
@@ -459,6 +459,22 @@ try {
       const keys = Object.keys(created);
       check('application uses only v2 keys', keys.every(k => !['fullName', 'orientationStatus', 'interviewStatus', 'retreatTitle', 'agreeToAll3Days', 'id'].includes(k)), keys.join(','));
     }
+  });
+
+  await step('My Retreats after approval (owner\'s manual test) and for the interest list', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const fs = ctx.firestore();
+      await updateDoc(doc(fs, 'registrations', `${newbie}_${upcoming.id}`), { status: 'Approved' });
+      await setDoc(doc(fs, 'registrations', `${newbie}_general`), {
+        retreatId: 'general', email: newbie, firstName: 'New', lastName: 'Bie', status: 'Pending', appliedAt: '2026-01-01T00:00:00.000Z'
+      });
+    });
+    await page.goto(`${BASE}/my-retreats`, { waitUntil: 'domcontentloaded' });
+    await waitForText('Enrolled & Confirmed');
+    const text = await bodyText();
+    check('approved application shows Enrolled & Confirmed', text.includes('Enrolled & Confirmed'));
+    check('interest-list application shows its own card', text.includes('On the Interest List') && text.includes("We'll email you when the next retreat opens"));
+    check('newest application listed first', text.indexOf('Upcoming Test Retreat') < text.indexOf('General Interest List'));
   });
 } finally {
   await browser.close();
