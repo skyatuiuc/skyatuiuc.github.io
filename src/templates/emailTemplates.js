@@ -436,7 +436,7 @@ export const EMAIL_TEMPLATES = {
     id: 'completion',
     name: 'Retreat Completion & Follow-Up',
     subject: 'SKY Happiness Retreat | Congratulations and Next Steps!',
-    description: 'Sent after retreat completion with home practice app, Sunday reunions, WhatsApp group, and survey.',
+    description: 'Sent after retreat completion with cohort group photo, home practice guide, Sattva app, Sunday reunions, and team info.',
     renderHtml: (data) => `
 <!DOCTYPE html>
 <html>
@@ -468,6 +468,19 @@ export const EMAIL_TEMPLATES = {
       What an incredible 3 days it's been! We hope the breathwork, meditation, and learnings from this weekend continue to bring peace, focus, and energy into your everyday life.
     </p>
 
+    <!-- COHORT GROUP PICTURE (Optional - displayed if uploaded) -->
+    ${data.groupPhotoUrl ? `
+    <div style="margin: 20px 0 25px 0; text-align: center;">
+      <a href="${data.groupPhotoUrl}" target="_blank" style="text-decoration: none; display: block;">
+        <img src="${data.groupPhotoUrl}" alt="Retreat Graduation Cohort Group Photo" style="width: 100%; max-width: 540px; height: auto; border-radius: 8px; border: 1px solid #E2E8F0; box-shadow: 0 4px 12px rgba(0,0,0,0.08); display: block; margin: 0 auto;" />
+      </a>
+      <p style="margin: 8px 0 0 0; font-size: 13px; color: #718096;">
+        <a href="${data.groupPhotoUrl}" target="_blank" style="color: #1F74F1; font-weight: bold; text-decoration: none;">
+          Click here to view or download high-resolution group photo &rarr;
+        </a>
+      </p>
+    </div>` : ''}
+
     <!-- HOME PRACTICE -->
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
       SKY Home Practice & Sattva App
@@ -478,6 +491,34 @@ export const EMAIL_TEMPLATES = {
     <p style="margin: 10px 0 15px 0;">
       <a href="${data.sattvaLink || 'https://www.sattva.life/'}" style="color: #1F74F1; font-weight: bold; text-decoration: none;">Download Sattva App &rarr;</a> (Join our UIUC Circle with code: <strong>KPN8RG</strong>)
     </p>
+
+    <!-- HOME PRACTICE GUIDE -->
+    ${(data.practiceGuideUrl || data.cheatSheetUrl) ? `
+    <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
+      Home Practice Reference Guide
+    </h3>
+    <p style="line-height: 1.6; font-size: 15px; color: #23275F; margin: 8px 0;">
+      Save our quick-reference guide for 3-stage pranayama, breath counts, and daily home practice sequence:
+    </p>
+    ${/\.(png|jpe?g|webp|gif)$/i.test((data.practiceGuideUrl || data.cheatSheetUrl).split('?')[0]) ? `
+    <div style="margin: 16px 0 20px 0; text-align: center;">
+      <a href="${data.practiceGuideUrl || data.cheatSheetUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; display: inline-block; max-width: 100%;">
+        <img 
+          src="${data.practiceGuideUrl || data.cheatSheetUrl}" 
+          alt="SKY Daily Home Practice Guide - Sequence and Breath Counts" 
+          width="540" 
+          style="width: 100%; max-width: 540px; height: auto; border-radius: 6px; border: 1.5px solid #CBD5E1; display: block; margin: 0 auto; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" 
+        />
+      </a>
+      <p style="margin: 8px 0 0 0; font-size: 12px; color: #718096; font-style: italic;">
+        Click to view full-resolution guide: <a href="${data.practiceGuideUrl || data.cheatSheetUrl}" style="color: #1F74F1; text-decoration: underline;">${data.practiceGuideUrl || data.cheatSheetUrl}</a>
+      </p>
+    </div>` : `
+    <p style="margin: 10px 0 15px 0;">
+      <a href="${data.practiceGuideUrl || data.cheatSheetUrl}" target="_blank" rel="noopener noreferrer" style="color: #1F74F1; font-weight: bold; text-decoration: none;">
+        View Daily Home Practice Guide &rarr;
+      </a>
+    </p>`}` : ''}
 
     <!-- WEEKLY REUNIONS -->
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
@@ -504,19 +545,36 @@ export const EMAIL_TEMPLATES = {
       </a>
     </div>
 
-    <!-- SURVEY -->
-    ${data.surveyLink ? `
+    <!-- GROUP REUNION & GETTING INVOLVED -->
     <h3 style="text-transform: uppercase; letter-spacing: 0.05em; color: #23275F; margin-top: 25px; border-bottom: 2px solid #FABC1D; padding-bottom: 5px; font-size: 16px;">
-      Post-Retreat Feedback Survey
+      Group Reunion & Getting Involved
     </h3>
     <p style="line-height: 1.6; font-size: 15px; color: #23275F; margin: 8px 0 12px 0;">
-      Your feedback is immensely valuable to us and essential for securing campus funding for future students:
+      We'd love to see everyone together again! Our official <strong>Group Reunion</strong> will take place during our upcoming weekly follow-up session on the <strong>following Sunday</strong>.
     </p>
-    <div style="margin: 12px 0 20px 0;">
-      <a href="${data.surveyLink}" style="display: inline-block; background-color: #1F74F1; color: #ffffff !important; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px;">
-        Fill Out 2-Minute Survey &rarr;
-      </a>
-    </div>` : ''}
+
+    <div style="background-color: #F0F7FF; border-left: 4px solid #1F74F1; padding: 14px 18px; border-radius: 4px; margin: 15px 0;">
+      <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: 700; color: #23275F;">
+        At the reunion, you can:
+      </p>
+      <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #4A5568; line-height: 1.6;">
+        <li style="margin-bottom: 5px; color: #4A5568;"><strong>Pick up your goodie bag</strong> (if you missed receiving yours during the retreat)</li>
+        <li style="margin-bottom: 5px; color: #4A5568;"><strong>Buy official club merch</strong></li>
+        <li style="color: #4A5568;"><strong>Get more information</strong> about joining the team and being part of this exciting club!</li>
+      </ul>
+    </div>
+
+    <div style="background-color: #FFF7ED; border-left: 4px solid #DB6937; padding: 14px 18px; border-radius: 4px; margin: 15px 0;">
+      <p style="margin: 0 0 6px 0; font-size: 14px; font-weight: 700; color: #DB6937;">
+        Join Our Volunteer Team!
+      </p>
+      <p style="line-height: 1.5; font-size: 14px; color: #23275F; margin: 0 0 8px 0;">
+        We'd love to invite you to join our volunteer team! If that's something you'd be interested in learning more about, please reach out to us by replying directly to this email or connecting on WhatsApp.
+      </p>
+      <p style="line-height: 1.4; font-size: 13px; color: #718096; margin: 0; font-style: italic;">
+        Note: Formal officer applications will also be opening later in the semester!
+      </p>
+    </div>
 
     <p style="line-height: 1.6; font-size: 16px; margin-top: 25px; margin-bottom: 5px; color: #23275F;">
       With love and gratitude,<br>

@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  X, 
-  Save, 
+import {
+  X,
+  Save,
   Settings
 } from 'lucide-react';
 import { DEFAULT_EMAIL_SETTINGS } from '../services/emailService';
 
-export default function EmailSettingsModal({ 
-  emailSettings = {}, 
+export default function EmailSettingsModal({
+  emailSettings = {},
   isSuperAdmin = false,
-  onSave, 
-  onClose 
+  onSave,
+  onClose
 }) {
   const [formData, setFormData] = useState({
     ...DEFAULT_EMAIL_SETTINGS,
@@ -37,8 +37,8 @@ export default function EmailSettingsModal({
   };
 
   return createPortal(
-    <div 
-      className="modal-overlay" 
+    <div
+      className="modal-overlay"
       onClick={onClose}
       style={{
         position: 'fixed',
@@ -52,8 +52,8 @@ export default function EmailSettingsModal({
         padding: '1.25rem'
       }}
     >
-      <div 
-        className="glass-card" 
+      <div
+        className="glass-card"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%',
@@ -180,7 +180,7 @@ export default function EmailSettingsModal({
 
         {/* Form Body */}
         <form onSubmit={handleSave} style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', background: '#FFFFFF' }}>
-          
+
           {activeTab === 'links' && (
             <>
               {/* IAHV Course Registration Link */}
@@ -192,10 +192,10 @@ export default function EmailSettingsModal({
                   type="url"
                   disabled={!isSuperAdmin}
                   value={formData.defaultRegistrationLink || formData.registrationLink || ''}
-                  onChange={(e) => setFormData({ 
-                    ...formData, 
+                  onChange={(e) => setFormData({
+                    ...formData,
                     defaultRegistrationLink: e.target.value,
-                    registrationLink: e.target.value 
+                    registrationLink: e.target.value
                   })}
                   placeholder="https://members.us.iahv.org/us-en/course/checkout..."
                   style={{
@@ -268,6 +268,32 @@ export default function EmailSettingsModal({
                   value={formData.dailyPracticeLink}
                   onChange={(e) => setFormData({ ...formData, dailyPracticeLink: e.target.value })}
                   placeholder="https://illinois.zoom.us/j/..."
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    background: !isSuperAdmin ? '#F8FAFC' : '#FFFFFF',
+                    border: '1px solid rgba(35, 39, 95, 0.15)',
+                    color: 'var(--text-main)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.88rem'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-main)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.35rem' }}>
+                  SKY Home Practice Guide Link (Default: skyuiuc.org Image)
+                </label>
+                <input
+                  type="url"
+                  disabled={!isSuperAdmin}
+                  value={formData.practiceGuideUrl || formData.cheatSheetUrl || ''}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    practiceGuideUrl: e.target.value,
+                    cheatSheetUrl: e.target.value
+                  })}
+                  placeholder="https://skyuiuc.org/assets/skyhomepracticeguide.png"
                   style={{
                     width: '100%',
                     padding: '0.65rem 0.85rem',

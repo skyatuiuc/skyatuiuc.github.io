@@ -36,6 +36,23 @@ export const sanitizeUrl = (url, fallback = '#') => {
   return fallback;
 };
 
+/**
+ * Normalizes image URLs, auto-converting Google Drive sharing links to direct Google CDN endpoints.
+ */
+export const formatDirectImageUrl = (url) => {
+  if (!url || typeof url !== 'string') return '';
+  const clean = sanitizeUrl(url, '');
+  if (!clean) return '';
+
+  const driveMatch = clean.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/i) ||
+    clean.match(/drive\.google\.com\/(?:uc\?(?:export=view&)?id=|open\?id=)([a-zA-Z0-9_-]+)/i);
+  if (driveMatch && driveMatch[1]) {
+    return `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+  }
+
+  return clean;
+};
+
 export const DEFAULT_EMAIL_SETTINGS = {
   webhookUrl: import.meta.env?.VITE_EMAIL_WEBHOOK_URL || '', // Configurable Google Apps Script Webhook
   senderEmail: 'skyatuiuc@gmail.com',
@@ -49,7 +66,9 @@ export const DEFAULT_EMAIL_SETTINGS = {
   surveyLink: import.meta.env?.VITE_SURVEY_LINK || '',
   dailyPracticeLink: import.meta.env?.VITE_DAILY_PRACTICE_LINK || '',
   defaultRegistrationLink: 'https://members.us.iahv.org/us-en/course/checkout',
-  registrationLink: 'https://members.us.iahv.org/us-en/course/checkout'
+  registrationLink: 'https://members.us.iahv.org/us-en/course/checkout',
+  practiceGuideUrl: 'https://skyuiuc.org/assets/skyhomepracticeguide.png',
+  cheatSheetUrl: 'https://skyuiuc.org/assets/skyhomepracticeguide.png'
 };
 
 // Robust Fee and Payment Status Parser
@@ -63,7 +82,7 @@ export const parseFeeAndPayment = (participant) => {
 
   // 1. Determine numeric fee amount
   let feeNum = null;
-  
+
   if (participant.fee !== undefined && participant.fee !== null && participant.fee !== '') {
     const parsed = typeof participant.fee === 'number' ? participant.fee : parseFloat(String(participant.fee).replace(/[^0-9.]/g, ''));
     if (!isNaN(parsed)) {
@@ -122,7 +141,7 @@ export const checkRequiresPayment = (participant) => {
 // Compile email template payload with variables
 export const compileEmailPayload = (templateTypeKey, participant, retreat, emailSettings = {}) => {
   const settings = { ...DEFAULT_EMAIL_SETTINGS, ...emailSettings };
-  
+
   let effectiveTemplateKey = templateTypeKey;
   const isPaying = checkRequiresPayment(participant);
 
@@ -171,7 +190,7 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
   const day2 = schedule[1] || { fullLabel: 'Saturday', time: retreat?.saturdayTime || retreat?.day2Time || '' };
   const day3 = schedule[2] || { fullLabel: 'Sunday', time: retreat?.sundayTime || retreat?.day3Time || '' };
 
-  const dates = retreat?.startDate && retreat?.endDate 
+  const dates = retreat?.startDate && retreat?.endDate
     ? `${escapeHtml(retreat.startDate)} to ${escapeHtml(retreat.endDate)}`
     : escapeHtml(retreat?.title || 'Upcoming Retreat');
 
@@ -216,7 +235,10 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
     sattvaLink: sanitizeUrl(settings.sattvaLink),
     whatsAppLink: sanitizeUrl(settings.whatsAppLink),
     surveyLink: sanitizeUrl(settings.surveyLink),
-    dailyPracticeLink: sanitizeUrl(settings.dailyPracticeLink)
+    dailyPracticeLink: sanitizeUrl(settings.dailyPracticeLink),
+    groupPhotoUrl: formatDirectImageUrl(retreat?.groupPhotoUrl || settings.groupPhotoUrl),
+    practiceGuideUrl: sanitizeUrl(settings.practiceGuideUrl || retreat?.practiceGuideUrl || settings.cheatSheetUrl || retreat?.cheatSheetUrl || 'https://skyuiuc.org/assets/skyhomepracticeguide.png'),
+    cheatSheetUrl: sanitizeUrl(settings.practiceGuideUrl || retreat?.practiceGuideUrl || settings.cheatSheetUrl || retreat?.cheatSheetUrl || 'https://skyuiuc.org/assets/skyhomepracticeguide.png')
   };
 
   const htmlBody = template.renderHtml(templateData);

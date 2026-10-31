@@ -15,6 +15,7 @@ import GroupAssignmentTab from '../components/GroupAssignmentTab';
 import AutoEmailDispatchTab from '../components/AutoEmailDispatchTab';
 import NametagTemplateTab from '../components/NametagTemplateTab';
 import { getDefaultActiveRetreatId } from '../utils/retreatUtils';
+import { formatDirectImageUrl } from '../services/emailService';
 
 // Reusable Compact Color Selector with Opacity / Alpha Control & RGB Display
 const ColorPickerWithAlpha = ({ label, value, onChange }) => {
@@ -521,6 +522,7 @@ export default function Admin() {
   const [fridayTime, setFridayTime] = useState('');
   const [saturdayTime, setSaturdayTime] = useState('');
   const [sundayTime, setSundayTime] = useState('');
+  const [groupPhotoUrl, setGroupPhotoUrl] = useState('');
 
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
@@ -965,6 +967,7 @@ export default function Admin() {
     setFridayTime(ret.fridayTime || ret.day1Time || '');
     setSaturdayTime(ret.saturdayTime || ret.day2Time || '');
     setSundayTime(ret.sundayTime || ret.day3Time || '');
+    setGroupPhotoUrl(ret.groupPhotoUrl || '');
     setMessage({ type: 'info', text: `Editing retreat record: ${ret.title}` });
   };
 
@@ -980,6 +983,7 @@ export default function Admin() {
     setFridayTime('');
     setSaturdayTime('');
     setSundayTime('');
+    setGroupPhotoUrl('');
   };
 
   const handleSaveRetreat = async (e) => {
@@ -1004,6 +1008,7 @@ export default function Admin() {
         fridayTime: fridayTime.trim(),
         saturdayTime: saturdayTime.trim(),
         sundayTime: sundayTime.trim(),
+        groupPhotoUrl: groupPhotoUrl.trim(),
         updatedAt: new Date().toISOString()
       };
 
@@ -1037,6 +1042,7 @@ export default function Admin() {
         fridayTime: fridayTime.trim(),
         saturdayTime: saturdayTime.trim(),
         sundayTime: sundayTime.trim(),
+        groupPhotoUrl: groupPhotoUrl.trim(),
         createdAt: new Date().toISOString()
       };
 
@@ -1654,6 +1660,78 @@ export default function Admin() {
                   </div>
                 </div>
 
+                {/* Cohort Graduation Group Photo */}
+                <div style={{
+                  background: '#F8FAFC',
+                  padding: '1.25rem',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid rgba(35, 39, 95, 0.15)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.65rem'
+                }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    📸 Cohort Graduation Group Photo (Included in Completion Email)
+                  </label>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
+                    Paste a shared Google Drive link (set to &quot;Anyone with the link can view&quot;), a website asset link (e.g. <code>https://skyuiuc.org/assets/retreats/...</code>), or any public image URL.
+                  </p>
+
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    <input 
+                      type="url"
+                      placeholder="e.g. https://drive.google.com/file/d/... or https://skyuiuc.org/assets/..."
+                      value={groupPhotoUrl}
+                      onChange={(e) => setGroupPhotoUrl(formatDirectImageUrl(e.target.value))}
+                      style={{ 
+                        flex: 1, 
+                        padding: '0.65rem 0.85rem', 
+                        background: '#FFFFFF', 
+                        border: '1px solid var(--border-color)', 
+                        borderRadius: 'var(--radius-sm)', 
+                        color: 'var(--text-main)', 
+                        fontSize: '0.85rem' 
+                      }}
+                    />
+
+                    {groupPhotoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setGroupPhotoUrl('')}
+                        style={{
+                          padding: '0.65rem 0.85rem',
+                          background: '#FEE2E2',
+                          color: '#DC2626',
+                          border: '1px solid #FCA5A5',
+                          borderRadius: 'var(--radius-sm)',
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+
+                  {groupPhotoUrl && (
+                    <div style={{ marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '1rem', background: '#FFFFFF', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+                      <img 
+                        src={groupPhotoUrl} 
+                        alt="Group Photo Preview" 
+                        style={{ width: '80px', height: '55px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #E2E8F0' }} 
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        <span style={{ color: '#16A34A', fontWeight: 700 }}>✓ Attached: </span>
+                        <a href={groupPhotoUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--sky-blue)' }}>{groupPhotoUrl}</a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {editingRetreatId ? (
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
                     <button 
@@ -1714,6 +1792,9 @@ export default function Admin() {
                             <span className={`badge ${isUpcoming ? 'badge-sky' : 'badge-earth'}`} style={{ fontSize: '0.65rem' }}>
                               {isUpcoming ? 'UPCOMING' : 'PAST'}
                             </span>
+                            {ret.groupPhotoUrl && (
+                              <span className="badge badge-sky" style={{ fontSize: '0.65rem' }}>📸 PHOTO</span>
+                            )}
                             {isCurrentlyEditing && (
                               <span className="badge badge-sun" style={{ fontSize: '0.65rem' }}>EDITING</span>
                             )}
