@@ -1,7 +1,7 @@
 /**
  * GOOGLE APPS SCRIPT RELAY & CAMPAIGN ANALYTICS ENGINE FOR SKY AT UIUC
  * 
- * Version: 4.5.1
+ * Version: 4.5.2
  * Managed in GitHub repository: https://github.com/skyatuiuc/skyatuiuc.github.io
  * 
  * Capabilities:
@@ -94,8 +94,10 @@ function decodeJwtPayload_(token) {
 // Why the last authenticateCaller() call rejected the caller (one request per execution), reported
 // in the "Unauthorized" response so a failure can be diagnosed without reading the execution logs.
 var lastAuthFailure_ = "";
-function rejectCaller_(reason) {
+var lastAuthDetail_ = "";
+function rejectCaller_(reason, detail) {
   lastAuthFailure_ = reason;
+  lastAuthDetail_ = detail ? String(detail).slice(0, 300) : "";
   return null;
 }
 
@@ -119,6 +121,7 @@ function rejectCaller_(reason) {
  */
 function authenticateCaller(idToken) {
   lastAuthFailure_ = "";
+  lastAuthDetail_ = "";
   if (!idToken || typeof idToken !== "string") return rejectCaller_("missing_token");
   var token = idToken.trim();
   var payload = decodeJwtPayload_(token);
@@ -152,8 +155,9 @@ function authenticateCaller(idToken) {
     });
     code = resp.getResponseCode();
   } catch (err) {
+    // Usually "You do not have permission to call UrlFetchApp.fetch": run authorizeRelay() once
     Logger.log("Token verification request failed: " + err.toString());
-    return rejectCaller_("verification_request_failed");
+    return rejectCaller_("verification_request_failed", err.toString());
   }
 
   if (code !== 200 && code !== 404) {
@@ -196,7 +200,8 @@ function unauthorizedResponse_() {
     status: "error",
     code: "unauthorized",
     reason: reason,
-    message: "Unauthorized (" + reason + "): Valid Firebase ID token from an authorized volunteer or super admin is required."
+    message: "Unauthorized (" + reason + "): Valid Firebase ID token from an authorized volunteer or super admin is required." +
+      (lastAuthDetail_ ? " Relay error: " + lastAuthDetail_ : "")
   });
 }
 
@@ -453,8 +458,8 @@ function createJsonResponse(obj) {
 }
 
 // ---------- Email quota (consumer Gmail: about 100 recipients per rolling 24 hours) ----------
-// The relay is the only sender on this account, so it counts its own sends instead of calling
-// MailApp.getRemainingDailyQuota(), which would need an extra OAuth scope (and re-authorization).
+// The relay is the only sender on this account, so it counts its own sends in Script Properties
+// (a predictable rolling 24-hour window the dispatch screen can show before a batch starts).
 var EMAIL_DAILY_LIMIT_DEFAULT = 100;
 var EMAIL_SEND_LOG_KEY = "email_send_log";
 var DAY_MS = 24 * 60 * 60 * 1000;
@@ -550,7 +555,7 @@ function doPost(e) {
       });
     }
 
-    GmailApp.sendEmail(data.to, data.subject, data.plainText || "", {
+    MailApp.sendEmail(data.to, data.subject, data.plainText || "", {
       htmlBody: data.htmlBody,
       name: data.senderName || "SKY Meditation at UIUC",
       replyTo: "skyatuiuc@gmail.com"
@@ -571,6 +576,19 @@ function doPost(e) {
   }
 }
 
+/**
+ * Run this once from the Apps Script editor (select authorizeRelay, then Run) after the manifest's
+ * OAuth scopes change. The web app executes as the owner, so it can only use permissions the owner
+ * has granted here; until then UrlFetchApp/MailApp calls throw and every volunteer is "Unauthorized".
+ */
+function authorizeRelay() {
+  var probe = UrlFetchApp.fetch("https://firestore.googleapis.com/v1/projects/" + FIREBASE_PROJECT_ID +
+    "/databases/(default)/documents/authorized_volunteers/probe", { muteHttpExceptions: true });
+  Logger.log("Outbound requests OK (Firestore answered HTTP " + probe.getResponseCode() + " to an unauthenticated probe).");
+  Logger.log("Mail OK (Google reports " + MailApp.getRemainingDailyQuota() + " sends left today).");
+  Logger.log("Sheet OK (" + getOrCreateCampaignSheet().getParent().getName() + ").");
+}
+
 function doGet(e) {
   var action = e && e.parameter ? e.parameter.action : "";
   if (action === "get_campaign_analytics" || action === "analytics") {
@@ -581,7 +599,7 @@ function doGet(e) {
   return createJsonResponse({
     status: "online",
     service: "SKY UIUC Relay & Campaign Engine",
-    version: "4.5.1",
+    version: "4.5.2",
     time: new Date().toISOString()
   });
 }

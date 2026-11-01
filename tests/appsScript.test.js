@@ -44,7 +44,7 @@ function loadScript({ firestoreCodeFor }) {
         return { getResponseCode: () => firestoreCodeFor(url, token) };
       }
     },
-    GmailApp: { sendEmail: (...args) => calls.sent.push(args) },
+    MailApp: { sendEmail: (...args) => calls.sent.push(args) },
     Logger: { log: () => {} },
     ContentService: {
       MimeType: { JSON: 'json' },
@@ -89,6 +89,17 @@ describe('Apps Script relay authentication', () => {
     expect(post(env.ctx, emailBody(makeToken(validClaims('x@y.com', { aud: 'other' })))).reason).toBe('wrong_project');
     expect(post(env.ctx, emailBody(makeToken(validClaims('vol@illinois.edu')).replace('.signature', '.forged'))).reason).toBe('verification_http_401');
     expect(post(env.ctx, emailBody(makeToken(validClaims('random@gmail.com')))).reason).toBe('not_a_volunteer');
+  });
+
+  it('passes the relay exception through when it cannot reach Firestore', () => {
+    env.ctx.UrlFetchApp.fetch = () => { throw new Error('You do not have permission to call UrlFetchApp.fetch.'); };
+    const res = post(env.ctx, emailBody(makeToken(validClaims('vol@illinois.edu'))));
+    expect(res.reason).toBe('verification_request_failed');
+    expect(res.message).toContain('You do not have permission to call UrlFetchApp.fetch.');
+    expect(env.calls.sent).toHaveLength(0);
+    // The detail does not leak into the next caller's rejection
+    env.ctx.UrlFetchApp.fetch = () => ({ getResponseCode: () => 401 });
+    expect(post(env.ctx, emailBody(makeToken(validClaims('x@y.com')))).message).not.toContain('Relay error');
   });
 
   it('rejects a forged super-admin token (Firestore says 401) and sends nothing', () => {
