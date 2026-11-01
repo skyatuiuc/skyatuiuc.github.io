@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { deleteField } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useRoster } from '../context/RosterContext';
@@ -45,7 +45,7 @@ export default function AutoEmailDispatchTab() {
   const { activeRetreat, registrations, updateRegistration } = useRoster();
 
   // Global settings (one live listener, shared): links, contacts, cheat sheet, relay URL
-  const { emailSettings } = useSettings();
+  const { emailSettings, settingsLoaded } = useSettings();
   const navigate = useNavigate();
 
   const userEmailLower = (currentUser?.email || '').toLowerCase().trim();
@@ -147,14 +147,23 @@ export default function AutoEmailDispatchTab() {
     }
   };
 
+  // Only the newest quota request may update the display (settings can arrive while one is in flight)
+  const quotaRequestRef = useRef(0);
   const refreshQuota = useCallback(async () => {
+    quotaRequestRef.current += 1;
+    const requestId = quotaRequestRef.current;
     try {
-      setQuota(await getEmailQuota(emailSettings));
+      const result = await getEmailQuota(emailSettings);
+      if (requestId === quotaRequestRef.current) setQuota(result);
     } catch (err) {
-      setQuota({ error: err.message });
+      console.warn('Email quota check failed:', err);
+      if (requestId === quotaRequestRef.current) setQuota({ error: err.message || 'unknown error' });
     }
   }, [emailSettings]);
-  useEffect(() => { refreshQuota(); }, [refreshQuota]);
+  useEffect(() => {
+    // Wait for the saved settings: the built-in defaults may point at a different relay deployment
+    if (settingsLoaded) refreshQuota();
+  }, [refreshQuota, settingsLoaded]);
 
   // Send Single Email (emailService records the sent email on the registration)
   const handleSendSingle = async (templateKey, participant) => {
@@ -463,9 +472,12 @@ export default function AutoEmailDispatchTab() {
               style={{ color: quota?.remaining === 0 ? '#B91C1C' : 'var(--text-secondary)' }}
             >
               {quota === null ? 'Checking email quota…'
-                : quota.error ? 'Email quota unavailable'
+                : quota.error ? `Email quota unavailable: ${quota.error}`
                   : `${quota.remaining} of ${quota.limit} emails left (24 h)`}
             </span>
+            {quota?.error && (
+              <button type="button" className="btn-link text-xs" onClick={() => { setQuota(null); refreshQuota(); }}>Retry</button>
+            )}
             <label className="row text-xs" style={{ gap: '0.3rem', color: 'var(--text-secondary)' }} title="Also send to applicants this template is not meant for">
               <input type="checkbox" checked={includeIneligible} onChange={(e) => setIncludeIneligible(e.target.checked)} />
               Include ineligible
