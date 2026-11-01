@@ -1,7 +1,7 @@
 /**
  * GOOGLE APPS SCRIPT RELAY & CAMPAIGN ANALYTICS ENGINE FOR SKY AT UIUC
  * 
- * Version: 4.5.0
+ * Version: 4.5.1
  * Managed in GitHub repository: https://github.com/skyatuiuc/skyatuiuc.github.io
  * 
  * Capabilities:
@@ -82,10 +82,21 @@ function decodeJwtPayload_(token) {
   var parts = token.split(".");
   if (parts.length !== 3) return null;
   try {
-    return JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[1])).getDataAsString());
+    // JWT segments are unpadded base64url; Apps Script's decoder requires the "=" padding
+    var segment = parts[1] + "===".slice((parts[1].length + 3) % 4);
+    return JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(segment)).getDataAsString());
   } catch (err) {
+    Logger.log("Could not decode caller token payload: " + err.toString());
     return null;
   }
+}
+
+// Why the last authenticateCaller() call rejected the caller (one request per execution), reported
+// in the "Unauthorized" response so a failure can be diagnosed without reading the execution logs.
+var lastAuthFailure_ = "";
+function rejectCaller_(reason) {
+  lastAuthFailure_ = reason;
+  return null;
 }
 
 /**
@@ -107,19 +118,20 @@ function decodeJwtPayload_(token) {
  * @returns {{email: string, authorized: boolean}|null} null when the token is not authentic
  */
 function authenticateCaller(idToken) {
-  if (!idToken || typeof idToken !== "string") return null;
+  lastAuthFailure_ = "";
+  if (!idToken || typeof idToken !== "string") return rejectCaller_("missing_token");
   var token = idToken.trim();
   var payload = decodeJwtPayload_(token);
-  if (!payload) return null;
+  if (!payload) return rejectCaller_("token_unreadable");
 
   // Cheap pre-checks so obviously bad tokens never cost a Firestore read
   var nowSec = Math.floor(Date.now() / 1000);
   if (payload.aud !== FIREBASE_PROJECT_ID || payload.iss !== "https://securetoken.google.com/" + FIREBASE_PROJECT_ID) {
-    return null;
+    return rejectCaller_("wrong_project");
   }
-  if (!payload.exp || payload.exp <= nowSec) return null;
+  if (!payload.exp || payload.exp <= nowSec) return rejectCaller_("token_expired");
   var email = String(payload.email || "").toLowerCase().trim();
-  if (!email) return null;
+  if (!email) return rejectCaller_("no_email");
 
   var cache = CacheService.getScriptCache();
   var cacheKey = "auth_tok_" + Utilities.base64EncodeWebSafe(
@@ -141,18 +153,18 @@ function authenticateCaller(idToken) {
     code = resp.getResponseCode();
   } catch (err) {
     Logger.log("Token verification request failed: " + err.toString());
-    return null;
+    return rejectCaller_("verification_request_failed");
   }
 
   if (code !== 200 && code !== 404) {
     Logger.log("Rejected caller token for " + email + " (Firestore HTTP " + code + ")");
-    return null;
+    return rejectCaller_("verification_http_" + code);
   }
 
   // The payload is now known to be Google-signed, so its claims can be trusted
   if (payload.email_verified !== true) {
     Logger.log("Rejected caller " + email + ": email not verified");
-    return null;
+    return rejectCaller_("email_not_verified");
   }
 
   var result = {
@@ -179,9 +191,12 @@ function isInScriptAllowlist_(email) {
 }
 
 function unauthorizedResponse_() {
+  var reason = lastAuthFailure_ || "not_a_volunteer";
   return createJsonResponse({
     status: "error",
-    message: "Unauthorized: Valid Firebase ID token from an authorized volunteer or super admin is required."
+    code: "unauthorized",
+    reason: reason,
+    message: "Unauthorized (" + reason + "): Valid Firebase ID token from an authorized volunteer or super admin is required."
   });
 }
 
@@ -566,7 +581,7 @@ function doGet(e) {
   return createJsonResponse({
     status: "online",
     service: "SKY UIUC Relay & Campaign Engine",
-    version: "4.5.0",
+    version: "4.5.1",
     time: new Date().toISOString()
   });
 }

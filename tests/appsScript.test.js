@@ -23,7 +23,11 @@ function loadScript({ firestoreCodeFor }) {
   const calls = { fetch: [], sent: [] };
   const ctx = {
     Utilities: {
-      base64DecodeWebSafe: (s) => [...Buffer.from(s, 'base64url')],
+      // Like Apps Script: unpadded input is rejected (JWT segments are unpadded)
+      base64DecodeWebSafe: (s) => {
+        if (s.length % 4 !== 0) throw new Error('Could not decode string.');
+        return [...Buffer.from(s, 'base64url')];
+      },
       base64EncodeWebSafe: (bytes) => Buffer.from(bytes).toString('base64url'),
       newBlob: (bytes) => ({ getDataAsString: () => Buffer.from(bytes).toString('utf8') }),
       computeDigest: (_alg, str) => [...crypto.createHash('sha256').update(str).digest()],
@@ -66,6 +70,25 @@ describe('Apps Script relay authentication', () => {
         return url.endsWith('/authorized_volunteers/vol%40illinois.edu') ? 200 : 404;
       }
     });
+  });
+
+  it('decodes real (unpadded) tokens whatever their payload length', () => {
+    // Pad the email so the payload segment length covers every remainder mod 4
+    const lengths = new Set();
+    for (let pad = 0; pad < 4; pad += 1) {
+      const token = makeToken(validClaims('vol@illinois.edu', { name: 'x'.repeat(pad) }));
+      lengths.add(token.split('.')[1].length % 4);
+      expect(post(env.ctx, emailBody(token)).status).toBe('success');
+    }
+    expect(lengths.size).toBeGreaterThan(1);
+  });
+
+  it('says why a caller was rejected', () => {
+    expect(post(env.ctx, emailBody('')).reason).toBe('missing_token');
+    expect(post(env.ctx, emailBody('a.b.c')).reason).toBe('token_unreadable');
+    expect(post(env.ctx, emailBody(makeToken(validClaims('x@y.com', { aud: 'other' })))).reason).toBe('wrong_project');
+    expect(post(env.ctx, emailBody(makeToken(validClaims('vol@illinois.edu')).replace('.signature', '.forged'))).reason).toBe('verification_http_401');
+    expect(post(env.ctx, emailBody(makeToken(validClaims('random@gmail.com')))).reason).toBe('not_a_volunteer');
   });
 
   it('rejects a forged super-admin token (Firestore says 401) and sends nothing', () => {

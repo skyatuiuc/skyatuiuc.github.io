@@ -4,7 +4,7 @@
 # (never stored in this public repo).
 set -e
 
-DESC="Relay & Campaign Engine v4.5.0"
+DESC="Relay & Campaign Engine v4.5.1"
 
 npx clasp push
 VERSION=$(npx clasp version "$DESC" | grep -io 'version [0-9][0-9]*' | grep -o '[0-9][0-9]*' | tail -1)
