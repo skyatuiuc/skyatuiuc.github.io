@@ -1,6 +1,6 @@
 import React from 'react';
 import { Info } from 'lucide-react';
-import { STATUS } from '../../models/applicant';
+import { STATUS, getStatusLabel } from '../../models/applicant';
 
 // Member chip colours: Approved green, Withdrawn red, Volunteer status yellow, everyone else blue
 const getMemberTheme = (member) => {
@@ -13,7 +13,7 @@ const getMemberTheme = (member) => {
       avatarColor: '#161942',
       textColor: '#B45309',
       hoverShadow: '0 4px 12px rgba(250, 188, 29, 0.3)',
-      statusLabel: 'Attending Volunteer'
+      statusLabel: getStatusLabel(STATUS.VOLUNTEER)
     };
   }
   if (member.status === STATUS.WITHDRAWN) {

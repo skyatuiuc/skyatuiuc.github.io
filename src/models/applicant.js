@@ -64,7 +64,7 @@ export const STATUS_STYLES = Object.freeze({
 // Display labels where the stored value is not the best wording ('Volunteer' = present at the retreat
 // as a volunteer, distinct from Volunteer Access to the portal)
 export const STATUS_LABELS = Object.freeze({
-  [STATUS.VOLUNTEER]: 'Attending Volunteer'
+  [STATUS.VOLUNTEER]: 'Volunteering'
 });
 
 export const getStatusLabel = (status) => STATUS_LABELS[status] || status;
@@ -202,7 +202,7 @@ export const getEmailEligibility = (reg, templateKey) => {
     return status === STATUS.APPROVED ? { eligible: true, reason: '' } : { eligible: false, reason: 'is not Approved' };
   }
   if (key === 'welcome') {
-    return isAttending(reg) ? { eligible: true, reason: '' } : { eligible: false, reason: 'is not Approved or an Attending Volunteer' };
+    return isAttending(reg) ? { eligible: true, reason: '' } : { eligible: false, reason: 'is not Approved or Volunteering' };
   }
   if (key === 'completion') {
     return getAttendance(reg).isComplete ? { eligible: true, reason: '' } : { eligible: false, reason: 'has not attended all 3 days' };

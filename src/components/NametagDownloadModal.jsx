@@ -546,7 +546,7 @@ export default function NametagDownloadModal({
                     className="btn btn-secondary"
                     style={{ padding: '0.25rem 0.55rem', fontSize: '0.72rem', fontWeight: 700 }}
                   >
-                    Approved + Attending Volunteers
+                    Approved + Volunteering
                   </button>
                   <button
                     type="button"
