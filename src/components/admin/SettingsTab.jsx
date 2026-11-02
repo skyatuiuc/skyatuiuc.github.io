@@ -8,7 +8,7 @@ import { useToast } from '../ui/ToastProvider';
 // Admin tab: global email links, contacts, the cheat sheet and the Gmail relay URL
 // (system_settings/email_config). Replaces the Email Settings modal that lived in Email Dispatch.
 
-// Relays older than this lack token verification (see docs/UX_QOL_RECOMMENDATIONS.md, URGENT)
+// Relays older than this lack token verification (anyone could send email through them)
 const MIN_SECURE_RELAY_VERSION = [4, 4, 0];
 
 const isAtLeast = (version, min) => {
