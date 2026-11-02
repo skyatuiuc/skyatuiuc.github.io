@@ -3,9 +3,10 @@ import { Save, Settings, Activity } from 'lucide-react';
 import { useAuth, ADMIN_EMAIL } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { DEFAULT_CHEAT_SHEET_URL } from '../../services/emailService';
+import { getRelayUrl } from '../../services/relayUrl';
 import { useToast } from '../ui/ToastProvider';
 
-// Admin tab: global email links, contacts, the cheat sheet and the Gmail relay URL
+// Admin tab: global email links, contacts, the cheat sheet and a relay health check
 // (system_settings/email_config). Replaces the Email Settings modal that lived in Email Dispatch.
 
 // Relays older than this lack token verification (anyone could send email through them)
@@ -20,12 +21,12 @@ const isAtLeast = (version, min) => {
 };
 
 // Asks the relay which version it runs (doGet), so a stale deployment is visible here
-function RelayHealth({ webhookUrl }) {
+function RelayHealth() {
   const [state, setState] = useState({ status: 'idle' });
   const check = async () => {
     setState({ status: 'checking' });
     try {
-      const res = await fetch(webhookUrl);
+      const res = await fetch(getRelayUrl());
       const data = await res.json();
       setState({ status: data?.status === 'online' ? 'online' : 'error', version: data?.version || '', message: data?.message || '' });
     } catch (err) {
@@ -35,7 +36,7 @@ function RelayHealth({ webhookUrl }) {
   const secure = state.status === 'online' && isAtLeast(state.version, MIN_SECURE_RELAY_VERSION);
   return (
     <div className="row" data-testid="relay-health">
-      <button type="button" className="btn btn-secondary btn-sm" onClick={check} disabled={!webhookUrl || state.status === 'checking'}>
+      <button type="button" className="btn btn-secondary btn-sm" onClick={check} disabled={state.status === 'checking'}>
         <Activity size={14} /> {state.status === 'checking' ? 'Checking…' : 'Check relay'}
       </button>
       {state.status === 'online' && (
@@ -268,31 +269,10 @@ export default function SettingsTab() {
 
             <>
               <h3 className="text-main" style={{ fontSize: '1.05rem', fontWeight: 800, marginTop: '0.75rem' }}>Gmail relay (Apps Script)</h3>
-              <RelayHealth webhookUrl={formData.webhookUrl} />
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-main)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.35rem' }}>
-                  Google Apps Script Webhook URL (For skyatuiuc@gmail.com)
-                </label>
-                <input
-                  type="url"
-                  disabled={!isSuperAdmin}
-                  value={formData.webhookUrl}
-                  onChange={(e) => update({ ...formData, webhookUrl: e.target.value })}
-                  placeholder="https://script.google.com/macros/s/.../exec"
-                  style={{
-                    width: '100%',
-                    padding: '0.65rem 0.85rem',
-                    background: !isSuperAdmin ? '#F8FAFC' : '#FFFFFF',
-                    border: '1px solid rgba(35, 39, 95, 0.15)',
-                    color: 'var(--text-main)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: '0.88rem'
-                  }}
-                />
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '6px 0 0 0' }}>
-                  Deploy the Apps Script snippet in Google Apps Script as a Web App to enable direct dispatching from <strong>skyatuiuc@gmail.com</strong>. Authentication is securely handled in real time via signed Firebase ID Tokens.
-                </p>
-              </div>
+              <RelayHealth />
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>
+                Emails are sent from <strong>skyatuiuc@gmail.com</strong> through the relay built into the site. Deploy relay changes with <code>npm run deploy:apps-script</code>.
+              </p>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-main)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.35rem' }}>

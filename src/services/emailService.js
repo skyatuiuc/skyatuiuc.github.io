@@ -4,6 +4,7 @@ import { EMAIL_TEMPLATES } from '../templates/emailTemplates';
 import { getRetreatDaySchedule } from '../data/scheduleData';
 import { getFeeTierLabel } from '../data/pricingData';
 import { getPayment, PAYMENT, getDisplayName, sentEmailKey } from '../models/applicant';
+import { getRelayUrl } from './relayUrl';
 
 export const normalizeEmailText = (str) => {
   if (str === null || str === undefined) return '';
@@ -56,7 +57,6 @@ export const formatDirectImageUrl = (url) => {
 export const DEFAULT_CHEAT_SHEET_URL = 'https://skyuiuc.org/assets/skyhomepracticecheatsheet.png';
 
 export const DEFAULT_EMAIL_SETTINGS = {
-  webhookUrl: import.meta.env?.VITE_EMAIL_WEBHOOK_URL || '', // Configurable Google Apps Script Webhook
   senderEmail: 'skyatuiuc@gmail.com',
   senderName: 'SKY Meditation at UIUC',
   clubEmail: 'skyatuiuc@gmail.com',
@@ -232,14 +232,7 @@ export const compileEmailPayload = (templateTypeKey, participant, retreat, email
 // Send single email and persist status
 // POST an authenticated request to the Apps Script relay. Throws (with .code from the relay, e.g.
 // 'quota_exhausted') unless the relay answers { status: 'success' }.
-const postToRelay = async (emailSettings, body) => {
-  const settings = { ...DEFAULT_EMAIL_SETTINGS, ...emailSettings };
-  const webhookUrl = settings.webhookUrl?.trim();
-  const isConfiguredWebhook = webhookUrl && webhookUrl.startsWith('https://script.google.com/macros/s/') && !webhookUrl.includes('EXAMPLE');
-  if (!isConfiguredWebhook) {
-    throw new Error("Gmail Webhook URL is not configured yet. Please open Admin › Settings, deploy the Google Apps Script connector under skyatuiuc@gmail.com, and paste your Web App URL.");
-  }
-
+const postToRelay = async (body) => {
   // The relay verifies the caller's live Firebase ID token
   let idToken = '';
   if (auth?.currentUser) {
@@ -250,7 +243,7 @@ const postToRelay = async (emailSettings, body) => {
     }
   }
 
-  const response = await fetch(webhookUrl, {
+  const response = await fetch(getRelayUrl(), {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ ...body, idToken })
@@ -271,12 +264,12 @@ const postToRelay = async (emailSettings, body) => {
 };
 
 /** Remaining relay sends in the rolling 24-hour window: { limit, used, remaining, nextFreeAt }. */
-export const getEmailQuota = async (emailSettings = {}) => {
-  const result = await postToRelay(emailSettings, { action: 'get_email_quota' });
+export const getEmailQuota = async () => {
+  const result = await postToRelay({ action: 'get_email_quota' });
   return { limit: result.limit, used: result.used, remaining: result.remaining, nextFreeAt: result.nextFreeAt || null };
 };
 
-const relaySend = (payload, participantId, emailSettings, { to, subjectPrefix = '' } = {}) => postToRelay(emailSettings, {
+const relaySend = (payload, participantId, { to, subjectPrefix = '' } = {}) => postToRelay({
   action: 'send_email',
   sender: 'skyatuiuc@gmail.com',
   to: to || payload.recipientEmail,
@@ -292,7 +285,7 @@ const relaySend = (payload, participantId, emailSettings, { to, subjectPrefix = 
 export const sendTestEmail = async (templateTypeKey, participant, retreat, emailSettings, toEmail) => {
   if (!toEmail) throw new Error('No address to send the test to.');
   const payload = compileEmailPayload(templateTypeKey, participant, retreat, emailSettings);
-  const result = await relaySend(payload, '', emailSettings, { to: toEmail, subjectPrefix: '[TEST] ' });
+  const result = await relaySend(payload, '', { to: toEmail, subjectPrefix: '[TEST] ' });
   return { subject: payload.subject, remaining: result.remaining };
 };
 
@@ -308,7 +301,7 @@ export const sendSingleEmail = async (templateTypeKey, participant, retreat, ema
   let dispatchedBy = '';
   let remaining = null;
   try {
-    const result = await relaySend(payload, participant.id, emailSettings);
+    const result = await relaySend(payload, participant.id);
     dispatchedBy = result.dispatchedBy || '';
     remaining = typeof result.remaining === 'number' ? result.remaining : null;
   } catch (err) {

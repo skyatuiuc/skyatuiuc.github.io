@@ -101,9 +101,10 @@ await env.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(db, 'retreat_history', id), data);
   }
   for (const v of seed.volunteers) await setDoc(doc(db, 'authorized_volunteers', v), { email: v, addedAt: '2026-08-01T00:00:00Z' });
-  // Relay settings pointing at a fake URL the harness intercepts (never the production relay)
+  // The relay URL comes from the build (VITE_CAMPAIGN_WEBHOOK_URL above, a fake the harness intercepts).
+  // The stored webhookUrl is what older builds saved: it must be ignored, then dropped on the next save.
   await setDoc(doc(db, 'system_settings', 'email_config'), {
-    webhookUrl: 'https://script.google.com/macros/s/E2E-FAKE-RELAY/exec',
+    webhookUrl: 'https://script.google.com/macros/s/E2E-RETIRED-STORED-URL/exec',
     whatsAppLink: 'https://chat.whatsapp.com/e2e', contactPhone: '2175550000', contactName: 'E2E', senderEmail: ADMIN
   });
   for (const r of seed.registrations) {
@@ -161,11 +162,13 @@ await page.setRequestInterception(true);
 // Never let the local app reach the production Apps Script: answer relay calls with a fake relay that
 // mirrors the real one's quota/send/scan responses, and record what was sent.
 const relayLog = [];
+const relayUrls = new Set();
 let relayRemaining = 2;
 let relayAnalyticsFails = false;
 let relayVersion = '3.2.0';
 page.on('request', async (req) => {
   if (!/script\.google\.com|googleusercontent\.com\/macros/.test(req.url())) return req.continue();
+  relayUrls.add(req.url().split('?')[0]);
   if (req.method() === 'GET') {
     return req.respond({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ status: 'online', version: relayVersion }) });
   }
@@ -318,7 +321,10 @@ try {
     await page.keyboard.type('E2E Saved');
     await clickByText('button', 'Save settings');
     await sleep(1200);
-    check('settings saved to Firestore', (await readOne('system_settings', 'email_config'))?.contactName === 'E2E Saved');
+    const savedSettings = await readOne('system_settings', 'email_config');
+    check('settings saved to Firestore', savedSettings?.contactName === 'E2E Saved');
+    check('retired relay URL dropped from stored settings', savedSettings && !('webhookUrl' in savedSettings));
+    check('every relay call used the built-in URL', relayUrls.size > 0 && [...relayUrls].every(u => u.includes('E2E-FAKE-RELAY')));
   });
 
   await step('Campaign analytics: relay data, explicit error with Retry (U20)', async () => {

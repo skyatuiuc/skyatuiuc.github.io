@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { deleteField, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../firebase/config';
 import { useAuth } from './AuthContext';
 import { DEFAULT_EMAIL_SETTINGS } from '../services/emailService';
@@ -11,6 +11,9 @@ const SettingsContext = createContext(null);
 
 // Copies older builds kept in localStorage (settings incl. the relay URL, local campaign counts)
 const LEGACY_STORAGE_KEYS = ['sky_email_settings', 'sky_campaign_webhook_url', 'sky_campaign_analytics_local', 'sky_campaign_analytics_cached'];
+
+// Stored fields nothing reads any more (the relay URL is built into the site); removed on the next save
+const RETIRED_FIELDS = ['webhookUrl'];
 
 export function SettingsProvider({ children }) {
   const { isVolunteer } = useAuth();
@@ -40,10 +43,11 @@ export function SettingsProvider({ children }) {
   const emailSettings = useMemo(() => ({ ...DEFAULT_EMAIL_SETTINGS, ...(stored || {}) }), [stored]);
 
   // Admin only (enforced by the rules); throws so callers can show the real error
-  const saveEmailSettings = useCallback(
-    (next) => setDoc(doc(db, 'system_settings', 'email_config'), next, { merge: true }),
-    []
-  );
+  const saveEmailSettings = useCallback((next) => {
+    const cleaned = { ...next };
+    RETIRED_FIELDS.forEach(key => { cleaned[key] = deleteField(); });
+    return setDoc(doc(db, 'system_settings', 'email_config'), cleaned, { merge: true });
+  }, []);
 
   const value = useMemo(() => ({ emailSettings, settingsLoaded, saveEmailSettings }), [emailSettings, settingsLoaded, saveEmailSettings]);
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

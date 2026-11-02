@@ -8,21 +8,7 @@
  */
 
 import { auth } from '../firebase/config';
-
-// Helper to resolve the active Google Apps Script Webhook URL
-const DEFAULT_CAMPAIGN_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyHJFonGIbqaZfADEed5QgzodmE65hTDLYp_iY-Tn_Nemg9k-eAUQV4s5mYMMRV3zDT/exec';
-
-export function getCampaignWebhookUrl() {
-  // Build-time override only (scans come from anonymous visitors, who cannot read Firestore settings)
-  const envUrl = import.meta.env?.VITE_CAMPAIGN_WEBHOOK_URL || 
-                 import.meta.env?.VITE_EMAIL_WEBHOOK_URL || 
-                 import.meta.env?.VITE_APPS_SCRIPT_URL;
-  if (envUrl && envUrl.startsWith('https://script.google.com/macros/s/') && !envUrl.includes('EXAMPLE')) {
-    return envUrl;
-  }
-
-  return DEFAULT_CAMPAIGN_WEBHOOK_URL;
-}
+import { getRelayUrl } from './relayUrl';
 
 /**
  * Generate or retrieve an ephemeral session fingerprint for rate-limiting
@@ -71,7 +57,7 @@ export async function recordCampaignScan(rawTag) {
   sessionStorage.setItem(lastScanKey, nowMs.toString());
 
   const now = new Date();
-  const webhookUrl = getCampaignWebhookUrl();
+  const webhookUrl = getRelayUrl();
 
   // 3. Dispatch fire-and-forget background beacon to Google Apps Script
   if (webhookUrl) {
@@ -113,7 +99,7 @@ export async function recordCampaignConversion(rawTag) {
   if (!tag) return;
 
   const now = new Date();
-  const webhookUrl = getCampaignWebhookUrl();
+  const webhookUrl = getRelayUrl();
 
   // 1. Dispatch conversion notification to Google Apps Script
   if (webhookUrl) {
@@ -161,7 +147,7 @@ export async function getCampaignAnalyticsForDateRange(startDateStr, endDateStr)
     }
   }
 
-  const resp = await fetch(getCampaignWebhookUrl(), {
+  const resp = await fetch(getRelayUrl(), {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ action: 'get_campaign_analytics', idToken, startDate: startDateStr, endDate: endDateStr })

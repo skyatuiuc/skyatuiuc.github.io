@@ -14,7 +14,6 @@ import {
   CreditCard,
   Info,
   Check,
-  AlertTriangle,
   Copy,
   ExternalLink
 } from 'lucide-react';
@@ -45,7 +44,7 @@ export default function AutoEmailDispatchTab() {
   const { activeRetreat, registrations, updateRegistration } = useRoster();
 
   // Global settings (one live listener, shared): links, contacts, cheat sheet, relay URL
-  const { emailSettings, settingsLoaded } = useSettings();
+  const { emailSettings } = useSettings();
   const navigate = useNavigate();
 
   const userEmailLower = (currentUser?.email || '').toLowerCase().trim();
@@ -147,23 +146,20 @@ export default function AutoEmailDispatchTab() {
     }
   };
 
-  // Only the newest quota request may update the display (settings can arrive while one is in flight)
+  // Only the newest quota request may update the display (Retry can overlap an earlier request)
   const quotaRequestRef = useRef(0);
   const refreshQuota = useCallback(async () => {
     quotaRequestRef.current += 1;
     const requestId = quotaRequestRef.current;
     try {
-      const result = await getEmailQuota(emailSettings);
+      const result = await getEmailQuota();
       if (requestId === quotaRequestRef.current) setQuota(result);
     } catch (err) {
       console.warn('Email quota check failed:', err);
       if (requestId === quotaRequestRef.current) setQuota({ error: err.message || 'unknown error' });
     }
-  }, [emailSettings]);
-  useEffect(() => {
-    // Wait for the saved settings: the built-in defaults may point at a different relay deployment
-    if (settingsLoaded) refreshQuota();
-  }, [refreshQuota, settingsLoaded]);
+  }, []);
+  useEffect(() => { refreshQuota(); }, [refreshQuota]);
 
   // Send Single Email (emailService records the sent email on the registration)
   const handleSendSingle = async (templateKey, participant) => {
@@ -271,58 +267,8 @@ export default function AutoEmailDispatchTab() {
     }
   };
 
-  const isWebhookConfigured = Boolean(
-    emailSettings.webhookUrl && 
-    emailSettings.webhookUrl.startsWith('https://script.google.com/macros/s/') && 
-    !emailSettings.webhookUrl.includes('EXAMPLE')
-  );
-
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
-
-      {/* Webhook Setup Warning Banner */}
-      {!isWebhookConfigured && (
-        <div 
-          className="animate-fade-in"
-          style={{
-            padding: '1rem 1.25rem',
-            borderRadius: 'var(--radius-md)',
-            background: 'var(--sky-sun-light)',
-            border: '1px solid rgba(250, 188, 29, 0.4)',
-            color: '#B45309',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '0.75rem'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <AlertTriangle size={22} color="#B45309" style={{ flexShrink: 0 }} />
-            <div>
-              <strong style={{ color: 'var(--text-main)' }}>Gmail Webhook Connector Required (One-Time Setup):</strong>
-              <div style={{ fontSize: '0.82rem', marginTop: '2px', color: '#B45309' }}>
-                To send emails from <strong>skyatuiuc@gmail.com</strong>, deploy the Google Apps Script Web App and paste your Web App URL.
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => navigate('/admin/settings')}
-            style={{
-              padding: '0.4rem 0.9rem',
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              cursor: 'pointer'
-            }}
-          >
-            <Settings size={14} /> Open Setup & Script
-          </button>
-        </div>
-      )}
 
       {/* TOP HEADER CONTROLS: RETREAT SELECTOR, SETTINGS TRIGGER & SENDER BADGE */}
       <div className="glass-card" style={{ padding: '1.5rem', background: '#FFFFFF', boxShadow: 'var(--shadow-md)' }}>
@@ -412,7 +358,7 @@ export default function AutoEmailDispatchTab() {
               className="btn btn-secondary"
               onClick={() => navigate('/admin/settings')}
               style={{ padding: '0.55rem 1rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-              title="Configure retreat links, survey URL, and Apps Script Webhook"
+              title="Configure retreat links, survey URL and contacts"
             >
               <Settings size={15} /> Email Settings & Links
             </button>
