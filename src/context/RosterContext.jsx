@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState, useCall
 import { collection, doc, getDoc, onSnapshot, query, where, updateDoc, setDoc, writeBatch } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../firebase/config';
 import { useAuth } from './AuthContext';
-import { getDefaultActiveRetreatId } from '../utils/retreatUtils';
+import { resolveActiveRetreatId } from '../models/retreat';
 import { GENERAL_RETREAT, GENERAL_RETREAT_ID, registrationId, buildMovedRegistration } from '../models/applicant';
 
 // Shared roster for every volunteer/admin screen.
@@ -30,7 +30,10 @@ export function RosterProvider({ children }) {
 
   const [retreats, setRetreats] = useState([]);
   const [retreatsLoaded, setRetreatsLoaded] = useState(false);
-  const [requestedRetreatId, setRequestedRetreatId] = useState(readSavedRetreatId);
+  // Remembered from an earlier visit (only honoured while that retreat is upcoming, see
+  // resolveActiveRetreatId) vs. chosen on this page load with the selector or a ?retreat= link
+  const [savedRetreatId] = useState(readSavedRetreatId);
+  const [requestedRetreatId, setRequestedRetreatId] = useState('');
   const [registrationsState, setRegistrationsState] = useState({ retreatId: null, docs: [] });
   const [notesState, setNotesState] = useState({ retreatId: null, byId: {} });
   const [syncError, setSyncError] = useState('');
@@ -47,13 +50,12 @@ export function RosterProvider({ children }) {
     });
   }, [enabled]);
 
-  // Resolve the active retreat: the requested one if it still exists, otherwise the nearest upcoming
-  // (the general interest list when no retreat has been scheduled yet)
+  // Resolve the active retreat (the general interest list when no retreat has been scheduled yet)
   const activeRetreatId = useMemo(() => {
     if (requestedRetreatId === GENERAL_RETREAT_ID) return GENERAL_RETREAT_ID;
     if (!retreatsLoaded) return '';
-    return getDefaultActiveRetreatId(retreats, requestedRetreatId) || GENERAL_RETREAT_ID;
-  }, [retreats, retreatsLoaded, requestedRetreatId]);
+    return resolveActiveRetreatId(retreats, { requestedId: requestedRetreatId, savedId: savedRetreatId }) || GENERAL_RETREAT_ID;
+  }, [retreats, retreatsLoaded, requestedRetreatId, savedRetreatId]);
 
   const setActiveRetreatId = useCallback((id) => {
     setRequestedRetreatId(id);

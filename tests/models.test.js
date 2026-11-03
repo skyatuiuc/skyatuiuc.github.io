@@ -92,7 +92,7 @@ describe('CSV export', () => {
   });
 });
 
-import { formatRetreatDates, getRetreatLabel, getUpcomingRetreats } from '../src/models/retreat';
+import { formatRetreatDates, getRetreatLabel, getUpcomingRetreats, resolveActiveRetreatId } from '../src/models/retreat';
 import { buildMovedRegistration } from '../src/models/applicant';
 
 describe('retreat helpers', () => {
@@ -111,6 +111,24 @@ describe('retreat helpers', () => {
       { id: 'next', startDate: '2026-11-06', endDate: '2026-11-08' }
     ];
     expect(getUpcomingRetreats(retreats, '2026-10-31').map(r => r.id)).toEqual(['ongoing', 'next', 'later']);
+  });
+  it('opens on the upcoming retreat unless a choice still applies', () => {
+    const sep = { id: 'sep', startDate: '2026-09-11', endDate: '2026-09-13' };
+    const dec = { id: 'dec', startDate: '2026-12-04', endDate: '2026-12-06' };
+    const feb = { id: 'feb', startDate: '2027-02-05', endDate: '2027-02-07' };
+    const today = '2026-11-03';
+    const resolve = (retreats, choice) => resolveActiveRetreatId(retreats, choice, today);
+    // A remembered past retreat gives way to the new upcoming one
+    expect(resolve([sep, dec], { savedId: 'sep' })).toBe('dec');
+    // A remembered retreat that is still upcoming is kept
+    expect(resolve([sep, dec, feb], { savedId: 'feb' })).toBe('feb');
+    // A retreat chosen on this page load (selector or ?retreat=) wins, even a past one
+    expect(resolve([sep, dec], { requestedId: 'sep', savedId: 'dec' })).toBe('sep');
+    // Deleted retreats are ignored
+    expect(resolve([sep, dec], { requestedId: 'gone', savedId: 'gone' })).toBe('dec');
+    // Nothing upcoming: the most recent past retreat; no retreats at all: ''
+    expect(resolve([sep], { savedId: 'general' })).toBe('sep');
+    expect(resolve([], {})).toBe('');
   });
 });
 

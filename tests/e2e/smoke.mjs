@@ -16,6 +16,9 @@ import { doc, setDoc, getDoc, getDocs, updateDoc, collection } from 'firebase/fi
 const PROJECT_ID = 'demo-skyatuiuc';
 const PORT = 5199;
 const BASE = `http://localhost:${PORT}`;
+// Portal URL naming the retreat to work on (empty: let the portal pick its default)
+let portalRetreat = '';
+const portal = (path) => (portalRetreat ? `${BASE}${path}?retreat=${encodeURIComponent(portalRetreat)}` : `${BASE}${path}`);
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const ADMIN = 'skyatuiuc@gmail.com';
 
@@ -284,12 +287,26 @@ try {
     check('last snapshot shown', (await page.$eval('[data-testid="last-snapshot"]', el => el.textContent)).includes('Last full snapshot'));
   });
 
-  // Make sure the past retreat is the active one in the selector
-  await page.evaluate((id) => localStorage.setItem('sky_active_retreat_id', id), pastRetreat.id);
+  // A remembered retreat that has ended gives way to the upcoming one; a ?retreat= link still wins
+  await step('Portal opens on the upcoming retreat, not a remembered past one', async () => {
+    await page.evaluate((id) => localStorage.setItem('sky_active_retreat_id', id), pastRetreat.id);
+    await page.goto(`${BASE}/volunteer`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#active-retreat-select');
+    check('remembered past retreat replaced by the upcoming one', (await page.$eval('#active-retreat-select', el => el.value)) === upcoming.id);
+    await page.select('#active-retreat-select', pastRetreat.id);
+    await sleep(300);
+    check('choosing a past retreat keeps it in the URL', page.url().includes(`retreat=${encodeURIComponent(pastRetreat.id)}`), page.url());
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#active-retreat-select');
+    check('refresh keeps the chosen past retreat', (await page.$eval('#active-retreat-select', el => el.value)) === pastRetreat.id);
+  });
+
+  // The rest of the suite works on the past retreat, so portal links name it
+  portalRetreat = pastRetreat.id;
 
   for (const tab of ['Volunteer Access', 'Retreat Management', 'Group Assignments', 'Auto Email Dispatch', 'Flyer Templates', 'Nametag Templates', 'Campaign Scan Analytics', 'Data, Usage & Backups', 'Settings']) {
     await step(`Admin tab "${tab}" renders`, async () => {
-      await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded' });
+      await page.goto(portal('/admin'), { waitUntil: 'domcontentloaded' });
       await clickByText('button', tab);
       await sleep(900);
     });
@@ -297,14 +314,14 @@ try {
 
   const retreatRegs = migrated.filter(r => r.retreatId === pastRetreat.id);
   await step('Email Dispatch lists the active retreat', async () => {
-    await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/admin'), { waitUntil: 'domcontentloaded' });
     await clickByText('button', 'Auto Email Dispatch');
     await waitForText(`of ${retreatRegs.length} applicant records`);
   });
 
   await step('Settings tab: live settings, save, relay version check, legacy copies cleared (U23)', async () => {
     await page.evaluate(() => localStorage.setItem('sky_email_settings', JSON.stringify({ webhookUrl: 'https://stale.example' })));
-    await page.goto(`${BASE}/admin/settings`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/admin/settings'), { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="relay-health"]');
     check('legacy settings copy removed from the browser', (await page.evaluate(() => localStorage.getItem('sky_email_settings'))) === null);
     // Relay version check: an outdated relay is called out, a current one is fine
@@ -328,11 +345,11 @@ try {
   });
 
   await step('Campaign analytics: relay data, explicit error with Retry (U20)', async () => {
-    await page.goto(`${BASE}/admin/analytics`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/admin/analytics'), { waitUntil: 'domcontentloaded' });
     await sleep(1500);
     check('analytics loads from the relay without an error', !(await page.$('[data-testid="analytics-error"]')) && (await bodyText()).includes('e2etag'));
     relayAnalyticsFails = true;
-    await page.goto(`${BASE}/admin/analytics`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/admin/analytics'), { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="analytics-error"]', { timeout: 8000 });
     check('a failed analytics query is shown as an error (no local fallback)', true);
     relayAnalyticsFails = false;
@@ -343,7 +360,7 @@ try {
 
   await step('Template studios: image upload and shared controls (U22)', async () => {
     const fixture = new URL('./fixtures/template-600x400.png', import.meta.url).pathname;
-    await page.goto(`${BASE}/admin/nametag-templates`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/admin/nametag-templates'), { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('input[type="file"]');
     await (await page.$('input[type="file"]')).uploadFile(fixture);
     await waitForText('Image loaded (600×400px');
@@ -351,7 +368,7 @@ try {
     check('nametag studio reads the image size', true);
     check('both text-box panels render from the shared component', text.includes('Text Box 1: Participant First Name') && text.includes('Text Box 2: Team / Group Name'));
     check('shared colour picker in the nametag studio', (await page.$$('input[type="color"]')).length >= 2);
-    await page.goto(`${BASE}/admin/flyer-templates`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/admin/flyer-templates'), { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('input[type="file"]');
     await (await page.$('input[type="file"]')).uploadFile(fixture);
     await sleep(800);
@@ -359,7 +376,7 @@ try {
   });
 
   await step('Retreat Management: counts, duplicate, date check (U19)', async () => {
-    await page.goto(`${BASE}/admin/retreats`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/admin/retreats'), { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('details.retreat-past summary');
     check('past retreats start collapsed', !(await page.$eval('details.retreat-past', el => el.open)));
     await page.click('details.retreat-past summary');
@@ -383,7 +400,7 @@ try {
   });
 
   await step('Email Dispatch: quota, test send, eligibility and quota cap (U18)', async () => {
-    await page.goto(`${BASE}/admin/emails`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/admin/emails'), { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => /2 of 100 emails left/.test(document.querySelector('[data-testid="email-quota"]')?.textContent || ''), { timeout: 10000 });
     check('relay quota is shown', true);
 
@@ -421,7 +438,7 @@ try {
   });
 
   await step('Group Assignments: auto-arrange writes groupId only', async () => {
-    await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/admin'), { waitUntil: 'domcontentloaded' });
     await clickByText('button', 'Group Assignments');
     await sleep(800);
     await clickByText('button', 'Auto-Arrange');
@@ -433,7 +450,7 @@ try {
   });
 
   await step('Groups without drag: move one member, then bulk-assign two (U14)', async () => {
-    await page.goto(`${BASE}/admin/groups`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/admin/groups'), { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-member-id] select.chip-move');
     const ids = await page.$$eval('[data-member-id]', els => els.slice(0, 3).map(e => e.getAttribute('data-member-id')));
     await page.select(`[data-member-id="${ids[0]}"] select.chip-move`, 'group-3');
@@ -451,7 +468,7 @@ try {
   });
 
   await step('Applicant panel opens from Groups with the retreat record', async () => {
-    await page.goto(`${BASE}/admin/groups`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/admin/groups'), { waitUntil: 'domcontentloaded' });
     await sleep(800);
     const opened = await page.evaluate(() => {
       const info = document.querySelector('[draggable="true"] button[title^="Click to view"]');
@@ -471,7 +488,7 @@ try {
 
   // ------------------------------------------------ Volunteer portal (as admin)
   await step('Volunteer orientation roster shows only the active retreat', async () => {
-    await page.goto(`${BASE}/volunteer`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/volunteer'), { waitUntil: 'domcontentloaded' });
     await waitForText(`Showing ${retreatRegs.length} of ${retreatRegs.length}`);
   });
 
@@ -479,7 +496,7 @@ try {
     const approved = retreatRegs.filter(r => r.status === 'Approved').length;
     await clickByText('button', 'Approved (');
     await waitForText(`Showing ${approved} of ${retreatRegs.length}`);
-    await page.goto(`${BASE}/volunteer`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/volunteer'), { waitUntil: 'domcontentloaded' });
     await waitForText(`Showing ${approved} of ${retreatRegs.length}`);
     check('status filter is remembered after a reload (U12)', true);
     await clickByText('button', 'Clear');
@@ -488,7 +505,7 @@ try {
 
   await step('Dossier: notes typed then closed immediately are still saved', async () => {
     const target = retreatRegs.find(r => r.status !== 'Withdrawn') || retreatRegs[0];
-    await page.goto(`${BASE}/volunteer`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/volunteer'), { waitUntil: 'domcontentloaded' });
     await page.type('input[aria-label="Search applicants"]', target.email);
     await sleep(300);
     await clickByText('button', 'Orientation Dossier');
@@ -515,7 +532,7 @@ try {
   });
 
   await step('Attendance: toggling one day writes only that day', async () => {
-    await page.goto(`${BASE}/volunteer`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/volunteer'), { waitUntil: 'domcontentloaded' });
     await clickByText('button', 'Retreat Attendance');
     await sleep(800);
     await clickByText('button', 'Everyone (');
@@ -549,15 +566,15 @@ try {
   });
 
   await step('Flyer studio tab renders', async () => {
-    await page.goto(`${BASE}/volunteer`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/volunteer'), { waitUntil: 'domcontentloaded' });
     await clickByText('button', 'Flyer & QR Studio');
     await sleep(800);
   });
 
   await step('General Interest List: move to the next retreat', async () => {
     const generalBefore = (await readAll('registrations')).filter(r => r.retreatId === 'general');
-    await page.evaluate(() => localStorage.setItem('sky_active_retreat_id', 'general'));
-    await page.goto(`${BASE}/volunteer`, { waitUntil: 'domcontentloaded' });
+    portalRetreat = 'general';
+    await page.goto(portal('/volunteer'), { waitUntil: 'domcontentloaded' });
     await waitForText('Move interest list to');
     const target = await page.$eval('#interest-move-target', el => el.value);
     check('move target defaults to the next retreat', target === upcoming.id, target);
@@ -576,7 +593,7 @@ try {
     check('old notes doc removed', (await readOne('registration_private', `${INTEREST}_general`)) === null);
     check('skipped applicant left on the general list', after.some(r => r.id === `${DUP}_general`));
     check('general list now holds only the skipped applicant', after.filter(r => r.retreatId === 'general').length === 1);
-    await page.evaluate((id) => localStorage.setItem('sky_active_retreat_id', id), pastRetreat.id);
+    portalRetreat = pastRetreat.id;
   });
 
   await step('URL state: deep link to a tab + retreat, tab clicks update the URL', async () => {
@@ -590,7 +607,7 @@ try {
     await page.goto(`${BASE}/admin/not-a-tab`, { waitUntil: 'domcontentloaded' });
     await waitForText('Authorize New Volunteer');
     check('unknown tab falls back to the default tab', true);
-    check('retreat added to the URL from the stored selection', page.url().includes('retreat='), page.url());
+    check('active retreat added to the URL', page.url().includes('retreat='), page.url());
   });
 
   await step('Phone width (390 px): key pages never scroll sideways (U25)', async () => {
@@ -612,11 +629,11 @@ try {
   await signOut();
   await signInAs(volunteer);
   await step('Non-admin volunteer can load the roster', async () => {
-    await page.goto(`${BASE}/volunteer`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/volunteer'), { waitUntil: 'domcontentloaded' });
     await waitForText(`Showing ${retreatRegs.length} of`);
   });
   await step('Non-admin volunteer is kept out of /admin', async () => {
-    await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded' });
+    await page.goto(portal('/admin'), { waitUntil: 'domcontentloaded' });
     check('redirected away from admin', !(await bodyText()).includes('Authorize New Volunteer'));
   });
 

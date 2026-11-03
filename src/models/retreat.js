@@ -33,3 +33,21 @@ export const getRetreatLabel = (retreat) => {
 export const getUpcomingRetreats = (retreats, today = todayChicago()) => (retreats || [])
   .filter(r => (r.endDate && r.endDate >= today) || (r.startDate && r.startDate >= today))
   .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+
+/**
+ * Which retreat the portals open on.
+ *  1. The one chosen on this page load (the selector or a ?retreat= link), while it exists.
+ *  2. The one remembered from an earlier visit, but only while it is still upcoming or ongoing, so a
+ *     newly created retreat takes over once the remembered one is over.
+ *  3. The nearest upcoming or ongoing retreat, otherwise the most recent past one.
+ * Returns '' when there are no retreats (callers fall back to the general interest list).
+ */
+export const resolveActiveRetreatId = (retreats, { requestedId = '', savedId = '' } = {}, today = todayChicago()) => {
+  const list = retreats || [];
+  if (requestedId && list.some(r => r.id === requestedId)) return requestedId;
+  const upcoming = getUpcomingRetreats(list, today);
+  if (savedId && upcoming.some(r => r.id === savedId)) return savedId;
+  if (upcoming.length) return upcoming[0].id;
+  const newestFirst = [...list].sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
+  return newestFirst[0]?.id || '';
+};
