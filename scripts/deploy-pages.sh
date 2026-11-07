@@ -6,6 +6,9 @@
 set -e
 
 PROJECT="skyuiuc"
+# The club's Cloudflare account (skyatuiuc@gmail.com), which also holds the skyuiuc.org zone. Pinned so
+# a login with access to several accounts can never deploy the site into the wrong one.
+export CLOUDFLARE_ACCOUNT_ID="0c437e7b20645e7ab66e472369c3e783"
 
 if [ ! -f dist/index.html ]; then
   echo "dist/ is missing: run npm run build first." >&2
