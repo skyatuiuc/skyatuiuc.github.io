@@ -8,11 +8,12 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "deploy:pages": "gh-pages -d dist",
+    "deploy:pages": "sh scripts/deploy-pages.sh",
+    "deploy:github-pages": "gh-pages -d dist",
     "deploy:rules": "firebase deploy --only firestore:rules",
     "deploy:storage": "firebase deploy --only storage",
     "deploy:apps-script": "sh scripts/deploy-apps-script.sh",
-    "deploy": "npm run deploy:rules && npm run deploy:apps-script && gh-pages -d dist",
+    "deploy": "npm run deploy:rules && npm run deploy:apps-script && npm run deploy:pages",
     "deploy:all": "npm run build && npm run deploy",
     "clasp:login": "clasp login",
     "clasp:pull": "clasp pull",
@@ -48,6 +49,7 @@
     "globals": "^17.11.0",
     "puppeteer-core": "^23.11.1",
     "vite": "^5.2.11",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "wrangler": "4.151.0"
   }
 }

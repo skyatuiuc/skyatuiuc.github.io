@@ -29,3 +29,6 @@ scratch
 .env
 .env.production
 .clasp.json
+
+# Cloudflare wrangler local state
+.wrangler/
