@@ -58,4 +58,6 @@ You can also deploy any individual component on its own at any time:
 
 Cloudflare issues and renews the site's HTTPS certificate itself; there is no origin certificate to maintain.
 
+All console-side settings (DNS, SSL, redirect rules, Firebase authorized domains, API key restrictions, relay scopes) are in [INFRASTRUCTURE.md](INFRASTRUCTURE.md).
+
 No GitHub Actions tokens or secrets are needed!
