@@ -9,7 +9,6 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "deploy:pages": "sh scripts/deploy-pages.sh",
-    "deploy:github-pages": "gh-pages -d dist",
     "deploy:rules": "firebase deploy --only firestore:rules",
     "deploy:storage": "firebase deploy --only storage",
     "deploy:apps-script": "sh scripts/deploy-apps-script.sh",
@@ -18,7 +17,6 @@
     "clasp:login": "clasp login",
     "clasp:pull": "clasp pull",
     "clasp:push": "clasp push",
-    "clasp:deploy": "clasp push && clasp deploy -i AKfycbyHJFonGIbqaZfADEed5QgzodmE65hTDLYp_iY-Tn_Nemg9k-eAUQV4s5mYMMRV3zDT",
     "test": "vitest run --exclude tests/rules/**",
     "test:rules": "firebase emulators:exec --only firestore --project demo-skyatuiuc 'vitest run tests/rules'",
     "test:e2e": "firebase emulators:exec --only auth,firestore --project demo-skyatuiuc 'node tests/e2e/smoke.mjs'"
@@ -45,7 +43,6 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.4",
     "firebase-tools": "^15.27.0",
-    "gh-pages": "^6.1.1",
     "globals": "^17.11.0",
     "puppeteer-core": "^23.11.1",
     "vite": "^5.2.11",

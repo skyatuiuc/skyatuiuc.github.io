@@ -46,7 +46,7 @@ You can also deploy any individual component on its own at any time:
 | **`npm run deploy`** | **Everything** (Rules + Apps Script + Web App) | Firebase + Google Apps Script + Cloudflare Pages |
 | `npm run deploy:rules` | Firestore Security Rules (`firestore.rules`) | Firebase Firestore (`skyatuiuc-web`) |
 | `npm run deploy:apps-script` | Apps Script Code (`apps-script/Code.js`) | Google Apps Script Web App |
-| `npm run deploy:pages` | Frontend Build (`dist/`, without the GitHub-only `404.html`) | Cloudflare Pages (project `skyuiuc`) |
+| `npm run deploy:pages` | Frontend Build (`dist/`) | Cloudflare Pages (project `skyuiuc`) |
 
 ---
 

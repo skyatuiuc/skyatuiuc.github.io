@@ -205,6 +205,8 @@ page.goto = async (url, opts) => {
   return res;
 };
 const bodyText = () => page.evaluate(() => document.body.innerText);
+// Until the retreats and the active retreat's roster load, the selector just shows its first option
+const retreatBarLoaded = () => page.waitForFunction(() => /\d+ applications/.test(document.querySelector('.retreat-bar')?.innerText || ''), { timeout: 10000 });
 const waitForText = async (text, timeout = 10000) => {
   await page.waitForFunction((t) => document.body.innerText.includes(t), { timeout }, text);
 };
@@ -291,13 +293,13 @@ try {
   await step('Portal opens on the upcoming retreat, not a remembered past one', async () => {
     await page.evaluate((id) => localStorage.setItem('sky_active_retreat_id', id), pastRetreat.id);
     await page.goto(`${BASE}/volunteer`, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#active-retreat-select');
+    await retreatBarLoaded();
     check('remembered past retreat replaced by the upcoming one', (await page.$eval('#active-retreat-select', el => el.value)) === upcoming.id);
     await page.select('#active-retreat-select', pastRetreat.id);
     await sleep(300);
     check('choosing a past retreat keeps it in the URL', page.url().includes(`retreat=${encodeURIComponent(pastRetreat.id)}`), page.url());
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#active-retreat-select');
+    await retreatBarLoaded();
     check('refresh keeps the chosen past retreat', (await page.$eval('#active-retreat-select', el => el.value)) === pastRetreat.id);
   });
 

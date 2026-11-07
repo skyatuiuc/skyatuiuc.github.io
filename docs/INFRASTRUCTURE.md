@@ -55,7 +55,7 @@ script pins this ID, so a login with access to other accounts cannot deploy the 
 - **Custom domains:** `skyuiuc.org` and `www.skyuiuc.org`.
 - **Fixed project address:** `skyuiuc.pages.dev`.
 - **Per-upload addresses:** each upload also gets one like `https://<hash>.skyuiuc.pages.dev`. Sign-in does not work on those, because they are not Firebase authorized domains.
-- **Deep links:** the upload contains no `404.html`, so Pages serves `index.html` for unknown paths (`/admin/settings`, campaign links like `/demo`) with status 200.
+- **Deep links:** the build has no top-level `404.html` (the deploy script refuses one), so Pages serves `index.html` for unknown paths (`/admin/settings`, campaign links like `/demo`) with status 200.
 - **Rollback:** Workers & Pages › skyuiuc › Deployments, then **Rollback** on an earlier deployment.
 
 ## Firebase (project `skyatuiuc-web`, Spark plan)
@@ -80,7 +80,7 @@ script pins this ID, so a login with access to other accounts cannot deploy the 
 **APIs & Services › Credentials › Browser key (auto created by Firebase).** This is the key in `VITE_FIREBASE_API_KEY`.
 
 - **Application restrictions:** Websites.
-- **Allowed referrers:** the list must include `https://skyuiuc.org/*` and `https://skyatuiuc-web.firebaseapp.com/*` (used by the sign-in popup). Add `http://localhost:5173/*` only if you develop against production; the tests use emulators and don't need it. `www` redirects to the root domain, so it doesn't need an entry.
+- **Allowed referrers:** `https://skyuiuc.org/*`, `https://www.skyuiuc.org/*`, `https://skyatuiuc-web.firebaseapp.com/*` (used by the sign-in popup) and `https://skyatuiuc-web.web.app/*`. Add `http://localhost:5173/*` only if you develop against production; the tests use emulators and don't need it.
 - **When you add a hosting address:** add it here as well as in Firebase's authorized domains. Otherwise sign-in fails with `auth/requests-from-referer-…-are-blocked`.
 - **Changes take a few minutes** to apply.
 
@@ -112,7 +112,7 @@ script pins this ID, so a login with access to other accounts cannot deploy the 
 - `dev`: day-to-day work.
 - `release/…`: frozen releases, managed by the owner.
 - `main`: the initial commit.
-- `gh-pages`: the old GitHub Pages output. It is kept only as a fallback and can be deleted once Cloudflare Pages has run without problems for a while.
+- `gh-pages`: the old GitHub Pages output, no longer published. It is not needed for rollback (Cloudflare keeps every deployment) and can be deleted.
 - GitHub Pages no longer hosts the site. It was retired on 2026-11-07: custom domain removed, site unpublished.
 
 ## History worth knowing
